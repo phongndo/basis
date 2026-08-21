@@ -1,0 +1,41 @@
+CompileFlags:
+  Add:
+    - "-Wno-unknown-warning-option"
+  Compiler: clang++
+
+Diagnostics:
+  ClangTidy:
+    FastCheckFilter: Strict
+    Add:
+      - bugprone-*
+      - cert-*
+      - cppcoreguidelines-*
+      - modernize-*
+      - performance-*
+      - portability-*
+      - readability-*
+    Remove:
+      - bugprone-easily-swappable-parameters
+      - bugprone-exception-escape
+      - cppcoreguidelines-avoid-magic-numbers
+      - cppcoreguidelines-avoid-non-const-global-variables
+      - cppcoreguidelines-owning-memory
+      - modernize-use-trailing-return-type
+      - portability-avoid-pragma-once
+      - readability-identifier-length
+      - readability-magic-numbers
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+
+Hover:
+  ShowAKA: true
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+  Designators: true
+
+Index:
+  Background: Build
+  StandardLibrary: Yes

@@ -1,0 +1,25 @@
+# CMake, Ninja, Conan, and compilation caches
+/build/
+.cache/
+.conan2/
+compile_commands.json
+CMakeUserPresets.json
+
+# Nix
+/result
+/result-*
+
+# Python tooling
+/.venv/
+/.ruff_cache/
+/.ty-cache/
+__pycache__/
+*.py[cod]
+
+# Editors and operating systems
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+.clangd/
