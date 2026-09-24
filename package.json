@@ -4,9 +4,13 @@
   "workspaces": [
     "apps/web",
     "apps/desktop",
-    "packages/extension-host"
+    "packages/extension-host",
+    "packages/core"
   ],
   "scripts": {
+    "core:check": "bun run --cwd packages/core check",
+    "core:test": "bun run --cwd packages/core test",
+    "core:bench": "bun run --cwd packages/core bench",
     "web:dev": "bun run --cwd apps/web dev",
     "web:build": "bun run --cwd apps/web build",
     "web:check": "bun run --cwd apps/web check",
