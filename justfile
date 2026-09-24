@@ -1,7 +1,7 @@
 nix := ""
 profile := "debug"
 build_type := if profile == "release" { "Release" } else { "Debug" }
-cpp_files := "apps include src tests benchmarks"
+cpp_files := "apps/daemon include src tests"
 python_paths := "scripts conanfile.py"
 
 _default:
@@ -25,6 +25,7 @@ versions:
     {{ nix }} conan --version
     {{ nix }} just --version
     {{ nix }} uv --version
+    {{ nix }} bun --version
     {{ nix }} uv run --locked ruff --version
     {{ nix }} uv run --locked ty --version
 
@@ -43,26 +44,22 @@ configure: deps
     {{ nix }} cmake --preset {{ profile }}
     ln -sfn build/{{ profile }}/compile_commands.json compile_commands.json
 
-# Build the application, tests, and benchmarks.
+# Build the daemon and tests.
 build: configure
     {{ nix }} cmake --build --preset {{ profile }}
 
-# Run the application.
+# Run the daemon placeholder (no server yet).
 run: build
-    {{ nix }} ./build/{{ profile }}/basis
+    {{ nix }} ./build/{{ profile }}/basisd
 
 # Run unit tests.
 test: build
     {{ nix }} ctest --preset {{ profile }} --output-on-failure
 
-# Run microbenchmarks.
-bench: build
-    {{ nix }} ./build/{{ profile }}/basis_benchmarks
-
 # Launch lldb on the debug binary.
 debug:
     just profile=debug build
-    {{ nix }} lldb --source .lldbinit -- ./build/debug/basis
+    {{ nix }} lldb --source .lldbinit -- ./build/debug/basisd
 
 # Format C++, Nix, and Python files in place.
 fmt:
@@ -82,8 +79,18 @@ fmt-check:
 
 # Run clang-tidy over project translation units.
 lint: configure
-    {{ nix }} bash -c "find apps src tests benchmarks -type f -name '*.cpp' -print0 | \
-        xargs -0 clang-tidy --quiet -p build/{{ profile }}"
+    {{ nix }} bash -c 'args=(); \
+        if [[ "$(uname -s)" == Linux ]]; then \
+          gcc="$(<"$NIX_CC/nix-support/orig-cc")"; \
+          libc="$(<"$NIX_CC/nix-support/orig-libc-dev")"; \
+          ver="$($gcc/bin/g++ -dumpfullversion)"; \
+          triple="$($gcc/bin/g++ -dumpmachine)"; \
+          args=(--extra-arg-before="-isystem$gcc/include/c++/$ver" \
+                --extra-arg-before="-isystem$gcc/include/c++/$ver/$triple" \
+                --extra-arg-before="-isystem$libc/include"); \
+        fi; \
+        find apps/daemon src tests -type f -name "*.cpp" -print0 | \
+          xargs -0 clang-tidy --quiet -p build/{{ profile }} "${args[@]}"'
 
 # Start clangd for editor integrations.
 lsp:

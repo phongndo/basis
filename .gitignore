@@ -5,6 +5,11 @@
 compile_commands.json
 CMakeUserPresets.json
 
+# Bun and frontend builds
+node_modules/
+/apps/web/dist/
+/apps/desktop/dist/
+
 # Nix
 /result
 /result-*

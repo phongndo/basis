@@ -1,0 +1,15 @@
+{
+  "name": "basis",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/desktop",
+    "packages/extension-host"
+  ],
+  "scripts": {
+    "web:dev": "bun run --cwd apps/web dev",
+    "web:build": "bun run --cwd apps/web build",
+    "web:check": "bun run --cwd apps/web check",
+    "desktop:dev": "bun run web:build && bun run --cwd apps/desktop dev"
+  }
+}

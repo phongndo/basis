@@ -1,0 +1,12 @@
+{
+  "name": "@basis/desktop",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "dev": "${BASIS_ELECTRON_BIN:-electron} ."
+  },
+  "devDependencies": {
+    "electron": "42.7.1"
+  }
+}

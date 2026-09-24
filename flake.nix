@@ -1,5 +1,5 @@
 {
-  description = "basis C++23 development environment";
+  description = "basis C++23 and Bun development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -64,6 +64,7 @@
               darwinLldb
             ]
             ++ pkgs.lib.optionals (!isDarwin) [
+              pkgs.electron_42-bin
               llvm.clang
               llvm.clang-tools
               llvm.lldb
@@ -72,12 +73,14 @@
         {
           default = pkgs.mkShell {
             packages = compilerPackages ++ [
+              pkgs.bun
               pkgs.ccache
               pkgs.cmake
               pkgs.conan
               pkgs.git
               pkgs.just
               pkgs.ninja
+              pkgs.nodejs_22
               pkgs.nixd
               pkgs.nixpkgs-fmt
               pkgs.python3
@@ -100,6 +103,7 @@
               else
                 ''
                   export PATH="$PWD/build/debug:$PATH"
+                  export BASIS_ELECTRON_BIN="${pkgs.electron_42-bin}/bin/electron"
                   export CC="${llvm.clang}/bin/clang"
                   export CXX="${llvm.clang}/bin/clang++"
                   export CMAKE_MAKE_PROGRAM="$(command -v ninja)"

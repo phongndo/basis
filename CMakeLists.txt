@@ -13,7 +13,6 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BASIS_BUILD_TESTS "Build the test suite" ON)
-option(BASIS_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(BASIS_ENABLE_WERROR "Treat compiler warnings as errors" ON)
 option(BASIS_ENABLE_CCACHE "Use ccache as the compiler launcher" ON)
 
@@ -50,21 +49,26 @@ target_compile_options(
     -Wzero-as-null-pointer-constant
 )
 
+# Conan passes -stdlib=libstdc++ on Linux; the Nix Clang wrapper uses it by default.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_options(basis_warnings INTERFACE -Wno-unused-command-line-argument)
+endif()
+
 if(BASIS_ENABLE_WERROR)
   target_compile_options(basis_warnings INTERFACE -Werror)
 endif()
 
-add_library(basis_lib STATIC src/version.cpp)
-add_library(basis::lib ALIAS basis_lib)
+add_library(basis_core STATIC src/version.cpp)
+add_library(basis::core ALIAS basis_core)
 target_include_directories(
-  basis_lib
+  basis_core
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 )
-target_compile_features(basis_lib PUBLIC cxx_std_23)
-target_link_libraries(basis_lib PRIVATE basis_warnings)
+target_compile_features(basis_core PUBLIC cxx_std_23)
+target_link_libraries(basis_core PRIVATE basis_warnings)
 
-add_executable(basis apps/basis/main.cpp)
-target_link_libraries(basis PRIVATE basis::lib basis_warnings)
+add_executable(basisd apps/daemon/main.cpp)
+target_link_libraries(basisd PRIVATE basis::core basis_warnings)
 
 if(BASIS_BUILD_TESTS)
   enable_testing()
@@ -74,17 +78,7 @@ if(BASIS_BUILD_TESTS)
   add_executable(basis_tests tests/version_test.cpp)
   target_link_libraries(
     basis_tests
-    PRIVATE basis::lib basis_warnings GTest::gtest_main
+    PRIVATE basis::core basis_warnings GTest::gtest_main
   )
   gtest_discover_tests(basis_tests)
-endif()
-
-if(BASIS_BUILD_BENCHMARKS)
-  find_package(benchmark CONFIG REQUIRED)
-
-  add_executable(basis_benchmarks benchmarks/version_bench.cpp)
-  target_link_libraries(
-    basis_benchmarks
-    PRIVATE basis::lib basis_warnings benchmark::benchmark_main
-  )
 endif()

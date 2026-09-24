@@ -12,7 +12,4 @@ class BasisConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
     generators = "CMakeDeps", "CMakeToolchain"
 
-    requires: ClassVar[tuple[str, ...]] = (
-        "benchmark/1.9.5",
-        "gtest/1.17.0",
-    )
+    requires: ClassVar[tuple[str, ...]] = ("gtest/1.17.0",)

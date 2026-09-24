@@ -1,52 +1,32 @@
 # basis
 
-C++23 library and CLI. The development toolchain is a Nix flake; C++ packages
-come from Conan.
+A machine-resident agent harness with multiple clients. This repository is a scaffold: no daemon transport, agent loop, extension loading, or client connection is implemented yet.
 
-## Prerequisites
+| Path | Responsibility |
+| --- | --- |
+| `apps/daemon/`, `src/`, `include/` | C++ daemon executable and native library |
+| `packages/extension-host/` | Bun runtime for JS/TS extensions (not implemented) |
+| `apps/web/` | SolidJS client, also used by desktop |
+| `apps/desktop/` | Electron shell for the web client |
 
-[Nix](https://nixos.org/download/) with flakes enabled.
+Clients will connect to the daemon rather than own sessions. The daemon will own agent execution and state; the extension host will run separately. The client and extension interfaces are not defined yet.
 
-```bash
+## Develop
+
+On Linux or macOS, enter the Nix shell, then install C++ and web dependencies:
+
+```sh
 nix develop
 just setup
+bun install --frozen-lockfile
 ```
 
-From outside the shell, prefix recipes with the flake:
-
-```bash
-just nix="nix develop --command" check
+```sh
+just test             # C++ build and tests
+just run              # prints the daemon placeholder; does not start a server
+bun run web:check
+bun run web:dev       # browser at http://127.0.0.1:5173
+bun run desktop:dev   # builds web assets, then opens Electron
 ```
 
-## Build
-
-```bash
-just build          # debug (default)
-just test
-just run
-just bench
-```
-
-Release and sanitizers:
-
-```bash
-just profile=release build
-just profile=sanitizers test
-```
-
-## Tooling
-
-| Task | Command |
-| --- | --- |
-| Format | `just fmt` |
-| Lint | `just lint` |
-| Debug | `just debug` |
-| LSP | `clangd` against `compile_commands.json` (created by `just configure`) |
-| Python | `just python-check` |
-| Gate | `just check` |
-
-On macOS the compiler and debugger are Apple Clang / lldb. clangd, clang-format,
-and clang-tidy come from LLVM 22 in the flake, wrapped against the Xcode SDK.
-Linux uses LLVM 22 for the compiler and the tools.
-
-After switching `profile`, restart the language server.
+From outside the Nix shell, prefix `just` recipes with `just nix="nix develop --command" ...` or use `nix develop -c <command>`.
