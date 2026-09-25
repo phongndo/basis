@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "bun run core:check && bun run --cwd packages/contracts check && bun run --cwd apps/host check && bun run --cwd apps/cli check && bun run web:check",
+    "check": "bun run core:check && bun run --cwd packages/contracts check && bun run --cwd packages/client check && bun run --cwd plugins/transport check && bun run --cwd apps/host check && bun run --cwd apps/cli check && bun run web:check",
     "core:check": "bun run --cwd packages/core check",
     "core:test": "bun run --cwd packages/core test",
     "core:bench": "bun run --cwd packages/core bench",
