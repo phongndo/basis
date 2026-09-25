@@ -16,7 +16,7 @@ Everything a user sees is a plugin. The shipped ones use the same public interfa
 | `plugins/tools-builtin` | `@basis/plugin-tools-builtin` | registers `read`, `write`, `edit`, `bash` | `Tools` |
 | `plugins/sessions` | `@basis/plugin-sessions` | `Sessions` (JSONL tree files under `Paths.sessions`) | `Paths` |
 | `plugins/agent` | `@basis/plugin-agent` | `Agent` (the loop: prompt → model → tools → model; `AgentRequestHook`) | `Llm`, `Tools`, `Sessions` |
-| `plugins/compaction` | `@basis/plugin-compaction` | appends `compaction` entries when context nears the window | `Agent`, `Sessions`, `Llm` |
+| `plugins/compaction` | `@basis/plugin-compaction` | appends `compaction` entries when context nears the window (handles `AgentRequestHook`) | `Sessions`, `Llm` |
 | `plugins/interaction` | `@basis/plugin-interaction` | `Interaction` (runs `InteractionHook`; fails `Unavailable` with no answerer) | — |
 | `plugins/skills` | `@basis/plugin-skills` | `Skills`; contributes the skill index to `AgentRequestHook` and a `skill` tool | `Paths`, `Tools` |
 | `plugins/mcp` | `@basis/plugin-mcp` | connects configured MCP servers; exposes them through `mcp_search` and `mcp_call` tools so server tool schemas stay out of the prompt unless a server opts into direct registration | `Tools` |
