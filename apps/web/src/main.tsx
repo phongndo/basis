@@ -4,7 +4,7 @@ function App() {
   return (
     <main>
       <h1>basis</h1>
-      <p>No daemon connection yet.</p>
+      <p>No host connection yet.</p>
     </main>
   )
 }

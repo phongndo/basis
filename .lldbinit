@@ -1,5 +1,0 @@
-# Project lldb defaults. Launch with `just debug` (passes --source .lldbinit).
-settings set stop-line-count-before 2
-settings set stop-line-count-after 2
-settings set target.skip-prologue true
-settings set frame-format "frame #${frame.index}: ${frame.pc}{ ${module.file.basename}{\`${function.name-with-args}{${frame.no-debug}${function.is-optimized}}}}{ at ${line.file.basename}:${line.number}{:${line.column}}}{${function.is-optimized} [opt]}\n"

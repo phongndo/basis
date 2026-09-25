@@ -1,38 +1,32 @@
 # basis
 
-A machine-resident agent harness with multiple clients. The [Effect-native plugin core](packages/core/README.md) is implemented; the applications remain scaffolds. No server transport, agent loop, tools, provider integration, or client connection is implemented yet.
+A build-your-own agent harness where everything, including the UI, is a replaceable plugin. One host runs the plugins; the web, desktop, and CLI clients connect to it.
+
+Only the [plugin core](packages/core/README.md) is implemented. The apps are scaffolds: there is no plugin loader, transport, agent loop, provider, or client connection yet.
 
 | Path | Responsibility |
 | --- | --- |
-| `packages/core/` | Effect-native plugin composition, scoped lifetimes, hooks, and inspection |
-| `apps/daemon/`, `src/`, `include/` | Earlier C++ daemon scaffold; not connected to the core |
-| `packages/extension-host/` | Earlier extension-host placeholder; not connected to the core |
+| `packages/core/` | Effect-native plugin kernel: capabilities, scoped lifetimes, hooks, inspection |
+| `apps/host/` | Bun host process; currently mounts an empty composition |
+| `apps/cli/` | Command-line client placeholder |
 | `apps/web/` | SolidJS client, also used by desktop |
 | `apps/desktop/` | Electron shell for the web client |
 
-The core runs in Bun and contains no agent-specific behavior. It is currently used programmatically; the existing app scaffolds do not load it. See its [runnable example and development commands](packages/core/README.md#use).
+## Defaults
 
-The proposed [core implementation and verification plan](docs/core-implementation-plan.md) defines the next stages and their acceptance gates; those capabilities are not implemented yet.
+- **Full permissions.** Neither the kernel nor the default plugins include an approval system. Gating or auto-approval belongs in a plugin that wraps tool execution.
+- **Plugins all the way down.** Providers, credentials, tools, sessions, skills, MCP, and UI are plugins using the same public interfaces as third-party ones.
 
 ## Develop
 
-On Linux or macOS, enter the Nix shell, then install C++ and web dependencies:
+On Linux or macOS:
 
 ```sh
-nix develop
-just setup
-bun install --frozen-lockfile
+nix develop -c bun install --frozen-lockfile
+nix develop -c bun run check          # type-check all workspaces
+nix develop -c bun run core:test      # core lifecycle and hook tests
+nix develop -c bun run core:bench     # warm core microbenchmarks
+nix develop -c bun run host:dev       # mount the empty host composition
+nix develop -c bun run web:dev        # browser at http://127.0.0.1:5173
+nix develop -c bun run desktop:dev    # build web assets, then open Electron
 ```
-
-```sh
-bun run core:check    # TypeScript and plugin-interface checks
-bun run core:test     # Core lifecycle and hook tests
-bun run core:bench    # Warm core microbenchmarks
-just test             # Existing C++ scaffold build and tests
-just run              # prints the daemon placeholder; does not start a server
-bun run web:check
-bun run web:dev       # browser at http://127.0.0.1:5173
-bun run desktop:dev   # builds web assets, then opens Electron
-```
-
-From outside the Nix shell, prefix `just` recipes with `just nix="nix develop --command" ...` or use `nix develop -c <command>`.

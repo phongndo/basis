@@ -115,4 +115,4 @@ These spans and composition snapshots are runtime provenance, **not a durable ag
 
 Dispatch reuses immutable, pre-ordered registration arrays; it does not resolve the plugin graph per call. No-listener dispatch avoids constructing a middleware environment. The lifecycle tests also exercise repeated mounting and verify resource/registration cleanup; this is not a heap-leak proof.
 
-The benchmarks do not establish end-to-end agent performance, cold process startup, sandbox overhead, or superiority over Cordis. Those require their own workloads and measurements.
+The benchmarks do not establish end-to-end agent performance, cold process startup, or sandbox overhead. Those require their own workloads and measurements.

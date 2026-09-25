@@ -5,10 +5,33 @@
     "": {
       "name": "basis",
     },
+    "apps/cli": {
+      "name": "@basis/cli",
+      "bin": {
+        "basis": "./src/main.ts",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+        "@types/node": "26.6.2",
+        "typescript": "5.9.3",
+      },
+    },
     "apps/desktop": {
       "name": "@basis/desktop",
       "devDependencies": {
         "electron": "42.7.1",
+      },
+    },
+    "apps/host": {
+      "name": "@basis/host",
+      "dependencies": {
+        "@basis/core": "workspace:*",
+        "effect": "3.22.2",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+        "@types/node": "26.6.2",
+        "typescript": "5.9.3",
       },
     },
     "apps/web": {
@@ -33,9 +56,6 @@
         "@types/node": "26.6.2",
         "typescript": "5.9.3",
       },
-    },
-    "packages/extension-host": {
-      "name": "@basis/extension-host",
     },
   },
   "packages": {
@@ -75,11 +95,13 @@
 
     "@babel/types": ["@babel/types@7.29.8", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.7", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg=="],
 
+    "@basis/cli": ["@basis/cli@workspace:apps/cli"],
+
     "@basis/core": ["@basis/core@workspace:packages/core"],
 
     "@basis/desktop": ["@basis/desktop@workspace:apps/desktop"],
 
-    "@basis/extension-host": ["@basis/extension-host@workspace:packages/extension-host"],
+    "@basis/host": ["@basis/host@workspace:apps/host"],
 
     "@basis/web": ["@basis/web@workspace:apps/web"],
 

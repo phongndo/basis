@@ -1,5 +1,5 @@
 {
-  description = "basis C++23 and Bun development environment";
+  description = "basis Bun development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,92 +23,23 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          llvm = pkgs.llvmPackages_22;
-          isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
-          darwinTools = llvm.clang-tools;
-          darwinClang = pkgs.writeShellScriptBin "clang" ''
-            exec /usr/bin/clang "$@"
-          '';
-          darwinClangxx = pkgs.writeShellScriptBin "clang++" ''
-            exec /usr/bin/clang++ "$@"
-          '';
-          darwinClangd = pkgs.writeShellScriptBin "clangd" ''
-            resource_dir="$(/usr/bin/env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /usr/bin/xcrun clang -print-resource-dir)" || exit 1
-            exec "${darwinTools}/bin/clangd-unwrapped" \
-              --resource-dir="$resource_dir" \
-              "$@"
-          '';
-          darwinClangFormat = pkgs.writeShellScriptBin "clang-format" ''
-            exec "${darwinTools}/bin/clang-format" "$@"
-          '';
-          darwinClangTidy = pkgs.writeShellScriptBin "clang-tidy" ''
-            sdk="$(/usr/bin/env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /usr/bin/xcrun --sdk macosx --show-sdk-path)" || exit 1
-            resource_dir="$(/usr/bin/env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /usr/bin/xcrun clang -print-resource-dir)" || exit 1
-            exec "${darwinTools}/bin/clang-tidy-unwrapped" \
-              --extra-arg-before=-isysroot \
-              --extra-arg-before="$sdk" \
-              --extra-arg-before=-resource-dir \
-              --extra-arg-before="$resource_dir" \
-              "$@"
-          '';
-          darwinLldb = pkgs.writeShellScriptBin "lldb" ''
-            exec /usr/bin/lldb "$@"
-          '';
-          compilerPackages =
-            pkgs.lib.optionals isDarwin [
-              darwinClang
-              darwinClangxx
-              darwinClangd
-              darwinClangFormat
-              darwinClangTidy
-              darwinLldb
-            ]
-            ++ pkgs.lib.optionals (!isDarwin) [
-              pkgs.electron_42-bin
-              llvm.clang
-              llvm.clang-tools
-              llvm.lldb
-            ];
+          isLinux = pkgs.stdenv.hostPlatform.isLinux;
         in
         {
           default = pkgs.mkShell {
-            packages = compilerPackages ++ [
+            packages = [
               pkgs.bun
-              pkgs.ccache
-              pkgs.cmake
-              pkgs.conan
               pkgs.git
-              pkgs.just
-              pkgs.ninja
               pkgs.nodejs_22
               pkgs.nixd
               pkgs.nixpkgs-fmt
-              pkgs.python3
-              pkgs.uv
-            ];
+            ]
+            # The npm Electron binary does not run on NixOS; Darwin uses the npm one.
+            ++ pkgs.lib.optionals isLinux [ pkgs.electron_42-bin ];
 
-            CMAKE_GENERATOR = "Ninja";
-
-            shellHook =
-              if isDarwin then
-                ''
-                  export PATH="$PWD/build/debug:${darwinClang}/bin:${darwinClangxx}/bin:$PATH"
-                  export CC=/usr/bin/clang
-                  export CXX=/usr/bin/clang++
-                  export CMAKE_MAKE_PROGRAM="$(command -v ninja)"
-                  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-                  export SDKROOT="$(/usr/bin/xcrun --sdk macosx --show-sdk-path)"
-                  export UV_PYTHON="$(command -v python3)"
-                ''
-              else
-                ''
-                  export PATH="$PWD/build/debug:$PATH"
-                  export BASIS_ELECTRON_BIN="${pkgs.electron_42-bin}/bin/electron"
-                  export CC="${llvm.clang}/bin/clang"
-                  export CXX="${llvm.clang}/bin/clang++"
-                  export CMAKE_MAKE_PROGRAM="$(command -v ninja)"
-                  export UV_PYTHON="$(command -v python3)"
-                '';
+            shellHook = pkgs.lib.optionalString isLinux ''
+              export BASIS_ELECTRON_BIN="${pkgs.electron_42-bin}/bin/electron"
+            '';
           };
         }
       );

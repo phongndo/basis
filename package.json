@@ -2,15 +2,19 @@
   "name": "basis",
   "private": true,
   "workspaces": [
+    "packages/core",
+    "apps/host",
+    "apps/cli",
     "apps/web",
-    "apps/desktop",
-    "packages/extension-host",
-    "packages/core"
+    "apps/desktop"
   ],
   "scripts": {
+    "check": "bun run core:check && bun run --cwd apps/host check && bun run --cwd apps/cli check && bun run web:check",
     "core:check": "bun run --cwd packages/core check",
     "core:test": "bun run --cwd packages/core test",
     "core:bench": "bun run --cwd packages/core bench",
+    "host:dev": "bun run --cwd apps/host dev",
+    "cli:dev": "bun run --cwd apps/cli dev",
     "web:dev": "bun run --cwd apps/web dev",
     "web:build": "bun run --cwd apps/web build",
     "web:check": "bun run --cwd apps/web check",
