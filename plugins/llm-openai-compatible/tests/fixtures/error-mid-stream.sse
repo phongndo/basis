@@ -1,0 +1,4 @@
+data: {"id":"chatcmpl-4","object":"chat.completion.chunk","created":1758800003,"model":"llama-3.3-70b","choices":[{"index":0,"delta":{"role":"assistant","content":"Partial"},"finish_reason":null}]}
+
+data: {"error":{"message":"The server had an error while processing your request. Sorry about that!","type":"server_error","param":null,"code":null}}
+
