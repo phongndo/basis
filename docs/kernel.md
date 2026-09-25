@@ -2,14 +2,14 @@
 
 The kernel (`packages/core`) composes plugins. It knows about capabilities, hooks, events, lifetimes, and configuration, not about agents, models, tools, sessions, or UIs. Everything a user sees is a plugin, shipped or third-party, using the same public interface.
 
-**Status (2026-09-25):** the contracts below are defined in `packages/core/src` and type-checked. Behavior is implemented for composition validation, config decoding, activation, hooks, scoped disposal, and inspection. Events, background supervision, faults, deadlines, restart policy, and the loader are contracts only; calling them dies with a message pointing here.
+**Status (2026-09-25):** implemented in `packages/core` with tests, including a property test that runs random load/reload/fail/restart sequences against a fault-injecting fixture. Usage details live in [the package README](../packages/core/README.md); this page holds the rationale.
 
 ## Principles
 
 1. **Resolve once, at composition time.** Dependencies, config, and handler order are checked when a composition is planned. At call time a capability is a captured value and a hook with no handlers calls straight through. No proxies, no per-call graph walks, no meta-events.
 2. **Typed dependencies.** A plugin declares `requires` and `provides` as Effect tags; the Layer's requirements must match at compile time, and actual exports are checked at activation. A missing dependency is a type error or a planning diagnostic, never a runtime lookup failure.
 3. **Two extension primitives, with explicit failure rules.** *Hooks* (interceptors) wrap an operation and fail closed. *Events* notify and are isolated. See below.
-4. **Failure domains.** A plugin that fails at runtime takes down itself and its dependents, nothing else. There is no automatic restart unless the plugin declares a `restart` schedule; the default is to stay `failed`, visibly, with a restart action in every UI.
+4. **Failure domains.** A plugin that fails at runtime takes down itself and its dependents, nothing else. There is no automatic restart unless the plugin declares a `restart` schedule, and that schedule persists across failures so a broken plugin exhausts it instead of flapping; the default is to stay `failed`, visibly, with a restart action in every UI. An explicit restart is lenient about collateral: the named plugin must come back, and each dependent is retried on its own account.
 5. **Transactional change.** A reload either fully applies or leaves the running composition untouched and returns every diagnostic at once.
 6. **Everything has a limit.** Activation and disposal have deadlines; observer queues are bounded. Exceeding a limit is reported as a fault, never as a clean stop.
 7. **Errors are data.** Effect's failure, defect, and interruption stay distinct to the edge. Anything that crosses a plugin boundary is attributed as a `PluginFault`; diagnostics are serializable and say what to do.
@@ -56,7 +56,8 @@ The unit of reload is the plugin instance, not the operation: in-flight work fin
 - `PluginFault { pluginId, phase, operation?, deadline?, cause }` is constructed by the core, never by plugins. Phases: `config`, `activate`, `service`, `intercept`, `observe`, `background`, `dispose`.
 - `Diagnostic { severity, pluginId?, path?, message, suggestion? }` is a Schema class, so hosts and UIs receive the same structured value. Config problems carry the path into the config.
 - `Core.faults` streams every fault in order; `Core.inspect` retains the latest fault per plugin.
-- `ActivationError` and `CapabilityMismatch` predate `PluginFault` and will fold into it (phase `activate`) when the fault stream is implemented.
+- `CapabilityMismatch` and `DeadlineExceeded` appear as the cause inside a `PluginFault`, never on their own.
+- Effect's timeout races cannot fire inside an uninterruptible region, and lifecycle bookkeeping is uninterruptible by design. Deadlines therefore wait on a daemon fiber plus a timer rather than `Effect.timeout`; on expiry, cleanup keeps running in the background and is reported, while a drain is abandoned and its stale work interrupted.
 
 ## Limits
 
@@ -70,4 +71,4 @@ Deferred, not planned for the kernel: remote capability proxies (designed after 
 
 ## Verification
 
-Lifecycle edge cases, not dispatch, are where cordis needed most of its patches. The first investment is a fault-injecting fixture plugin plus fast-check sequences of load, reload, fail, cancel, and shutdown, checking that registrations never leak, closed plugins admit no work, cleanup never skips, and reloads never half-apply. Performance budgets cover cold start, the token streaming path, reload latency, and idle memory, measured against cordis in `core:bench`.
+Lifecycle edge cases, not dispatch, are where cordis needed most of its patches. The property test (`packages/core/tests/sequences.test.ts`) drives a fault-injecting fixture through random sequences of apply, background failure, restart, and fault toggles, checking after every step that live resources match active plugins, registrations belong only to active plugins, no active plugin depends on an inactive one, failed reloads leave the composition untouched, and shutdown releases everything. It found the interruptibility, admission-race, and restart-loop defects fixed during implementation. Performance budgets for cold start, the token streaming path, reload latency, and idle memory are still to be set against real workloads; `core:bench` measures the kernel's own costs.

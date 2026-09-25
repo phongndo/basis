@@ -1,5 +1,5 @@
 import { Context, Effect } from "effect";
-import type { CoreClosed, HookError } from "./errors.ts";
+import type { CoreClosed, EventError, HookError } from "./errors.ts";
 import type { Event, Observer, ObserveOptions } from "./events.ts";
 
 const HookTypeId: unique symbol = Symbol("@basis/core/Hook");
@@ -65,7 +65,7 @@ export class PluginContext extends Context.Tag("@basis/core/PluginContext")<
       event: Event<P>,
       observer: Observer<P, R>,
       options?: ObserveOptions,
-    ) => Effect.Effect<void, CoreClosed, R>;
+    ) => Effect.Effect<void, EventError | CoreClosed, R>;
     /**
      * Run supervised work owned by this plugin's scope. Its exit is reported as a
      * `PluginFault` (phase "background"); use this rather than a detached fiber so

@@ -1,7 +1,10 @@
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 import type { Scope } from "effect";
 import type { Core } from "./core.ts";
-import type { Diagnostic, ReloadError } from "./errors.ts";
+import { Diagnostic, ReloadError } from "./errors.ts";
+import type { PluginFault } from "./errors.ts";
+import { makeRuntime, toReloadError } from "./internal/runtime.ts";
+import type { Member } from "./internal/runtime.ts";
 import type { Deadlines, Plugin } from "./plugin.ts";
 
 /** One row of a composition, keyed by plugin id. Config is validated by the plugin's schema. */
@@ -25,6 +28,12 @@ export interface ReloadReport {
   readonly stopped: readonly string[];
   readonly restarted: readonly string[];
   readonly unchanged: readonly string[];
+  /** Dependents of a restarted plugin that could not activate and were left failed or halted. Always empty for `apply`. */
+  readonly failed: readonly string[];
+  /** In-flight `core.run` work on the previous composition that outlived the drain deadline and was interrupted. */
+  readonly interrupted: number;
+  /** Dispose faults of replaced or stopped instances. The change still applied. */
+  readonly faults: readonly PluginFault[];
 }
 
 export interface LoaderOptions {
@@ -51,6 +60,44 @@ export interface Loader {
   readonly apply: (next: Composition) => Effect.Effect<ReloadReport, ReloadError>;
 }
 
-export function makeLoader(_options: LoaderOptions): Effect.Effect<Loader, ReloadError, Scope.Scope> {
-  return Effect.die(new Error("@basis/core: makeLoader is a contract only; see docs/kernel.md"));
+export function makeLoader(options: LoaderOptions): Effect.Effect<Loader, ReloadError, Scope.Scope> {
+  return Effect.gen(function* () {
+    const runtime = yield* makeRuntime(options.deadlines === undefined ? {} : { deadlines: options.deadlines });
+    let current = options.composition;
+
+    const resolve = (composition: Composition): Effect.Effect<readonly Member[], ReloadError> =>
+      Effect.gen(function* () {
+        const members: Member[] = [];
+        const diagnostics: Diagnostic[] = [];
+        for (const [id, entry] of Object.entries(composition.plugins)) {
+          if (entry.enabled === false) continue;
+          const resolved = yield* Effect.either(options.source.resolve(id));
+          if (Either.isLeft(resolved)) {
+            const diagnostic = resolved.left;
+            diagnostics.push(diagnostic.pluginId === undefined ? new Diagnostic({ ...diagnostic, pluginId: id }) : diagnostic);
+          } else if (resolved.right.id !== id) {
+            diagnostics.push(new Diagnostic({
+              severity: "error", pluginId: id,
+              message: `Source resolved "${id}" to a plugin whose id is "${resolved.right.id}"`,
+              suggestion: `Fix the source mapping or the plugin's id`,
+            }));
+          } else {
+            members.push({ plugin: resolved.right, ...(entry.config === undefined ? {} : { config: entry.config }) });
+          }
+        }
+        if (diagnostics.length) return yield* new ReloadError({ diagnostics });
+        return members;
+      });
+
+    const apply = (next: Composition): Effect.Effect<ReloadReport, ReloadError> =>
+      Effect.gen(function* () {
+        const members = yield* resolve(next);
+        const report = yield* runtime.apply(members).pipe(Effect.mapError(toReloadError));
+        current = next;
+        return report;
+      });
+
+    yield* apply(options.composition).pipe(Effect.onError(() => runtime.shutdown));
+    return { core: runtime.core, composition: Effect.sync(() => current), apply };
+  });
 }

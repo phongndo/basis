@@ -1,4 +1,4 @@
-import { Data, Schema } from "effect";
+import { Data, Duration, Schema } from "effect";
 import type { Cause } from "effect";
 
 export class CompositionError extends Data.TaggedError("CompositionError")<{
@@ -9,19 +9,24 @@ export class CompositionError extends Data.TaggedError("CompositionError")<{
     | "ReservedCapability"
     | "MissingCapability"
     | "DependencyCycle"
-    | "InvalidConfig";
+    | "InvalidConfig"
+    | "InactiveDependency"
+    | "CoreClosed";
   readonly message: string;
   readonly plugins: readonly string[];
   readonly capability?: string;
+  /** Location inside the plugin's config for `InvalidConfig`. */
+  readonly path?: readonly (string | number)[];
 }> {}
 
-/** The original Effect cause retains typed failures, defects, and their stacks. */
-export class ActivationError extends Data.TaggedError("ActivationError")<{
+/** A lifecycle step exceeded its limit. Appears as the cause of a `PluginFault` with `deadline: true`. */
+export class DeadlineExceeded extends Data.TaggedError("DeadlineExceeded")<{
   readonly pluginId: string;
-  readonly cause: Cause.Cause<unknown>;
+  readonly phase: "activate" | "dispose";
+  readonly limit: Duration.Duration;
 }> {
   override get message(): string {
-    return `Plugin "${this.pluginId}" failed to activate`;
+    return `Plugin "${this.pluginId}" did not finish ${this.phase} within ${Duration.format(this.limit)}`;
   }
 }
 
@@ -40,6 +45,12 @@ export class CoreClosed extends Data.TaggedError("CoreClosed")<{}> {
     return "The core is closing or has closed";
   }
 }
+
+export class EventError extends Data.TaggedError("EventError")<{
+  readonly reason: "PointConflict" | "InvalidBuffer";
+  readonly event: string;
+  readonly message: string;
+}> {}
 
 export class HookError extends Data.TaggedError("HookError")<{
   readonly reason:
@@ -61,8 +72,9 @@ export type FaultPhase = typeof FaultPhase.Type;
 
 /**
  * Every failure that crosses a plugin boundary is attributed here by the core;
- * plugin code never constructs one. `deadline` marks a step that ran out of time,
- * which is reported as such and never as a clean stop.
+ * plugin code never constructs one. The cause retains typed failures, defects,
+ * and their stacks. `deadline` marks a step that ran out of time, which is
+ * reported as such and never as a clean stop.
  */
 export class PluginFault extends Data.TaggedError("PluginFault")<{
   readonly pluginId: string;

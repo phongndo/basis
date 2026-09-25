@@ -1,7 +1,7 @@
 export { makeCore } from "./core.ts";
 export type { Core, CoreOptions, CoreSnapshot, PluginSnapshot, PluginState } from "./core.ts";
 export {
-  ActivationError, CapabilityMismatch, CompositionError, CoreClosed, Diagnostic, FaultPhase, HookError,
+  CapabilityMismatch, CompositionError, CoreClosed, DeadlineExceeded, Diagnostic, EventError, FaultPhase, HookError,
   PluginFault, ReloadError,
 } from "./errors.ts";
 export { Event, Events } from "./events.ts";
@@ -12,3 +12,5 @@ export { makeLoader } from "./loader.ts";
 export type { Composition, Loader, LoaderOptions, PluginEntry, PluginSource, ReloadReport } from "./loader.ts";
 export { definePlugin } from "./plugin.ts";
 export type { Capability, Deadlines, Plugin, PluginLayer } from "./plugin.ts";
+export type { EventSnapshot } from "./internal/events.ts";
+export type { HookSnapshot } from "./internal/hooks.ts";

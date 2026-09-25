@@ -1,6 +1,7 @@
 import { cpus } from "node:os";
 import { Effect, Layer } from "effect";
-import { definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
+import { definePlugin, Event, Events, Hook, Hooks, makeCore, makeLoader, PluginContext } from "../src/index.ts";
+import type { Plugin } from "../src/index.ts";
 
 // Warm microbenchmarks, not end-to-end latency or a comparison with another harness.
 // Every reported value is a batch mean. Samples use fresh Effect runtime entry but
@@ -8,6 +9,7 @@ import { definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index
 const samples = 7;
 const iterations = 10_000;
 const point = Hook.make<number, number>("bench/increment");
+const tick = Event.make<number>("bench/tick");
 const terminal = (value: number) => Effect.succeed(value + 1);
 const plugins = (count: number) => Array.from({ length: count }, (_, index) => definePlugin({
   id: `plugin-${String(index).padStart(3, "0")}`,
@@ -15,6 +17,10 @@ const plugins = (count: number) => Array.from({ length: count }, (_, index) => d
     const owner = yield* PluginContext;
     yield* owner.on(point, (value, next) => next(value));
   })),
+}));
+const observers = (count: number) => Array.from({ length: count }, (_, index) => definePlugin({
+  id: `observer-${String(index).padStart(3, "0")}`,
+  layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) => owner.observe(tick, () => Effect.void))),
 }));
 
 function repeat<A, E, R>(operation: Effect.Effect<A, E, R>, count: number): Effect.Effect<void, E, R> {
@@ -57,4 +63,26 @@ await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
 for (const count of [0, 8, 32]) {
   const composition = plugins(count);
   await measure(`Mount + dispose / ${count} plugins`, 100, repeat(Effect.scoped(makeCore(composition)), 100));
+}
+
+for (const count of [0, 1, 8]) {
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const core = yield* makeCore(observers(count));
+    const events = yield* core.run(Events);
+    yield* Effect.promise(() => measure(`Event publish / ${count} observers`, iterations, core.run(repeat(events.publish(tick, 1), iterations))));
+  })));
+}
+
+// Reload: change one plugin's config in a composition where nothing depends on it.
+for (const count of [8, 32]) {
+  const all = plugins(count);
+  const byId = new Map<string, Plugin>(all.map((plugin) => [plugin.id, plugin]));
+  const source = { resolve: (id: string) => Effect.succeed(byId.get(id)!) };
+  const composition = (version: number) => ({ plugins: Object.fromEntries(all.map((plugin, index) => [plugin.id, { config: index === 0 ? { version } : {} }])) });
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const loader = yield* makeLoader({ source, composition: composition(0) });
+    let version = 0;
+    // Config is opaque to schema-less plugins but still compared, so each apply restarts exactly one plugin.
+    yield* Effect.promise(() => measure(`Reload one of ${count} plugins`, 100, repeat(Effect.suspend(() => loader.apply(composition(++version))), 100)));
+  })));
 }

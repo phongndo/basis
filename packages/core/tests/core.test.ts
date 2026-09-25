@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema, Scope } from "effect";
-import { ActivationError, CapabilityMismatch, CompositionError, CoreClosed, definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
+import { PluginFault, CapabilityMismatch, CompositionError, CoreClosed, definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
 import type { Core, Plugin } from "../src/index.ts";
 
 class Prefix extends Context.Tag("test/Prefix")<Prefix, string>() {}
@@ -30,7 +30,7 @@ describe("composition", () => {
     await run(Effect.gen(function* () {
       core = yield* makeCore([]);
       expect(yield* core.run(Effect.succeed(42))).toBe(42);
-      expect(yield* core.inspect).toEqual({ state: "active", plugins: [], hooks: [] });
+      expect(yield* core.inspect).toEqual({ state: "active", plugins: [], hooks: [], events: [] });
     }));
     expect((await Effect.runPromise(core.inspect)).state).toBe("closed");
     expect(failure(await Effect.runPromiseExit(core.run(Effect.void)))).toBeInstanceOf(CoreClosed);
@@ -116,8 +116,8 @@ describe("composition", () => {
     // Models an untyped plugin crossing the package seam.
     const invalid: Plugin = { id: "z-invalid", provides: [], requires: [], exclusive: false, layer: () => Layer.effectDiscard(Prefix) };
     const error = failure(await Effect.runPromiseExit(Effect.scoped(makeCore([prefix(), invalid])).pipe(Effect.provideService(Prefix, "ambient"))));
-    expect(error).toBeInstanceOf(ActivationError);
-    if (error instanceof ActivationError) expect(Cause.pretty(error.cause)).toContain(Prefix.key);
+    expect(error).toBeInstanceOf(PluginFault);
+    if (error instanceof PluginFault) expect(Cause.pretty(error.cause)).toContain(Prefix.key);
   });
 
   test("validates actual exports and cleans up malformed Layers", async () => {
@@ -129,8 +129,8 @@ describe("composition", () => {
       }));
       const invalid: Plugin = { id: "invalid", requires: [], provides: extra ? [] : [Prefix], exclusive: false, layer: () => layer };
       const error = failure(await Effect.runPromiseExit(Effect.scoped(makeCore([invalid]))));
-      expect(error).toBeInstanceOf(ActivationError);
-      if (error instanceof ActivationError) {
+      expect(error).toBeInstanceOf(PluginFault);
+      if (error instanceof PluginFault) {
         const mismatch = Option.getOrThrow(Cause.failureOption(error.cause));
         expect(mismatch).toBeInstanceOf(CapabilityMismatch);
         expect(mismatch).toMatchObject(extra ? { undeclared: [Prefix.key] } : { missing: [Prefix.key] });
@@ -183,8 +183,8 @@ describe("lifetimes", () => {
     await run(Effect.gen(function* () {
       const exit = yield* Effect.exit(makeCore([broken, base]));
       const error = failure(exit);
-      expect(error).toBeInstanceOf(ActivationError);
-      if (error instanceof ActivationError) expect(Option.getOrThrow(Cause.failureOption(error.cause))).toEqual(boom);
+      expect(error).toBeInstanceOf(PluginFault);
+      if (error instanceof PluginFault) expect(Option.getOrThrow(Cause.failureOption(error.cause))).toEqual(boom);
       // We are still inside the caller's scope, but all failed activation resources are gone.
       expect(events).toEqual(["broken-", "base-"]);
     }));
@@ -195,8 +195,8 @@ describe("lifetimes", () => {
     const defect = new Error("unexpected");
     const plugin = definePlugin({ id: "broken", layer: Layer.effectDiscard(Effect.die(defect)) });
     const error = failure(await Effect.runPromiseExit(Effect.scoped(makeCore([plugin]))));
-    expect(error).toBeInstanceOf(ActivationError);
-    if (error instanceof ActivationError) expect(Option.getOrThrow(Cause.dieOption(error.cause))).toMatchObject({ message: defect.message, stack: defect.stack });
+    expect(error).toBeInstanceOf(PluginFault);
+    if (error instanceof PluginFault) expect(Option.getOrThrow(Cause.dieOption(error.cause))).toMatchObject({ message: defect.message, stack: defect.stack });
   });
 
   test("interrupted activation unwinds resources without converting cancellation to failure", async () => {

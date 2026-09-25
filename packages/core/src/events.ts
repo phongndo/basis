@@ -1,5 +1,5 @@
 import { Context } from "effect";
-import type { Effect, Scope, Stream } from "effect";
+import type { Effect, Stream } from "effect";
 
 const EventTypeId: unique symbol = Symbol("@basis/core/Event");
 
@@ -41,7 +41,7 @@ export class Events extends Context.Tag("@basis/core/Events")<
   Events,
   {
     readonly publish: <P>(event: Event<P>, payload: P) => Effect.Effect<void>;
-    /** Subscribe from outside a plugin (transports, tests). Ends when the scope closes. */
-    readonly stream: <P>(event: Event<P>, options?: ObserveOptions) => Stream.Stream<P, never, Scope.Scope>;
+    /** Subscribe from outside a plugin (transports, tests). Ends when the stream's consumer stops or the core closes. */
+    readonly stream: <P>(event: Event<P>, options?: ObserveOptions) => Stream.Stream<P>;
   }
 >() {}

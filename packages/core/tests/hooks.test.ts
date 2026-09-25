@@ -87,8 +87,8 @@ describe("plugin-owned hooks", () => {
       expect(failure(exit)).toMatchObject({ _tag: "HookError", reason: "PointConflict" });
       const invalid = yield* Effect.exit(makeCore([middleware("invalid", (input, next) => next(input), NaN)]));
       const error = failure(invalid);
-      expect(error._tag).toBe("ActivationError");
-      if (error._tag === "ActivationError") {
+      expect(error._tag).toBe("PluginFault");
+      if (error._tag === "PluginFault") {
         expect(Option.getOrThrow(Cause.failureOption(error.cause))).toMatchObject({ reason: "InvalidOrder" });
       }
     }));
