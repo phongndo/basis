@@ -8,7 +8,7 @@ Everything a user sees is a plugin. The shipped ones use the same public interfa
 
 | Path | Package | Provides | Requires |
 | --- | --- | --- | --- |
-| `plugins/host-config` | `@basis/plugin-host-config` | `Paths`; reads and watches `config.jsonc` files and feeds the loader | — |
+| `plugins/host` | `@basis/plugin-host` | `Paths`, `HostControl`, `PluginsChanged`; also exports the functions `apps/host` uses before any plugin exists: resolve paths, read and merge `config.jsonc` files into a `Composition`, watch them | — |
 | `plugins/credentials` | `@basis/plugin-credentials` | `Credentials` (auth.json, env vars, `command` values, OAuth refresh under a lock) | `Paths`, `Interaction` |
 | `plugins/llm` | `@basis/plugin-llm` | `Llm` (provider registry, routing, `LlmRequestHook`) | `Credentials` |
 | `plugins/llm-anthropic`, `plugins/llm-openai`, `plugins/llm-openai-compatible` | provider plugins | register an `LlmProvider` | `Llm`, `Credentials` |
@@ -19,8 +19,9 @@ Everything a user sees is a plugin. The shipped ones use the same public interfa
 | `plugins/compaction` | `@basis/plugin-compaction` | appends `compaction` entries when context nears the window | `Agent`, `Sessions`, `Llm` |
 | `plugins/interaction` | `@basis/plugin-interaction` | `Interaction` (runs `InteractionHook`; fails `Unavailable` with no answerer) | — |
 | `plugins/skills` | `@basis/plugin-skills` | `Skills`; contributes the skill index to `AgentRequestHook` and a `skill` tool | `Paths`, `Tools` |
-| `plugins/mcp` | `@basis/plugin-mcp` | connects configured MCP servers; registers their tools as `mcp__<server>__<tool>` behind a search tool | `Tools`, `Credentials` |
-| `plugins/transport` | `@basis/plugin-transport` | `@effect/rpc` server over HTTP and WebSocket; answers `InteractionHook` for connected clients | `Agent`, `Sessions`, `Interaction`, `Credentials` |
+| `plugins/mcp` | `@basis/plugin-mcp` | connects configured MCP servers; exposes them through `mcp_search` and `mcp_call` tools so server tool schemas stay out of the prompt unless a server opts into direct registration | `Tools` |
+| `plugins/transport` | `@basis/plugin-transport` | `@effect/rpc` server over HTTP and WebSocket serving `HostRpcs`; answers `InteractionHook` for connected clients | `Agent`, `Sessions`, `Llm`, `Credentials`, `HostControl` |
+| `packages/client` | `@basis/client` | typed `HostRpcs` client for browsers and Bun (used by web, desktop, CLI attach) | — |
 | `plugins/subagent` | `@basis/plugin-subagent` | a `task` tool that runs a nested turn with its own tool list and model | `Agent`, `Tools`, `Sessions` |
 
 Client-side (browser, TUI) plugins consume the transport's RPC client; they are described in the transport README once it exists.
