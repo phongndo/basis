@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Option, Scope } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema, Scope } from "effect";
 import { ActivationError, CapabilityMismatch, CompositionError, CoreClosed, definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
 import type { Core, Plugin } from "../src/index.ts";
 
@@ -52,6 +52,28 @@ describe("composition", () => {
     }));
   });
 
+  test("decodes config before activation and rejects the whole composition on invalid config", async () => {
+    let activated = false;
+    const Settings = Schema.Struct({ text: Schema.String });
+    const configured = definePlugin({
+      id: "configured", config: Settings, provides: [Prefix],
+      layer: (config) => Layer.effect(Prefix, Effect.sync(() => { activated = true; return config.text; })),
+    });
+    await run(Effect.gen(function* () {
+      const core = yield* makeCore([configured], { configs: { configured: { text: "configured " } } });
+      expect(yield* core.run(Prefix)).toBe("configured ");
+    }));
+    activated = false;
+    const error = failure(await Effect.runPromiseExit(Effect.scoped(
+      makeCore([configured, formatter], { configs: { configured: { text: 1 } } }),
+    )));
+    expect(error).toMatchObject({ reason: "InvalidConfig", plugins: ["configured"] });
+    expect(error.message).toContain("text");
+    expect(activated).toBe(false);
+    // A schema-less plugin ignores config; a schema plugin needs it.
+    expect(failure(await Effect.runPromiseExit(Effect.scoped(makeCore([configured]))))).toMatchObject({ reason: "InvalidConfig" });
+  });
+
   test("preserves caller requirements not supplied by the core", async () => {
     class Request extends Context.Tag("test/Request")<Request, string>() {}
     await run(Effect.gen(function* () {
@@ -92,7 +114,7 @@ describe("composition", () => {
 
   test("does not expose undeclared dependencies to a dynamically supplied plugin", async () => {
     // Models an untyped plugin crossing the package seam.
-    const invalid: Plugin = { id: "z-invalid", provides: [], requires: [], layer: Layer.effectDiscard(Prefix) };
+    const invalid: Plugin = { id: "z-invalid", provides: [], requires: [], exclusive: false, layer: () => Layer.effectDiscard(Prefix) };
     const error = failure(await Effect.runPromiseExit(Effect.scoped(makeCore([prefix(), invalid])).pipe(Effect.provideService(Prefix, "ambient"))));
     expect(error).toBeInstanceOf(ActivationError);
     if (error instanceof ActivationError) expect(Cause.pretty(error.cause)).toContain(Prefix.key);
@@ -105,7 +127,7 @@ describe("composition", () => {
         yield* Effect.addFinalizer(() => Effect.sync(() => { released = true; }));
         return extra ? Context.make(Prefix, "undeclared") : Context.empty();
       }));
-      const invalid: Plugin = { id: "invalid", requires: [], provides: extra ? [] : [Prefix], layer };
+      const invalid: Plugin = { id: "invalid", requires: [], provides: extra ? [] : [Prefix], exclusive: false, layer: () => layer };
       const error = failure(await Effect.runPromiseExit(Effect.scoped(makeCore([invalid]))));
       expect(error).toBeInstanceOf(ActivationError);
       if (error instanceof ActivationError) {

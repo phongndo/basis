@@ -1,6 +1,6 @@
 // Checked by core:check, not executed. These assertions protect the public seam.
-import { Context, Effect, Layer } from "effect";
-import { definePlugin, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
+import { Context, Effect, Layer, Schema } from "effect";
+import { definePlugin, Event, Events, Hook, Hooks, makeCore, PluginContext } from "../src/index.ts";
 
 class Value extends Context.Tag("types/Value")<Value, string>() {}
 class Other extends Context.Tag("types/Other")<Other, number>() {}
@@ -20,6 +20,29 @@ export function contracts() {
   definePlugin({
     id: "valid-consumer", requires: [Value],
     layer: Layer.effectDiscard(Effect.gen(function* () { yield* Value; yield* PluginContext; yield* Hooks; })),
+  });
+
+  const Settings = Schema.Struct({ greeting: Schema.String });
+  definePlugin({
+    id: "configured", config: Settings, provides: [Value],
+    layer: (config) => Layer.succeed(Value, config.greeting),
+  });
+  definePlugin({
+    id: "misconfigured", config: Settings, provides: [Value],
+    // @ts-expect-error The decoded config has no such field.
+    layer: (config) => Layer.succeed(Value, config.missing),
+  });
+
+  const Tick = Event.make<{ readonly at: number }>("types/tick");
+  definePlugin({
+    id: "observer",
+    layer: Layer.effectDiscard(Effect.gen(function* () {
+      const owner = yield* PluginContext;
+      yield* owner.observe(Tick, (payload) => Effect.log(payload.at));
+      // @ts-expect-error Payload does not match the shared event token.
+      yield* owner.observe(Tick, (payload) => Effect.log(payload.missing));
+      yield* owner.background("ticker", Effect.flatMap(Events, (events) => events.publish(Tick, { at: 0 })));
+    })),
   });
 
   const point = Hook.make<string, number, "rejected">("types/length");

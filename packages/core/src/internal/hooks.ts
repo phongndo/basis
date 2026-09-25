@@ -81,6 +81,8 @@ export class HookRegistry implements Context.Tag.Service<Hooks> {
     const context: Context.Tag.Service<PluginContext> = {
       ...identity,
       on,
+      observe: () => notImplemented("PluginContext.observe"),
+      background: () => notImplemented("PluginContext.background"),
       trace: (name, effect) => effect.pipe(Effect.withSpan(name, { attributes: attributes(identity) })),
     };
     this.deactivate.set(context, () => { active = false; });
@@ -172,6 +174,11 @@ function withoutParent<R>(context: Context.Context<R>): Context.Context<R> {
   const values = new Map(context.unsafeMap);
   values.delete(Tracer.ParentSpan.key);
   return Context.unsafeMake<R>(values);
+}
+
+/** Contract-only until the kernel implements events and supervision; see docs/kernel.md. */
+export function notImplemented(name: string): Effect.Effect<never> {
+  return Effect.die(new Error(`@basis/core: ${name} is a contract only; see docs/kernel.md`));
 }
 
 function ownerClosed(hook: string, pluginId: string): HookError {

@@ -1,9 +1,10 @@
 import { Effect, Scope } from "effect";
 import { CompositionError } from "../errors.ts";
+import { Events } from "../events.ts";
 import { Hooks, PluginContext } from "../hooks.ts";
 import type { Plugin } from "../plugin.ts";
 
-const builtins = new Set<string>([Hooks.key, PluginContext.key]);
+const builtins = new Set<string>([Hooks.key, PluginContext.key, Events.key]);
 const reserved = new Set([...builtins, Scope.Scope.key]);
 
 /** Validate the entire graph before executing any plugin code. */

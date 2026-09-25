@@ -1,8 +1,10 @@
 # @basis/core
 
-An Effect-native plugin runtime. The core knows about capabilities, hooks, and lifetimes—not agents, models, tools, sessions, or a UI. Application behavior belongs to plugins.
+An Effect-native plugin runtime. The core knows about capabilities, hooks, events, config, and lifetimes—not agents, models, tools, sessions, or a UI. Application behavior belongs to plugins. The design and its rationale are in [docs/kernel.md](../../docs/kernel.md).
 
-Only `effect` is a runtime dependency. Plugins are trusted, in-process TypeScript modules supplied programmatically; there is no package loader or security sandbox.
+Only `effect` is a runtime dependency. Plugins are trusted, in-process TypeScript modules; there is no security sandbox.
+
+**Implemented:** composition validation, config decoding, activation, hooks, scoped disposal, inspection. **Contract only** (typed, exported, dies when called): `Events`, `PluginContext.observe`/`background`, `Core.faults`, deadlines, `restart`, `makeLoader`.
 
 ## Use
 
@@ -38,11 +40,13 @@ The core pins its own Node declarations for Bun type compatibility rather than i
 
 ## Plugin contract
 
-`definePlugin({ id, version?, provides?, requires?, layer })` declares a composition member:
+`definePlugin({ id, version?, config?, provides?, requires?, exclusive?, restart?, deadlines?, layer })` declares a composition member:
 
 - `id` uniquely identifies an instance within one core. `version` is optional diagnostic metadata, not a dependency constraint.
+- `config` is an Effect Schema. `makeCore(plugins, { configs })` decodes every plugin's config before any activation; an invalid or missing value is a `CompositionError` (`InvalidConfig`) naming the plugin and the failing path. `layer` may be a function of the decoded config.
+- `exclusive`, `restart`, and `deadlines` are reload, restart, and time-limit policy; see the kernel design.
 - Capabilities are ordinary Effect `Context.Tag`s. Share the tags between consumers and providers; use namespaced keys. Effect identifies capabilities by their keys.
-- `provides` declares exports; `requires` declares dependencies supplied by other plugins. `PluginContext` and `Hooks` are available without declaration. The runtime rejects attempts to provide these built-ins or `Scope`.
+- `provides` declares exports; `requires` declares dependencies supplied by other plugins. `PluginContext`, `Hooks`, and `Events` are available without declaration. The runtime rejects attempts to provide these built-ins or `Scope`.
 - `layer` is an ordinary Effect `Layer`. Use `Layer.scoped`, `Effect.acquireRelease`, and `Effect.forkScoped` for resources and background work. Dependencies constructed privately inside a Layer need not be declared.
 - The manifest is needed for runtime graph inspection and validation: Effect's type-level requirements alone cannot describe a dynamically supplied composition. Construction and cleanup still belong to Effect, not a second dependency-injection system.
 
@@ -89,6 +93,10 @@ The hook contract is deliberately one mechanism: awaited, sequential around midd
 - A name identifies one shared hook token within a core. Creating another token with the same name is rejected rather than risking an incompatible handler signature.
 - Registrations are owned by the plugin scope and removed on disposal.
 
+## Events (contract only)
+
+Hooks are for the critical path and fail closed. `Event.make<Payload>(name)` declares a fire-and-forget notification: `Events.publish` never fails or waits, `PluginContext.observe` subscribes with a bounded queue, and an observer's failure is attributed to its plugin and isolated from the operation and other observers. Use events only for information that is safe to lose.
+
 ## Lifetime and failure semantics
 
 `makeCore` returns a scoped resource. Composition is fixed for that core's lifetime; there is no individual unload, hot replacement, or automatic restart.
@@ -115,4 +123,4 @@ These spans and composition snapshots are runtime provenance, **not a durable ag
 
 Dispatch reuses immutable, pre-ordered registration arrays; it does not resolve the plugin graph per call. No-listener dispatch avoids constructing a middleware environment. The lifecycle tests also exercise repeated mounting and verify resource/registration cleanup; this is not a heap-leak proof.
 
-The benchmarks do not establish end-to-end agent performance, cold process startup, or sandbox overhead. Those require their own workloads and measurements.
+The benchmarks do not establish end-to-end agent performance, cold process startup, or sandbox overhead. Comparative numbers against cordis are planned but not yet measured. Those require their own workloads and measurements.

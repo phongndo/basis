@@ -2,7 +2,7 @@
 
 A build-your-own agent harness where everything, including the UI, is a replaceable plugin. One host runs the plugins; the web, desktop, and CLI clients connect to it.
 
-Only the [plugin core](packages/core/README.md) is implemented. The apps are scaffolds: there is no plugin loader, transport, agent loop, provider, or client connection yet.
+Only the [plugin core](packages/core/README.md) is implemented; its contracts and rationale are in [docs/kernel.md](docs/kernel.md). The apps are scaffolds: there is no plugin loader, transport, agent loop, provider, or client connection yet.
 
 | Path | Responsibility |
 | --- | --- |

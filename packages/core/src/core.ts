@@ -1,18 +1,35 @@
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Scope, Tracer } from "effect";
-import { ActivationError, CapabilityMismatch, CoreClosed } from "./errors.ts";
-import type { CompositionError } from "./errors.ts";
+import { Cause, Context, Deferred, Effect, Either, Exit, Fiber, Layer, ParseResult, Schema, Scope, Stream, Tracer } from "effect";
+import { ActivationError, CapabilityMismatch, CompositionError, CoreClosed } from "./errors.ts";
+import type { PluginFault } from "./errors.ts";
+import { Events } from "./events.ts";
 import { Hooks, PluginContext } from "./hooks.ts";
 import { plan } from "./internal/graph.ts";
-import { attributes, HookRegistry } from "./internal/hooks.ts";
+import { attributes, HookRegistry, notImplemented } from "./internal/hooks.ts";
 import type { HookSnapshot } from "./internal/hooks.ts";
-import type { Identifiers, Plugin } from "./plugin.ts";
+import type { Deadlines, Identifiers, Plugin } from "./plugin.ts";
+
+/**
+ * Lifecycle, distinct from health. "draining" no longer admits work while
+ * in-flight work finishes; "failed" is stopped after a runtime fault and stays
+ * so until restarted by policy or explicitly.
+ */
+export type PluginState = "pending" | "activating" | "active" | "draining" | "closed" | "failed";
 
 export interface PluginSnapshot {
   readonly id: string;
   readonly version?: string;
-  readonly state: "pending" | "activating" | "active" | "closed";
+  readonly state: PluginState;
   readonly provides: readonly string[];
   readonly requires: readonly string[];
+  /** The most recent fault, retained while the plugin is failed. */
+  readonly fault?: PluginFault;
+}
+
+export interface CoreOptions {
+  /** Config per plugin id, decoded with each plugin's schema before any activation. */
+  readonly configs?: Readonly<Record<string, unknown>>;
+  /** Applied to plugins that declare none. Contract only: not enforced yet. */
+  readonly deadlines?: Deadlines;
 }
 
 export interface CoreSnapshot {
@@ -32,6 +49,8 @@ export interface Core<Capabilities = never> {
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks>>;
   readonly inspect: Effect.Effect<CoreSnapshot>;
+  /** Every attributed plugin failure, in order. Contract only: emits nothing yet. */
+  readonly faults: Stream.Stream<PluginFault>;
 }
 
 type State = CoreSnapshot["state"];
@@ -44,9 +63,11 @@ type MutablePlugin = { -readonly [K in keyof PluginSnapshot]: PluginSnapshot[K] 
  */
 export function makeCore<const Plugins extends readonly Plugin[]>(
   plugins: Plugins,
+  options: CoreOptions = {},
 ): Effect.Effect<Core<Identifiers<Plugins[number]["provides"]>>, CompositionError | ActivationError, Scope.Scope> {
   return Effect.gen(function* () {
     const ordered = yield* plan(plugins);
+    const configs = yield* decodeConfigs(ordered, options.configs ?? {});
     return yield* Effect.uninterruptibleMask((restore) => Effect.gen(function* () {
       const lifetime = yield* Scope.make();
       const startup = yield* Scope.make();
@@ -61,6 +82,10 @@ export function makeCore<const Plugins extends readonly Plugin[]>(
       }));
       let state: State = "starting";
       let environment: Context.Context<never> = Context.make(Hooks, registry);
+      const events: Context.Tag.Service<Events> = {
+        publish: () => notImplemented("Events.publish"),
+        stream: () => Stream.fromEffect(notImplemented("Events.stream")),
+      };
 
       const shutdown = (exit: Exit.Exit<unknown, unknown>): Effect.Effect<void> =>
         Effect.uninterruptible(Effect.suspend(() => {
@@ -99,12 +124,12 @@ export function makeCore<const Plugins extends readonly Plugin[]>(
           record.state = "activating";
           // Only declared dependencies are visible during activation, not the entire graph.
           const inputs = new Map<string, unknown>([
-            [Hooks.key, registry], [PluginContext.key, owner],
+            [Hooks.key, registry], [PluginContext.key, owner], [Events.key, events],
           ]);
           for (const tag of plugin.requires) {
             if (!inputs.has(tag.key)) inputs.set(tag.key, environment.unsafeMap.get(tag.key));
           }
-          const build = Layer.buildWithScope(plugin.layer, scope).pipe(
+          const build = Layer.buildWithScope(plugin.layer(configs.get(plugin.id)), scope).pipe(
             Effect.mapInputContext((caller: Context.Context<never>) => {
               const provided = new Map(inputs);
               if (caller.unsafeMap.has(Tracer.ParentSpan.key)) {
@@ -157,10 +182,34 @@ export function makeCore<const Plugins extends readonly Plugin[]>(
             plugins: records.map((record) => ({ ...record, provides: [...record.provides], requires: [...record.requires] })),
             hooks: registry.inspect(),
           })),
+          faults: Stream.never,
         };
         return core;
       });
       return yield* activate.pipe(Effect.onExit((exit) => Exit.isFailure(exit) ? shutdown(exit) : Effect.void));
     }));
+  });
+}
+
+/** Config is validated for the whole composition before any plugin code runs. */
+function decodeConfigs(
+  plugins: readonly Plugin[],
+  configs: Readonly<Record<string, unknown>>,
+): Effect.Effect<ReadonlyMap<string, unknown>, CompositionError> {
+  return Effect.suspend(() => {
+    const decoded = new Map<string, unknown>();
+    for (const plugin of plugins) {
+      if (!plugin.config) continue;
+      const result = Schema.decodeUnknownEither(plugin.config)(configs[plugin.id]);
+      if (Either.isLeft(result)) {
+        return Effect.fail(new CompositionError({
+          reason: "InvalidConfig",
+          message: `Invalid config for plugin "${plugin.id}":\n${ParseResult.TreeFormatter.formatErrorSync(result.left)}`,
+          plugins: [plugin.id],
+        }));
+      }
+      decoded.set(plugin.id, result.right);
+    }
+    return Effect.succeed(decoded);
   });
 }
