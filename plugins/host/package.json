@@ -1,18 +1,19 @@
 {
-  "name": "@basis/host",
+  "name": "@basis/plugin-host",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "bun run ./src/main.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "bun test ./tests"
   },
   "dependencies": {
     "@basis/contracts": "workspace:*",
     "@basis/core": "workspace:*",
-    "@basis/plugin-credentials": "workspace:*",
-    "@basis/plugin-host": "workspace:*",
-    "@basis/plugin-interaction": "workspace:*",
-    "effect": "3.22.2"
+    "effect": "3.22.2",
+    "jsonc-parser": "3.3.1"
   },
   "devDependencies": {
     "@types/bun": "1.3.13",

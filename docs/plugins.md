@@ -2,7 +2,7 @@
 
 Everything a user sees is a plugin. The shipped ones use the same public interfaces as third-party plugins: `@basis/core` for composition and `@basis/contracts` for the capabilities they provide or consume. This page is the map; each plugin's README is authoritative for its own behavior.
 
-**Status (2026-09-25):** contracts defined; plugin implementations in progress.
+**Status (2026-09-25):** contracts defined; `host`, `interaction`, and `credentials` implemented and wired into `apps/host`; the rest in progress.
 
 ## Layout
 

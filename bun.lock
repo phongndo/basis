@@ -25,7 +25,11 @@
     "apps/host": {
       "name": "@basis/host",
       "dependencies": {
+        "@basis/contracts": "workspace:*",
         "@basis/core": "workspace:*",
+        "@basis/plugin-credentials": "workspace:*",
+        "@basis/plugin-host": "workspace:*",
+        "@basis/plugin-interaction": "workspace:*",
         "effect": "3.22.2",
       },
       "devDependencies": {
@@ -64,6 +68,46 @@
       "name": "@basis/core",
       "version": "0.1.0",
       "dependencies": {
+        "effect": "3.22.2",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+        "@types/node": "26.6.2",
+        "typescript": "5.9.3",
+      },
+    },
+    "plugins/credentials": {
+      "name": "@basis/plugin-credentials",
+      "dependencies": {
+        "@basis/contracts": "workspace:*",
+        "@basis/core": "workspace:*",
+        "effect": "3.22.2",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+        "@types/node": "26.6.2",
+        "typescript": "5.9.3",
+      },
+    },
+    "plugins/host": {
+      "name": "@basis/plugin-host",
+      "dependencies": {
+        "@basis/contracts": "workspace:*",
+        "@basis/core": "workspace:*",
+        "effect": "3.22.2",
+        "jsonc-parser": "3.3.1",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.13",
+        "@types/node": "26.6.2",
+        "typescript": "5.9.3",
+      },
+    },
+    "plugins/interaction": {
+      "name": "@basis/plugin-interaction",
+      "dependencies": {
+        "@basis/contracts": "workspace:*",
+        "@basis/core": "workspace:*",
         "effect": "3.22.2",
       },
       "devDependencies": {
@@ -119,6 +163,12 @@
     "@basis/desktop": ["@basis/desktop@workspace:apps/desktop"],
 
     "@basis/host": ["@basis/host@workspace:apps/host"],
+
+    "@basis/plugin-credentials": ["@basis/plugin-credentials@workspace:plugins/credentials"],
+
+    "@basis/plugin-host": ["@basis/plugin-host@workspace:plugins/host"],
+
+    "@basis/plugin-interaction": ["@basis/plugin-interaction@workspace:plugins/interaction"],
 
     "@basis/web": ["@basis/web@workspace:apps/web"],
 
@@ -327,6 +377,8 @@
     "jsesc": ["jsesc@3.1.0", "", { "bin": { "jsesc": "bin/jsesc" } }, "sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA=="],
 
     "json5": ["json5@2.2.3", "", { "bin": { "json5": "lib/cli.js" } }, "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg=="],
+
+    "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
 
     "lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
 
