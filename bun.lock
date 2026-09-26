@@ -54,6 +54,9 @@
     "apps/web": {
       "name": "@basis/web",
       "dependencies": {
+        "@basis/client": "workspace:*",
+        "@basis/contracts": "workspace:*",
+        "effect": "3.22.2",
         "solid-js": "1.9.15",
       },
       "devDependencies": {

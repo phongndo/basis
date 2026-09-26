@@ -1,12 +1,5 @@
-import { render } from "solid-js/web"
+import { render } from "solid-js/web";
+import { App } from "./app.tsx";
+import "./styles.css";
 
-function App() {
-  return (
-    <main>
-      <h1>basis</h1>
-      <p>No host connection yet.</p>
-    </main>
-  )
-}
-
-render(() => <App />, document.getElementById("root")!)
+render(() => <App />, document.getElementById("root")!);

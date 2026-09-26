@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "check": "bash scripts/check.sh",
-    "test": "bun test packages plugins",
+    "test": "bun test packages plugins apps/web",
     "core:check": "bun run --cwd packages/core check",
     "core:test": "bun run --cwd packages/core test",
     "core:bench": "bun run --cwd packages/core bench",

@@ -2,7 +2,7 @@
 
 A build-your-own agent harness where everything, including the UI, is a replaceable plugin. One host runs the plugins; the web, desktop, and CLI clients connect to it.
 
-The [kernel](packages/core/README.md) ([rationale](docs/kernel.md)), the [contracts](packages/contracts/README.md), and the [shipped plugins](docs/plugins.md) are implemented. The host runs them with a transport that web, desktop, and CLI clients connect to; the client apps are still scaffolds.
+The [kernel](packages/core/README.md) ([rationale](docs/kernel.md)), the [contracts](packages/contracts/README.md), and the [shipped plugins](docs/plugins.md) are implemented. The host runs them with a transport that web, desktop, and CLI clients connect to; the [web client](apps/web/README.md) is implemented, the desktop shell wraps it, and the CLI is still a scaffold.
 
 | Path | Responsibility |
 | --- | --- |
@@ -13,7 +13,7 @@ The [kernel](packages/core/README.md) ([rationale](docs/kernel.md)), the [contra
 | `plugins/*` | Shipped plugins: host, credentials, llm and providers, tools, sessions, agent, compaction, subagent, skills, mcp, transport, interaction |
 | `apps/host/` | Bun host process: loads `config.jsonc`, runs the composition, reloads on change |
 | `apps/cli/` | Command-line client placeholder |
-| `apps/web/` | SolidJS client, also used by desktop (scaffold) |
+| `apps/web/` | SolidJS chat client on `@basis/client`, also loaded by desktop |
 | `apps/desktop/` | Electron shell for the web client |
 
 ## Defaults
