@@ -10,7 +10,7 @@ Everything a user sees is a plugin. The shipped ones use the same public interfa
 | --- | --- | --- | --- |
 | `plugins/host` | `@basis/plugin-host` | `Paths`, `HostControl`, `PluginsChanged`; also exports the functions `apps/host` uses before any plugin exists: resolve paths, read and merge `config.jsonc` files into a `Composition`, watch them | — |
 | `plugins/credentials` | `@basis/plugin-credentials` | `Credentials` (auth.json, env vars, `command` values, OAuth refresh under a lock) | `Paths`, `Interaction` |
-| `plugins/llm` | `@basis/plugin-llm` | `Llm` (provider registry, routing, `LlmRequestHook`) | `Credentials` |
+| `plugins/llm` | `@basis/plugin-llm` | `Llm` (provider registry, routing, `LlmRequestHook`) | — |
 | `plugins/llm-anthropic`, `plugins/llm-openai`, `plugins/llm-openai-compatible` | provider plugins | register an `LlmProvider` | `Llm`, `Credentials` |
 | `plugins/tools` | `@basis/plugin-tools` | `Tools` (registry, input validation, `ToolExecuteHook`) | — |
 | `plugins/tools-builtin` | `@basis/plugin-tools-builtin` | registers `read`, `write`, `edit`, `bash` | `Tools` |
