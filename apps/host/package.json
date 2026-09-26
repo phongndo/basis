@@ -12,7 +12,20 @@
     "@basis/plugin-credentials": "workspace:*",
     "@basis/plugin-host": "workspace:*",
     "@basis/plugin-interaction": "workspace:*",
-    "effect": "3.22.2"
+    "effect": "3.22.2",
+    "@basis/plugin-agent": "workspace:*",
+    "@basis/plugin-compaction": "workspace:*",
+    "@basis/plugin-llm": "workspace:*",
+    "@basis/plugin-llm-anthropic": "workspace:*",
+    "@basis/plugin-llm-openai": "workspace:*",
+    "@basis/plugin-llm-openai-compatible": "workspace:*",
+    "@basis/plugin-mcp": "workspace:*",
+    "@basis/plugin-sessions": "workspace:*",
+    "@basis/plugin-skills": "workspace:*",
+    "@basis/plugin-subagent": "workspace:*",
+    "@basis/plugin-tools": "workspace:*",
+    "@basis/plugin-tools-builtin": "workspace:*",
+    "@basis/plugin-transport": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.3.13",

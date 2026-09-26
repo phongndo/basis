@@ -42,7 +42,7 @@ The core pins its own Node declarations for Bun type compatibility rather than i
 `definePlugin({ id, version?, config?, provides?, requires?, exclusive?, restart?, deadlines?, layer })` declares a composition member:
 
 - `id` uniquely identifies an instance within one core. `version` is optional diagnostic metadata, not a dependency constraint.
-- `config` is an Effect Schema. `makeCore(plugins, { configs })` decodes every plugin's config before any activation; an invalid or missing value is a `CompositionError` (`InvalidConfig`) naming the plugin and the failing path. `layer` may be a function of the decoded config.
+- `config` is an Effect Schema. `makeCore(plugins, { configs })` decodes every plugin's config before any activation; a missing value decodes as `{}`; an invalid one is a `CompositionError` (`InvalidConfig`) naming the plugin and the failing path. `layer` may be a function of the decoded config.
 - `exclusive` marks a plugin that cannot coexist with its replacement (a port, a lock); a reload stops it before starting the new instance. `restart` is an Effect `Schedule` consulted after a runtime failure; without one the plugin stays failed. `deadlines` bound activation and disposal (defaults 30s and 10s, overridable per core).
 - Capabilities are ordinary Effect `Context.Tag`s. Share the tags between consumers and providers; use namespaced keys. Effect identifies capabilities by their keys.
 - `provides` declares exports; `requires` declares dependencies supplied by other plugins. `PluginContext`, `Hooks`, and `Events` are available without declaration. The runtime rejects attempts to provide these built-ins or `Scope`.

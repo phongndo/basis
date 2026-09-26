@@ -4,7 +4,7 @@ import { makeLoader, ReloadError } from "@basis/core";
 import type { Diagnostic, Loader, ReloadReport } from "@basis/core";
 import { hostPlugin, loadComposition, resolvePaths, watchConfig } from "@basis/plugin-host";
 import type { HostControlService } from "@basis/plugin-host";
-import { bundled, bundledSource } from "./bundled.ts";
+import { bundled, bundledSource, defaultPluginIds } from "./bundled.ts";
 
 const paths = resolvePaths({ env: process.env, cwd: process.cwd() });
 
@@ -16,13 +16,19 @@ const printDiagnostics = (diagnostics: readonly Diagnostic[]) => Effect.sync(() 
   }
 });
 
-/** Read the config files. Warnings are printed here; errors are returned for the caller to print, like planning errors. */
+/**
+ * Read the config files. Warnings are printed here; errors are returned for the
+ * caller to print, like planning errors. Without any config file the default
+ * composition runs, so a fresh install can chat once a credential exists.
+ */
 const load = Effect.gen(function* () {
   const loaded = yield* loadComposition(paths);
   yield* printDiagnostics(loaded.diagnostics.filter((diagnostic) => diagnostic.severity === "warning"));
   const errors = loaded.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
   if (errors.length) return yield* new ReloadError({ diagnostics: errors });
-  return loaded;
+  if (loaded.files.some((file) => file.found)) return loaded;
+  const plugins = { ...loaded.composition.plugins, ...Object.fromEntries(defaultPluginIds.map((id) => [id, {}])) };
+  return { ...loaded, composition: { plugins } };
 });
 
 const describe = (report: ReloadReport): string => {
@@ -46,7 +52,7 @@ const untilSignal = Effect.async<void>((resume) => {
 const program = Effect.gen(function* () {
   const loaded = yield* load;
   if (!loaded.files.some((file) => file.found)) {
-    yield* log(`no config file; running the host plugin alone. Create ${paths.userConfig} (user) or ${paths.projectConfig} (project) to add plugins.`);
+    yield* log(`no config file; running the default composition. Create ${paths.userConfig} (user) or ${paths.projectConfig} (project) to change it.`);
   }
 
   // The host plugin activates inside makeLoader, so its handle binds to the loader once it exists.

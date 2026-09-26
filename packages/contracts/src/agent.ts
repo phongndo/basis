@@ -39,4 +39,6 @@ export class Agent extends Context.Tag("basis/Agent")<Agent, {
   readonly prompt: (sessionId: string, message: Message, options?: TurnOptions) => Effect.Effect<void, AgentError>;
   readonly cancel: (sessionId: string) => Effect.Effect<void>;
   readonly busy: (sessionId: string) => Effect.Effect<boolean>;
+  /** The request a turn would send now, after `AgentRequestHook`, for "what does the model see" views. */
+  readonly preview: (sessionId: string, options?: TurnOptions) => Effect.Effect<LlmRequest, AgentError>;
 }>() {}

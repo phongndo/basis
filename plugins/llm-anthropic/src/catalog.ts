@@ -1,5 +1,5 @@
 import { ModelInfo } from "@basis/contracts";
-import { catalogFor } from "@basis/plugin-llm";
+import { catalogFor } from "@basis/models";
 
 export const PROVIDER_ID = "anthropic";
 export const DEFAULT_MODEL = "claude-opus-5";

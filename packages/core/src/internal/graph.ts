@@ -67,7 +67,8 @@ export function plan(
   const configs = new Map<string, unknown>();
   for (const plugin of byId.values()) {
     if (!plugin.config) continue;
-    const result = Schema.decodeUnknownEither(plugin.config)(rawConfigs(plugin.id));
+    // Absent config decodes as an empty object so all-optional schemas need no row.
+    const result = Schema.decodeUnknownEither(plugin.config)(rawConfigs(plugin.id) ?? {});
     if (Either.isLeft(result)) {
       const path = ParseResult.ArrayFormatter.formatErrorSync(result.left)[0]?.path
         .filter((segment): segment is string | number => typeof segment !== "symbol");

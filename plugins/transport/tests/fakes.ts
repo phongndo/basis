@@ -2,7 +2,7 @@ import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import { definePlugin, Events, Hooks } from "@basis/core";
 import type { Core } from "@basis/core";
 import {
-  Agent, AgentError, CredentialError, Credentials, HostControl, Interaction, InteractionError, InteractionHook, Llm, Message,
+  Agent, AgentError, CredentialError, Credentials, HostControl, Interaction, InteractionError, InteractionHook, Llm, LlmRequest, Message,
   ModelEvent, ModelInfo, Notice, Paths, PluginsChanged, SessionAppended, SessionChanged, SessionEntry, SessionError, SessionInfo,
   Sessions, TurnEnded, TurnStarted, Usage,
 } from "@basis/contracts";
@@ -92,6 +92,7 @@ export const fakeAgent = definePlugin({
       }).pipe(Effect.ensuring(Effect.sync(() => busy.delete(sessionId)))),
       cancel: () => Effect.void,
       busy: (sessionId) => Effect.sync(() => busy.has(sessionId)),
+      preview: (sessionId, options) => Effect.succeed(new LlmRequest({ model: options?.model ?? "fake/model", messages: [], system: `preview ${sessionId}` })),
     };
   })),
 });

@@ -1,6 +1,6 @@
 import { Context, Effect, Stream } from "effect";
-import { HostError, HostRpcs } from "@basis/contracts";
-import type { Agent, Credentials, HostControl, Llm, LlmRequest, Sessions, TurnOptions } from "@basis/contracts";
+import { HostRpcs } from "@basis/contracts";
+import type { Agent, Credentials, HostControl, Llm, Sessions } from "@basis/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
 import type { Interactions } from "./interactions.ts";
@@ -14,18 +14,6 @@ export interface HandlerServices {
   readonly credentials: Context.Tag.Service<Credentials>;
   readonly control: Context.Tag.Service<HostControl>;
 }
-
-/** The `Agent` contract has no preview; an agent implementation may offer one under this name. */
-interface PreviewCapable {
-  readonly preview?: (sessionId: string, options?: TurnOptions) => Effect.Effect<LlmRequest, unknown>;
-}
-
-const preview = (agent: Context.Tag.Service<Agent>, sessionId: string, options?: TurnOptions) => {
-  const candidate = (agent as PreviewCapable).preview;
-  return typeof candidate === "function"
-    ? candidate.call(agent, sessionId, options).pipe(Effect.mapError(toHostError))
-    : Effect.fail(new HostError({ code: "Unsupported", message: "The agent plugin does not expose a request preview", subject: sessionId }));
-};
 
 /** Every Rpc maps to one contract call; only the error boundary is transport-specific. */
 export const makeHandlers = ({ hub, interactions, agent, sessions, llm, credentials, control }: HandlerServices) =>
@@ -43,7 +31,7 @@ export const makeHandlers = ({ hub, interactions, agent, sessions, llm, credenti
     "Agent.Prompt": ({ sessionId, message, options }) => agent.prompt(sessionId, message, options).pipe(Effect.mapError(toHostError)),
     "Agent.Cancel": ({ sessionId }) => agent.cancel(sessionId),
     "Agent.Busy": ({ sessionId }) => agent.busy(sessionId),
-    "Agent.Preview": ({ sessionId, options }) => preview(agent, sessionId, options),
+    "Agent.Preview": ({ sessionId, options }) => agent.preview(sessionId, options).pipe(Effect.mapError(toHostError)),
 
     "Llm.Models": () => llm.models.pipe(Effect.mapError(toHostError)),
     "Credentials.List": () => credentials.list.pipe(Effect.mapError(toHostError)),

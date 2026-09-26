@@ -13,13 +13,14 @@
   "dependencies": {
     "@basis/core": "workspace:*",
     "@basis/contracts": "workspace:*",
-    "@basis/plugin-llm": "workspace:*",
     "@effect/platform": "0.97.2",
-    "effect": "3.22.2"
+    "effect": "3.22.2",
+    "@basis/models": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.3.13",
     "@types/node": "26.6.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@basis/plugin-llm": "workspace:*"
   }
 }

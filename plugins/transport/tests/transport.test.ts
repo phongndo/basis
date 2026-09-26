@@ -6,7 +6,7 @@ import { Cause, Chunk, Duration, Effect, Exit, Fiber, Option, Stream } from "eff
 import type { Mailbox, Scope } from "effect";
 import { makeCore } from "@basis/core";
 import type { Core } from "@basis/core";
-import { HostError, Interaction, InteractionError, Message } from "@basis/contracts";
+import { HostError, Interaction, InteractionError, Message, TurnOptions } from "@basis/contracts";
 import type { HostEvent } from "@basis/contracts";
 import { discoverHost, makeHostClient } from "@basis/client/bun";
 import type { HostClientOptions, HostClientService } from "@basis/client/bun";
@@ -128,8 +128,8 @@ describe("transport", () => {
 
     const missing = yield* Effect.exit(client.Session.Get({ sessionId: "missing" }));
     expect(codeOf(missing)).toBe("SessionError.NotFound");
-    const preview = yield* Effect.exit(client.Agent.Preview({ sessionId: session.id }));
-    expect(codeOf(preview)).toBe("Unsupported");
+    const preview = yield* client.Agent.Preview({ sessionId: session.id, options: new TurnOptions({ model: "fake/other" }) });
+    expect(preview.model).toBe("fake/other");
 
     expect((yield* client.Llm.Models()).map((model) => model.id)).toEqual(["fake/echo"]);
     expect(yield* client.Credentials.List()).toEqual([{ provider: "fake", type: "api-key" }]);

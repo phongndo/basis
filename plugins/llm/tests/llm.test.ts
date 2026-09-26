@@ -3,7 +3,8 @@ import { Cause, Chunk, Effect, Exit, Layer, Option, Scope, Stream } from "effect
 import { definePlugin, makeCore, PluginContext } from "@basis/core";
 import { Llm, LlmError, LlmRequest, LlmRequestHook, Message, ModelInfo } from "@basis/contracts";
 import type { LlmProvider, StreamEvent } from "@basis/contracts";
-import llm, { catalogFor, providerOf } from "../src/index.ts";
+import { catalogFor } from "@basis/models";
+import llm, { providerOf } from "../src/index.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) => Effect.runPromise(Effect.scoped(effect));
 

@@ -23,7 +23,7 @@ No config.
 
 ## Model catalog
 
-`catalogFor(providerId)` returns bundled `ModelInfo` entries from `src/models.generated.ts`, produced by `scripts/generate-models.ts` from [models.dev](https://models.dev) for the providers basis ships (`anthropic`, `openai`, `openrouter`; `ollama` is an empty placeholder). Provider plugins own the truth about ids and limits and use this for names and prices. Refresh with:
+Bundled models.dev data lives in `@basis/models` (`catalogFor(providerId)`), a data-only package so provider plugins never depend on this plugin's package. Refresh with:
 
 ```sh
 nix develop -c bun run --cwd plugins/llm generate-models

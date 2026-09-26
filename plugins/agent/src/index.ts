@@ -2,7 +2,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Scope } from "effect";
 import { definePlugin, Events, Hooks } from "@basis/core";
 import { Agent, AgentError, Llm, Sessions, Tools } from "@basis/contracts";
 import type { Message, TurnOptions } from "@basis/contracts";
-import { AgentConfig } from "./request.ts";
+import { AgentConfig, requestFor } from "./request.ts";
 import { runTurn } from "./turn.ts";
 
 export { AgentConfig, buildRequest, contextMessages, defaultSystemPrompt, DEFAULT_MODEL } from "./request.ts";
@@ -63,6 +63,7 @@ export default definePlugin({
       prompt,
       cancel,
       busy: (sessionId: string) => Effect.sync(() => running.has(sessionId)),
+      preview: (sessionId, options) => requestFor(services, sessionId, options, config),
     };
   })),
 });

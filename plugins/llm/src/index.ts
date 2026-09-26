@@ -3,10 +3,7 @@ import { definePlugin } from "@basis/core";
 import { Llm } from "@basis/contracts";
 import { makeLlm } from "./llm.ts";
 
-export { catalogFor } from "./catalog.ts";
 export { CATALOG_TTL, makeLlm, providerOf } from "./llm.ts";
-export { generated as generatedModels, generatedAt } from "./models.generated.ts";
-export type { GeneratedModel } from "./models.generated.ts";
 
 export default definePlugin({
   id: "llm",
