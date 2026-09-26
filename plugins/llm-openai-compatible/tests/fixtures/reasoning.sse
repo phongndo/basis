@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1758800002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":"The user wants"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1758800002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":null,"reasoning_content":" a greeting."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1758800002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":"Hi","reasoning_content":null},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1758800002,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":" there"},"finish_reason":"length"}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1758800002,"model":"deepseek-reasoner","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":6,"total_tokens":15}}
+
+data: [DONE]
+
