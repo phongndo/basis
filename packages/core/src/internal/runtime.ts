@@ -29,7 +29,7 @@ export interface Runtime {
   readonly core: Core<any>;
   readonly members: Effect.Effect<readonly Member[]>;
   /** Transactional change to the running composition; see docs/kernel.md. */
-  readonly apply: (members: readonly Member[]) => Effect.Effect<ReloadReport, ApplyError>;
+  readonly apply: (members: readonly Member[], onApplied?: () => void) => Effect.Effect<ReloadReport, ApplyError>;
   /** Close everything now rather than when the owning scope ends. */
   readonly shutdown: Effect.Effect<void>;
 }
@@ -52,12 +52,25 @@ interface Instance {
 
 /** One published composition. In-flight work keeps the environment it entered with. */
 interface Revision {
-  readonly environment: Context.Context<never>;
+  environment: Context.Context<never>;
   readonly fibers: Set<Fiber.RuntimeFiber<unknown, unknown>>;
   /** Admitted work whose fiber is not registered yet. */
   pending: number;
   readonly drained: Deferred.Deferred<void>;
   retired: boolean;
+}
+
+/** Track resolved services; copying a whole context conservatively leases all of it. */
+class TrackedServices extends Map<string, unknown> {
+  readonly read = new Set<string>();
+  override get(key: string): unknown { this.read.add(key); return super.get(key); }
+  private all(): void { for (const key of super.keys()) this.read.add(key); }
+  override entries() { this.all(); return super.entries(); }
+  override values() { this.all(); return super.values(); }
+  override [Symbol.iterator]() { this.all(); return super[Symbol.iterator](); }
+  override forEach(callback: (value: unknown, key: string, map: Map<string, unknown>) => void, thisArg?: unknown): void {
+    this.all(); super.forEach(callback, thisArg);
+  }
 }
 
 export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): Effect.Effect<Runtime, never, Scope.Scope> {
@@ -75,6 +88,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
     const supervisor = yield* Scope.make();
     /** Owns core.run fibers. */
     const work = yield* Scope.make();
+    const tasks = new Map<Fiber.RuntimeFiber<unknown, unknown>, TrackedServices>();
     const lock = yield* Effect.makeSemaphore(1);
     const closed = yield* Deferred.make<void, unknown>();
     let state: CoreSnapshot["state"] = "active";
@@ -105,7 +119,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
       withDeadline(Deferred.await(previous.drained), defaults.dispose, "abandon").pipe(
         Effect.flatMap((finished) => Option.isSome(finished) ? Effect.succeed(0) : Effect.gen(function* () {
           const stale = [...previous.fibers];
-          yield* Fiber.interruptAll(stale);
+          yield* withDeadline(Fiber.interruptAll(stale), defaults.dispose, "abandon");
           return stale.length;
         })),
       );
@@ -164,7 +178,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           if (!inputs.has(tag.key)) inputs.set(tag.key, environment.unsafeMap.get(tag.key));
         }
         const limit = Duration.decode(instance.plugin.deadlines?.activate ?? defaults.activate);
-        const build = Layer.buildWithScope(instance.plugin.layer(config), instance.scope).pipe(
+        const build = Effect.suspend(() => Layer.buildWithScope(instance.plugin.layer(config), instance.scope)).pipe(
           Effect.mapInputContext((caller: Context.Context<never>) => {
             const provided = new Map(inputs);
             if (caller.unsafeMap.has(Tracer.ParentSpan.key)) {
@@ -189,7 +203,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           Effect.withSpan("core.activate", { attributes: attributes(instance.identity) }),
         );
         // Resource bookkeeping is masked; plugin initialization remains interruptible.
-        const fiber = yield* Effect.forkIn(restore(build), instance.scope);
+        const fiber = yield* Effect.forkIn(Effect.interruptible(build), instance.scope);
         const exit = yield* Effect.exit(restore(Fiber.join(fiber)).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber))));
         if (Exit.isSuccess(exit)) {
           instance.output = exit.value;
@@ -245,8 +259,17 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         const halted = dependentsOf(instance.id).map((id) => instances.get(id)!);
         retire(instance);
         for (const dependent of halted) retire(dependent);
-        const previous = yield* publishRevision;
-        yield* drain(previous);
+        // A runtime failure revokes only the affected capabilities. Track service
+        // resolution so unrelated tasks are not interrupted with the failed plugin.
+        revision.environment = environmentOf();
+        const removed = new Set([instance, ...halted].flatMap((item) => item.plugin.provides.map((tag) => tag.key)));
+        const affected: Fiber.RuntimeFiber<unknown, unknown>[] = [];
+        for (const [fiber, services] of tasks) {
+          if (services.read.has(Hooks.key) || [...removed].some((key) => services.read.has(key))) affected.push(fiber);
+          for (const key of removed) services.delete(key);
+        }
+        const finished = yield* withDeadline(Effect.forEach(affected, Fiber.await, { discard: true }), defaults.dispose, "abandon");
+        if (Option.isNone(finished)) yield* withDeadline(Fiber.interruptAll(affected), defaults.dispose, "abandon");
         for (const dependent of [...halted].reverse()) {
           const wasActive = dependent.state === "draining";
           yield* dispose(dependent, Exit.fail(fault), "closed");
@@ -255,7 +278,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         yield* dispose(instance, Exit.fail(fault), "failed");
         instance.state = "failed";
         instance.fault = fault;
-        if (instance.plugin.restart) yield* Effect.forkIn(Effect.interruptible(restartLoop(instance.id, instance.plugin.restart, fault)), supervisor);
+        if (instance.plugin.restart) yield* Effect.forkIn(Effect.interruptible(restartLoop(instance, instance.plugin.restart, fault)), supervisor);
       })));
 
     /**
@@ -264,15 +287,16 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
      * restart resets it.
      */
     const drivers = new Map<string, Schedule.ScheduleDriver<unknown, PluginFault, never>>();
-    const restartLoop = (id: string, schedule: Schedule.Schedule<unknown, PluginFault>, fault: PluginFault): Effect.Effect<void> =>
+    const restartLoop = (failed: Instance, schedule: Schedule.Schedule<unknown, PluginFault>, fault: PluginFault): Effect.Effect<void> =>
       Effect.gen(function* () {
+        const id = failed.id;
         const driver = drivers.get(id) ?? (yield* Schedule.driver(schedule));
         drivers.set(id, driver);
         let last = fault;
         while (true) {
           const step = yield* Effect.either(driver.next(last));
           if (Either.isLeft(step)) return;
-          const result = yield* Effect.either(applyLocked(currentMembers(), new Set([id]), true));
+          const result = yield* Effect.either(applyLocked(currentMembers(), new Set([id]), true, undefined, () => instances.get(id) === failed && failed.state === "failed" && drivers.get(id) === driver));
           if (Either.isRight(result)) return;
           last = instances.get(id)?.fault ?? last;
         }
@@ -288,11 +312,12 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
      * is left failed, and its own dependents halted, without aborting the change.
      * A loader apply is never lenient: the whole composition applies or nothing does.
      */
-    const applyLocked = (members: readonly Member[], force: ReadonlySet<string>, lenient = false): Effect.Effect<ReloadReport, ApplyError> =>
+    const applyLocked = (members: readonly Member[], force: ReadonlySet<string>, lenient = false, operation?: { committed: boolean }, stillNeeded?: () => boolean): Effect.Effect<ReloadReport, ApplyError> =>
       lock.withPermits(1)(Effect.uninterruptibleMask((restore) => Effect.gen(function* () {
         if (state !== "active") {
           return yield* new PlanError({ errors: [new CompositionError({ reason: "CoreClosed", message: "The core is closing or has closed", plugins: [] })] });
         }
+        if (stillNeeded && !stillNeeded()) return { started: [], restarted: [], failed: [], stopped: [], unchanged: order, interrupted: 0, faults: [] };
         const raw = new Map(members.map((member) => [member.plugin.id, member.config]));
         const planned = plan(members.map((member) => member.plugin), (id) => raw.get(id));
         if (Either.isLeft(planned)) return yield* new PlanError({ errors: planned.left });
@@ -334,6 +359,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           }
         }
         if (gapped.size) {
+          if (operation) operation.committed = true;
           for (const id of gapped) retire(instances.get(id)!);
           const previous = yield* publishRevision;
           interrupted += yield* drain(previous);
@@ -385,6 +411,8 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           return yield* Effect.failCause(outcome.cause);
         }
 
+        // Swap: caller cancellation can no longer roll this operation back.
+        if (operation) operation.committed = true;
         // Swap: one atomic step for callers and hook/event dispatch.
         const old = [...changed, ...stops].flatMap((id) => { const instance = instances.get(id); return instance && !gapped.has(id) ? [instance] : []; });
         for (const instance of old) retire(instance);
@@ -420,10 +448,14 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
       })));
 
     /** Lifecycle changes run on supervisor-owned fibers so shutdown can interrupt them. */
-    const supervised = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+    const supervised = <A, E>(build: (operation: { committed: boolean }) => Effect.Effect<A, E>): Effect.Effect<A, E> =>
       Effect.uninterruptibleMask((resume) => Effect.gen(function* () {
-        const fiber = yield* Effect.forkIn(resume(effect), supervisor);
-        return yield* resume(Fiber.join(fiber)).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber)));
+        const operation = { committed: false };
+        const fiber = yield* Effect.forkIn(Effect.interruptible(build(operation)), supervisor);
+        // Once old resources are retiring, losing their caller must not cancel
+        // the replacement or make drain wait on its own lifecycle fiber.
+        return yield* resume(Fiber.join(fiber)).pipe(Effect.onInterrupt(() =>
+          operation.committed ? Effect.void : Fiber.interrupt(fiber)));
       }));
 
     const shutdown: Effect.Effect<void> = Effect.uninterruptible(Effect.suspend(() => {
@@ -433,7 +465,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         yield* Scope.close(work, Exit.void);
         yield* Scope.close(supervisor, Exit.void);
         registry.close();
-        bus.close();
+        yield* bus.close();
         let cause: Cause.Cause<unknown> | undefined;
         for (const id of [...order].reverse()) {
           const instance = instances.get(id)!;
@@ -457,12 +489,17 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           if (state !== "active") return yield* new CoreClosed();
           const admitted = revision;
           admitted.pending++;
-          const fiber = yield* Effect.forkIn(resume(Effect.provide(effect, admitted.environment as Context.Context<any>)), work);
+          const caller = yield* Effect.context<never>();
+          const services = new TrackedServices(Context.merge(caller, admitted.environment).unsafeMap);
+          const provided = Effect.mapInputContext(effect, (_: Context.Context<never>) => Context.unsafeMake<R>(services));
+          const fiber = yield* Effect.forkIn(resume(provided), work);
+          tasks.set(fiber, services);
           admitted.fibers.add(fiber);
           admitted.pending--;
           return yield* resume(Fiber.join(fiber)).pipe(
             Effect.onInterrupt(() => Fiber.interrupt(fiber)),
             Effect.ensuring(Effect.sync(() => {
+              tasks.delete(fiber);
               admitted.fibers.delete(fiber);
               if (admitted.retired && admitted.fibers.size === 0 && admitted.pending === 0) Deferred.unsafeDone(admitted.drained, Effect.void);
             })),
@@ -483,14 +520,14 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         }
         if (instance.state === "active") return Effect.void;
         drivers.delete(id);
-        return supervised(applyLocked(currentMembers(), new Set([id]), true)).pipe(Effect.mapError(toReloadError), Effect.asVoid);
+        return supervised((operation) => applyLocked(currentMembers(), new Set([id]), true, operation)).pipe(Effect.mapError(toReloadError), Effect.asVoid);
       }),
     };
 
     return {
       core,
       members: Effect.sync(currentMembers),
-      apply: (members) => supervised(applyLocked(members, new Set())),
+      apply: (members, onApplied) => supervised((operation) => applyLocked(members, new Set(), false, operation).pipe(Effect.tap(() => Effect.sync(() => onApplied?.())))),
       shutdown,
     };
   });

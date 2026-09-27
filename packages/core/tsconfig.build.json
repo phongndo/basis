@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": [],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": false,
+    "noEmitOnError": true,
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src"]
+}

@@ -1,12 +1,20 @@
 {
   "name": "@basis/core",
   "version": "0.1.0",
+  "description": "Typed plugin composition, scoped lifecycles, hooks, events, and supervised reloads",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "examples", "README.md"],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
     "check": "tsc --noEmit",
     "test": "bun test ./tests",
     "bench": "bun run ./bench/core.ts"

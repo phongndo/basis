@@ -1,0 +1,39 @@
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const core = join(root, "packages/core");
+const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
+const consumer = mkdtempSync(join(tmpdir(), "basis-package-check-"));
+const run = (command: string, args: string[], cwd = consumer) =>
+  execFileSync(command, args, { cwd, stdio: "inherit" });
+
+try {
+  // Pack invokes prepack, building exactly what a separate application receives.
+  run(process.execPath, ["pm", "pack", "--filename", join(consumer, "basis-core.tgz"), "--quiet"], core);
+  cpSync(join(root, "scripts/fixtures/consumer"), consumer, { recursive: true });
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({
+    name: "basis-external-consumer",
+    private: true,
+    type: "module",
+    dependencies: {
+      "@basis/core": "file:./basis-core.tgz",
+      effect: manifest.dependencies.effect,
+    },
+    devDependencies: {
+      typescript: manifest.devDependencies.typescript,
+      "@types/node": manifest.devDependencies["@types/node"],
+    },
+  }, null, 2));
+  // This directory has no workspace links or source aliases.
+  run(process.execPath, ["install", "--ignore-scripts"]);
+  run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconfig.json"]);
+  run(process.execPath, ["dist/main.js"]);
+  run("node", ["dist/main.js"]);
+  console.log("Packed library: declarations, Bun, and Node.js checks passed.");
+} finally {
+  rmSync(consumer, { recursive: true, force: true });
+}

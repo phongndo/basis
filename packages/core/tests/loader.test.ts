@@ -178,6 +178,56 @@ describe("loader", () => {
     }));
   });
 
+  test("exclusive contributors replace unique registrations in a retained registry", async () => {
+    class Registry extends Context.Tag("test/Registry")<Registry, {
+      readonly entries: ReadonlyMap<string, string>;
+      readonly register: (name: string, value: string) => Effect.Effect<void, Error, Scope.Scope>;
+    }>() {}
+    const entries = new Map<string, string>();
+    const registrations: string[] = [];
+    let activations = 0;
+    const registry = definePlugin({
+      id: "registry", provides: [Registry],
+      layer: Layer.sync(Registry, () => {
+        activations++;
+        return {
+          entries,
+          register: (name, value) => Effect.acquireRelease(
+            Effect.try(() => {
+              if (entries.has(name)) throw new Error(`Duplicate registration: ${name}`);
+              entries.set(name, value);
+              registrations.push(`+${value}`);
+            }),
+            () => Effect.sync(() => { entries.delete(name); registrations.push(`-${value}`); }),
+          ),
+        };
+      }),
+    });
+    const contributor = definePlugin({
+      id: "contributor", requires: [Registry], exclusive: true,
+      config: Schema.Struct({ value: Schema.String }),
+      layer: ({ value }) => Layer.scopedDiscard(Effect.flatMap(Registry, (registry) =>
+        registry.register("shared-name", value))),
+    });
+    await run(Effect.gen(function* () {
+      const next = (value: string) => composition({ registry: {}, contributor: { config: { value } } });
+      const loader = yield* makeLoader({
+        source: { resolve: (id) => Effect.succeed(id === "registry" ? registry : contributor) },
+        composition: next("first"),
+      });
+      const original = yield* loader.core.run(Registry);
+      expect([...original.entries]).toEqual([["shared-name", "first"]]);
+      const report = yield* loader.apply(next("second"));
+      expect(report).toMatchObject({ restarted: ["contributor"], unchanged: ["registry"], faults: [] });
+      expect(yield* loader.core.run(Registry)).toBe(original);
+      expect([...original.entries]).toEqual([["shared-name", "second"]]);
+      expect(activations).toBe(1);
+      expect(registrations).toEqual(["+first", "-first", "+second"]);
+    }));
+    expect(entries.size).toBe(0);
+    expect(registrations).toEqual(["+first", "-first", "+second", "-second"]);
+  });
+
   test("an initial composition that cannot start leaves nothing behind", async () => {
     const log: string[] = [];
     const { source } = fixtures(log);

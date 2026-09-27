@@ -1,7 +1,7 @@
-# Bun and frontend builds
+# Dependencies and library builds
 node_modules/
-/apps/web/dist/
-/apps/desktop/dist/
+dist/
+*.tgz
 
 # Nix
 /result

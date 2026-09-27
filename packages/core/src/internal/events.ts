@@ -51,9 +51,17 @@ export class EventBus implements Context.Tag.Service<Events> {
 
   constructor(private readonly report: (fault: PluginFault) => Effect.Effect<void>) {}
 
-  close(): void {
-    this.closed = true;
-    this.entries.clear();
+  close(): Effect.Effect<void> {
+    return Effect.suspend(() => {
+      this.closed = true;
+      const subscriptions = [...this.entries.values()].flatMap((entry) => entry.all);
+      this.entries.clear();
+      return Effect.forEach(subscriptions, (subscription) => Effect.gen(function* () {
+        subscription.done = true;
+        yield* Deferred.succeed(subscription.closed, undefined);
+        yield* Queue.shutdown(subscription.queue);
+      }), { discard: true });
+    });
   }
 
   inspect(): readonly EventSnapshot[] {
@@ -110,7 +118,9 @@ export class EventBus implements Context.Tag.Service<Events> {
       return Effect.forEach(subscriptions, (subscription) => Effect.suspend(() => {
         if (subscription.done) return Effect.void;
         const offer = Queue.offer(subscription.queue, payload);
-        return subscription.suspend ? Effect.race(offer, Deferred.await(subscription.closed)) : offer;
+        return (subscription.suspend ? Effect.race(offer, Deferred.await(subscription.closed)) : offer).pipe(
+          Effect.catchAllCause((cause) => subscription.done ? Effect.void : Effect.failCause(cause)),
+        );
       }), { concurrency: subscriptions.some((subscription) => subscription.suspend) ? "unbounded" : 1, discard: true });
     });
 

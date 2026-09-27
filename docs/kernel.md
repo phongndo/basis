@@ -1,19 +1,22 @@
 # Kernel design
 
-The kernel (`packages/core`) composes plugins. It knows about capabilities, hooks, events, lifetimes, and configuration, not about agents, models, tools, sessions, or UIs. Everything a user sees is a plugin, shipped or third-party, using the same public interface.
+Basis (`packages/core`) is a domain-neutral TypeScript library for composing plugins.
+It supplies capabilities, hooks, events, lifetimes, and configuration. The embedding
+application chooses its domain contracts, plugin sources, and composition.
 
-**Status (2026-09-25):** implemented in `packages/core` with tests, including a property test that runs random load/reload/fail/restart sequences against a fault-injecting fixture. Usage details live in [the package README](../packages/core/README.md); this page holds the rationale.
+Usage details live in [the package README](../packages/core/README.md); this page
+holds the rationale and constraints.
 
 ## Principles
 
 1. **Resolve once, at composition time.** Dependencies, config, and handler order are checked when a composition is planned. At call time a capability is a captured value and a hook with no handlers calls straight through. No proxies, no per-call graph walks, no meta-events.
-2. **Typed dependencies.** A plugin declares `requires` and `provides` as Effect tags; the Layer's requirements must match at compile time, and actual exports are checked at activation. A missing dependency is a type error or a planning diagnostic, never a runtime lookup failure.
+2. **Typed dependencies.** A plugin declares `requires` and `provides` as Effect tags; the Layer's requirements must match at compile time, and actual exports are checked at activation. Planning rejects missing dependencies. Runtime failures can revoke capabilities, so callers must still handle the resulting failure or interruption.
 3. **Two extension primitives, with explicit failure rules.** *Hooks* (interceptors) wrap an operation and fail closed. *Events* notify and are isolated. See below.
-4. **Failure domains.** A plugin that fails at runtime takes down itself and its dependents, nothing else. There is no automatic restart unless the plugin declares a `restart` schedule, and that schedule persists across failures so a broken plugin exhausts it instead of flapping; the default is to stay `failed`, visibly, with a restart action in every UI. An explicit restart is lenient about collateral: the named plugin must come back, and each dependent is retried on its own account.
-5. **Transactional change.** A reload either fully applies or leaves the running composition untouched and returns every diagnostic at once.
-6. **Everything has a limit.** Activation and disposal have deadlines; observer queues are bounded. Exceeding a limit is reported as a fault, never as a clean stop.
-7. **Errors are data.** Effect's failure, defect, and interruption stay distinct to the edge. Anything that crosses a plugin boundary is attributed as a `PluginFault`; diagnostics are serializable and say what to do.
-8. **Full permissions by default.** No approval service exists in the kernel or the shipped defaults. A gate is a user-authored hook handler on tool execution.
+4. **Failure domains.** A required background task failing stops its plugin and dependents while unrelated plugins keep running. Optional tasks and observers report faults without failing their plugin. There is no automatic restart unless the plugin declares a `restart` schedule, and that schedule persists across failures so a broken plugin can exhaust it. An explicit restart retries the named plugin and its halted dependents.
+5. **Staged change.** Replacements activate before the old composition is swapped out. A staging failure preserves the old instances, except for exclusive resources, which require a documented interruption gap.
+6. **Bounded waiting.** Activation and disposal have cooperative deadlines; observer queues are bounded and notifications may be lost. A lifecycle deadline is a fault, never a clean stop.
+7. **Errors are data.** Effect's failure, defect, and interruption stay distinct. Framework-observed lifecycle, hook, observer, and background-work faults carry plugin attribution. Ordinary capability functions are not automatically intercepted. Planning diagnostics are serializable and offer suggestions.
+8. **Application-owned policy.** Plugins are trusted code with the process's permissions. Applications may implement policy through their own contracts and hooks. The kernel supplies no domain-specific approval service.
 
 ## Primitives
 
@@ -22,13 +25,25 @@ The kernel (`packages/core`) composes plugins. It knows about capabilities, hook
 | Capability | `Context.Tag` | A named, replaceable service. One provider per composition. |
 | Plugin | `definePlugin` | Manifest (`id`, `config` schema, `provides`, `requires`, `exclusive`, `restart`, `deadlines`) plus a `Layer` that receives decoded config and owns resources through its `Scope`. |
 | Hook | `Hook.make` | Around middleware on the critical path. Sequential, ordered, awaited. A handler may call `next` at most once. A handler failure fails the operation. |
-| Event | `Event.make` | Fire-and-forget notification. `publish` never fails or waits. Observer failures become faults for their owner and affect nothing else. Bounded queue, default drop-oldest. |
+| Event | `Event.make` | Notification with isolated observer failures. Bounded queue, default drop-oldest without waiting; explicit `suspend` applies backpressure. |
 | Background work | `PluginContext.background` | Supervised work owned by the plugin scope; its exit is reported. `required` work failing fails the plugin. |
 | Loader | `makeLoader` | Runs a composition described by data (`Composition`) and changes it at runtime. |
 
-**Rule for choosing hook versus event:** if the user must learn when it fails, it is a hook or a direct service call. Events carry only information that is safe to lose; the session log, not the event bus, is the source of truth, and a consumer that falls behind resyncs from it.
+**Rule for choosing hook versus event:** if the caller must learn when it fails, use a hook or a direct capability call. Events carry only information that is safe to lose. Applications own authoritative state and recovery after missed notifications.
 
-**Authoring surface.** The plugin skeleton is Effect. Shipped capability contracts (tools, commands, providers) accept plain async functions and wrap them once at registration, so most plugin code never touches Effect directly. Promise-based work cannot be interrupted mid-flight unless it checks its signal; Effect-based work can.
+**Authoring surface.** The plugin skeleton uses Effect. Capability contracts are
+ordinary TypeScript and can expose values, functions, promises, or Effects.
+Applications decide which surface fits their operations. Effect supplies resource
+ownership, structured concurrency, schemas, and cancellation; its role is broader
+than runtime type checking. Promise-based work must honor a cancellation signal to
+stop its underlying operation. No automatic wrapper can make arbitrary work cancelable.
+
+**Runtime choice.** The framework remains TypeScript so plugin values, callbacks,
+promises, and errors stay in the same runtime as its consumers. A native core would
+require a second lifetime and value model across an FFI without a demonstrated
+performance benefit. Bun is the development and test runner; the library emits ESM
+JavaScript with declarations and has no Bun-specific production dependencies.
+Workload measurements should guide any future native acceleration.
 
 ## Lifecycle
 
@@ -37,24 +52,30 @@ pending → activating → active → draining → closed
                 ↘ failed ↗ (restart policy or explicit restart)
 ```
 
-Plugins activate in dependency order and dispose in reverse. `draining` admits no new work while in-flight work finishes. Closing the owning scope interrupts initialization and in-flight `core.run` work, then disposes plugins. Cancellation is cooperative: a synchronous loop or a stuck finalizer is reported as a deadline fault, not killed.
+Plugins activate in dependency order and dispose in reverse. `draining` admits no new work while in-flight work finishes. Closing the owning scope interrupts initialization and in-flight `core.run` work, then disposes plugins. Cancellation is cooperative: a stuck asynchronous finalizer can be reported as a deadline fault, but a synchronous loop blocking the event loop also prevents the deadline timer from running. In-process code cannot be forcibly killed by this library.
 
 ## Reload
 
 `Loader.apply(next)`:
 
-1. Plan: resolve definitions, decode every config, validate the whole graph. Collect all diagnostics; on any error, stop here.
+1. Plan: resolve definitions, then decode configs and validate the whole graph. Collect diagnostics within each stage; on errors, stop before activation.
 2. Compute the affected set: plugins whose definition or config changed, plus their dependents.
 3. Start replacements in a staging scope while old instances keep serving. `exclusive` plugins (a port, a lock) are stopped first instead; that gap is explicit rather than pretending the swap was transactional.
 4. Swap. Old instances drain, then close.
-5. If any step fails, close the staging scope and return the failure. The running composition is unchanged.
+5. If staging fails, close the staging scope and return the failure. Old instances keep serving unless they were stopped for exclusive replacement; those can remain failed. After a successful swap, disposal faults are reported without undoing the new composition.
 
 The unit of reload is the plugin instance, not the operation: in-flight work finishes on the instance it started with.
 
+Unique registrations in a retained registry are exclusive resources too. A
+contributor must release its registration during disposal before its replacement
+can register the same name. Once a swap or exclusive interruption begins, the
+supervised lifecycle operation completes even if its initiating caller is
+interrupted. The owner scope still controls shutdown.
+
 ## Faults and diagnostics
 
-- `PluginFault { pluginId, phase, operation?, deadline?, cause }` is constructed by the core, never by plugins. Phases: `config`, `activate`, `service`, `intercept`, `observe`, `background`, `dispose`.
-- `Diagnostic { severity, pluginId?, path?, message, suggestion? }` is a Schema class, so hosts and UIs receive the same structured value. Config problems carry the path into the config.
+- `PluginFault { pluginId, phase, operation?, deadline?, cause }` carries a framework-observed failure and its original Effect cause. Phases: `config`, `activate`, `service`, `intercept`, `observe`, `background`, `dispose`.
+- `Diagnostic { severity, pluginId?, path?, message, suggestion? }` is a Schema class for structured composition diagnostics. Config problems carry the path into the config.
 - `Core.faults` streams every fault in order; `Core.inspect` retains the latest fault per plugin.
 - `CapabilityMismatch` and `DeadlineExceeded` appear as the cause inside a `PluginFault`, never on their own.
 - Effect's timeout races cannot fire inside an uninterruptible region, and lifecycle bookkeeping is uninterruptible by design. Deadlines therefore wait on a daemon fiber plus a timer rather than `Effect.timeout`; on expiry, cleanup keeps running in the background and is reported, while a drain is abandoned and its stale work interrupted.
@@ -65,10 +86,26 @@ Plugins are trusted, in-process code. Dependency visibility and scopes organize 
 
 ## Outside the kernel
 
-Shipped as plugins: LLM providers and credentials (wrapping `pi-ai`), tools, agent loop, sessions (JSONL tree), compaction, skills (`SKILL.md`), MCP, interaction (ask/confirm/select), transport (HTTP + WebSocket), UI, subagents.
+Application contracts, persistence, transports, user interfaces, package discovery,
+configuration-file formats, and process bootstrap belong to consumers or their
+plugins. An agent harness may supply agents, models, tools, and MCP; another
+application may supply an entirely different domain. Neither defines the framework.
 
-Deferred, not planned for the kernel: remote capability proxies (designed after transport exists), per-session plugin subtrees (realms; sessions are data, and the one case that needs a different plugin set, subagents, is a plugin), untrusted-plugin isolation.
+Basis does not require a daemon, a filesystem layout, a central contract catalog,
+or an application registry. A `PluginSource` maps identifiers to definitions using
+the embedding application's choices. Remote proxies and untrusted-code isolation
+would need explicit designs and are outside the current library's guarantees.
 
 ## Verification
 
-Lifecycle edge cases, not dispatch, are where cordis needed most of its patches. The property test (`packages/core/tests/sequences.test.ts`) drives a fault-injecting fixture through random sequences of apply, background failure, restart, and fault toggles, checking after every step that live resources match active plugins, registrations belong only to active plugins, no active plugin depends on an inactive one, failed reloads leave the composition untouched, and shutdown releases everything. It found the interruptibility, admission-race, and restart-loop defects fixed during implementation. Performance budgets for cold start, the token streaming path, reload latency, and idle memory are still to be set against real workloads; `core:bench` measures the kernel's own costs.
+The property test (`packages/core/tests/sequences.test.ts`) drives a fault-injecting
+fixture through random sequences of apply, background failure, restart, and fault
+toggles. It checks resource ownership, registration lifetimes, dependency state,
+rollback, and shutdown. Focused regressions cover lifecycle calls from owned work,
+cancellation, deadlines, event closure, and exclusive registrations.
+
+`package:check` installs a packed build in a temporary consumer, checks its emitted
+types, and exercises provider replacement and cleanup on Bun and Node.js.
+`core:bench` measures framework costs. Application throughput, reload latency, cold
+start, and memory budgets require representative workloads; these checks do not
+establish superiority over another framework.

@@ -35,5 +35,5 @@ await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
   const core = yield* makeCore([greeter, enthusiastic]);
   const message = yield* core.run(Effect.flatMap(Greeter, (greeter) => greeter.greet("world")));
   console.log(message);
-  // Scope exit cleans up both plugins. No server, model, or agent is built into the core.
+  // Scope exit cleans up both plugins and their hook registrations.
 })));

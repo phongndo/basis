@@ -1,38 +1,57 @@
-# basis
+# Basis
 
-A build-your-own agent harness where everything, including the UI, is a replaceable plugin. One host runs the plugins; the web, desktop, and CLI clients connect to it.
+A domain-neutral TypeScript meta-framework for composing replaceable plugins.
 
-The [kernel](packages/core/README.md) ([rationale](docs/kernel.md)), the [contracts](packages/contracts/README.md), and the [shipped plugins](docs/plugins.md) are implemented. The host runs them with a transport that web, desktop, and CLI clients connect to; the [web client](apps/web/README.md) is implemented, the desktop shell wraps it, and the CLI is still a scaffold.
+Basis provides typed capabilities, plugin-defined hooks and events, scoped resources,
+failure supervision, and reloads. Applications define their own contracts and choose
+their own plugins. The framework has no required server, transport, persistence,
+user interface, or domain model.
+
+The library lives in [`packages/core`](packages/core/README.md). Its only runtime
+dependency is Effect 3.22.2. Effect supplies lifecycle and cancellation machinery;
+capability contracts can expose ordinary values, functions, and promises.
 
 | Path | Responsibility |
 | --- | --- |
-| `packages/core/` | Effect-native plugin kernel: capabilities, hooks, events, supervision, transactional reload |
-| `packages/contracts/` | Capability contracts shared by shipped and third-party plugins, including the RPC surface |
-| `packages/models/` | Bundled models.dev snapshot |
-| `packages/client/` | Typed host client for browsers and Bun |
-| `plugins/*` | Shipped plugins: host, credentials, llm and providers, tools, sessions, agent, compaction, subagent, skills, mcp, transport, interaction |
-| `apps/host/` | Bun host process: loads `config.jsonc`, runs the composition, reloads on change |
-| `apps/cli/` | Command-line client placeholder |
-| `apps/web/` | SolidJS chat client on `@basis/client`, also loaded by desktop |
-| `apps/desktop/` | Electron shell for the web client |
-
-## Defaults
-
-- **Full permissions.** Neither the kernel nor the default plugins include an approval system. Gating or auto-approval belongs in a plugin that wraps tool execution.
-- **Plugins all the way down.** Providers, credentials, tools, sessions, skills, MCP, and UI are plugins using the same public interfaces as third-party ones.
+| [`packages/core/src`](packages/core/src/index.ts) | Public interface and runtime implementation |
+| [`packages/core/tests`](packages/core/tests) | Contract, lifecycle, failure, and property tests |
+| [`packages/core/examples`](packages/core/examples/hello.ts) | A capability extended through a plugin-defined hook |
+| [`packages/core/bench`](packages/core/bench/core.ts) | Framework microbenchmarks |
+| [`docs/kernel.md`](docs/kernel.md) | Design rationale and limits |
 
 ## Develop
 
-On Linux or macOS:
+Use the Nix shell on Linux or macOS:
 
 ```sh
 nix develop -c bun install --frozen-lockfile
-nix develop -c bun run check          # type-check every workspace package
-nix develop -c bun run test           # all kernel and plugin tests
-nix develop -c bun run core:bench     # warm kernel microbenchmarks
-nix develop -c bun run host:dev       # run the host with the default composition
-nix develop -c bun run web:dev        # browser at http://127.0.0.1:5173
-nix develop -c bun run desktop:dev    # build web assets, then open Electron
+nix develop -c bun run check          # build JavaScript/declarations and type-check
+nix develop -c bun run test           # core tests, including lifecycle regressions
+nix develop -c bun run example        # compose plugins and invoke a hook
+nix develop -c bun run package:check  # install the packed library into a temporary consumer
+nix develop -c bun run core:bench     # warm framework microbenchmarks
 ```
 
-The host reads `~/.basis/config.jsonc` and `<project>/.basis/config.jsonc` (see [docs/plugins.md](docs/plugins.md)); without either it runs every shipped plugin except the OpenAI-compatible and MCP ones, which need configuration. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, or log in through a client, to talk to a model.
+`package:check` checks the emitted declarations and runs the same consumer on Bun
+and Node.js. It tests provider replacement, dependent reconstruction, and cleanup
+through the package export, outside this workspace. Its temporary install may need
+network access for dependencies.
+
+## Use in another application
+
+The package is currently private and can be packed locally:
+
+```sh
+nix develop -c bun run build
+nix develop -c bun pm --cwd packages/core pack --destination /tmp
+```
+
+Install the resulting tarball in the consuming application and import `@basis/core`.
+The package contains ESM JavaScript, TypeScript declarations, and the example;
+Effect remains an external dependency. See the [library README](packages/core/README.md)
+for composition and plugin authoring.
+
+Plugins execute as trusted code in the application's process. Scope ownership and
+cooperative cancellation organize their lifetimes; they do not provide process
+isolation. Performance claims require measured application workloads; the included
+benchmarks measure framework overhead only.

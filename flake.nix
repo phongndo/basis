@@ -1,5 +1,5 @@
 {
-  description = "basis Bun development environment";
+  description = "Basis TypeScript library development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,7 +23,6 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          isLinux = pkgs.stdenv.hostPlatform.isLinux;
         in
         {
           default = pkgs.mkShell {
@@ -33,13 +32,7 @@
               pkgs.nodejs_22
               pkgs.nixd
               pkgs.nixpkgs-fmt
-            ]
-            # The npm Electron binary does not run on NixOS; Darwin uses the npm one.
-            ++ pkgs.lib.optionals isLinux [ pkgs.electron_42-bin ];
-
-            shellHook = pkgs.lib.optionalString isLinux ''
-              export BASIS_ELECTRON_BIN="${pkgs.electron_42-bin}/bin/electron"
-            '';
+            ];
           };
         }
       );

@@ -6,9 +6,9 @@ const EventTypeId: unique symbol = Symbol("@basis/core/Event");
 /**
  * A fire-and-forget notification. Publishing never fails and never waits for
  * observers (except those that chose `overflow: "suspend"`). Use an event only
- * for information that is safe to lose; the session log, not the event bus, is
- * the source of truth. Anything whose failure the user must learn about is a
- * hook (interceptor) or a direct service call instead.
+ * for information that is safe to lose; applications own authoritative state
+ * and recovery. Anything whose failure the caller must learn about is a hook
+ * (interceptor) or a direct capability call instead.
  */
 export interface Event<Payload> {
   readonly name: string;

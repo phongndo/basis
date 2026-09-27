@@ -9,6 +9,7 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
+    "paths": { "@basis/core": ["./src/index.ts"] },
     "allowImportingTsExtensions": true,
     "noEmit": true
   },

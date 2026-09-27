@@ -71,8 +71,9 @@ export const FaultPhase = Schema.Literal(
 export type FaultPhase = typeof FaultPhase.Type;
 
 /**
- * Every failure that crosses a plugin boundary is attributed here by the core;
- * plugin code never constructs one. The cause retains typed failures, defects,
+ * Failures observed by framework lifecycle, hook, observer, and background-work
+ * supervision are attributed here. Arbitrary capability calls are not intercepted.
+ * The cause retains typed failures, defects,
  * and their stacks. `deadline` marks a step that ran out of time, which is
  * reported as such and never as a clean stop.
  */
@@ -100,7 +101,7 @@ export class Diagnostic extends Schema.Class<Diagnostic>("@basis/core/Diagnostic
   suggestion: Schema.optional(Schema.String),
 }) {}
 
-/** All problems found while planning a composition change; the running composition is unchanged. */
+/** Diagnostics for a failed change. Planning failures preserve the composition; exclusive activation failures may not. */
 export class ReloadError extends Data.TaggedError("ReloadError")<{
   readonly diagnostics: readonly Diagnostic[];
 }> {

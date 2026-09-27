@@ -50,8 +50,9 @@ export interface LoaderOptions {
  * plugins whose definition or config changed (and their dependents) are touched.
  * Replacements start in a staging scope while the old instances keep serving;
  * then old instances stop admitting work, in-flight work drains, and they close.
- * `exclusive` plugins stop before their replacement starts. If any step fails,
- * the running composition is unchanged and the failure is returned.
+ * Staging failures preserve the running composition, except for `exclusive`
+ * plugins: they stop before their replacement starts and remain failed if it
+ * cannot activate. Disposal faults after a swap are returned in the report.
  */
 export interface Loader {
   /** Compositions are checked when planned, so the core's capabilities are not statically typed. */
@@ -92,8 +93,7 @@ export function makeLoader(options: LoaderOptions): Effect.Effect<Loader, Reload
     const apply = (next: Composition): Effect.Effect<ReloadReport, ReloadError> =>
       Effect.gen(function* () {
         const members = yield* resolve(next);
-        const report = yield* runtime.apply(members).pipe(Effect.mapError(toReloadError));
-        current = next;
+        const report = yield* runtime.apply(members, () => { current = next; }).pipe(Effect.mapError(toReloadError));
         return report;
       });
 
