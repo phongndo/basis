@@ -1,0 +1,282 @@
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import type { JSX } from "solid-js";
+import type { DirectoryEntry } from "@basis/contracts";
+import { Portal } from "solid-js/web";
+import { knownProjects } from "../model/prefs.ts";
+import { openDialog, openProject, reportError, state, workspaceApi } from "../store.ts";
+import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "./icons.tsx";
+
+type Row =
+  | { readonly kind: "recent"; readonly path: string }
+  | { readonly kind: "here"; readonly path: string }
+  | { readonly kind: "entry"; readonly entry: DirectoryEntry }
+  | { readonly kind: "create"; readonly path: string };
+
+/** `/home/me/code` → `~/code` given the host user's home. */
+const shorten = (path: string, home: string | undefined) =>
+  home !== undefined && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
+const withSlash = (path: string) => (path.endsWith("/") ? path : `${path}/`);
+const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
+
+/** `name` with the characters at `matches` emphasised. */
+const Highlighted = (props: { name: string; matches: readonly number[] }): JSX.Element => {
+  const hit = new Set(props.matches);
+  return <>{[...props.name].map((char, index) => (hit.has(index) ? <mark>{char}</mark> : char))}</>;
+};
+
+/**
+ * Pick a folder on the host by typing its path. Matching folders list as you
+ * type (letters in order match), the arrow keys move, Tab or → goes into the
+ * highlighted folder, Backspace after a slash goes up, Enter opens. A name
+ * that matches nothing can be created as a new folder.
+ */
+export function AddProjectDialog() {
+  const [value, setValue] = createSignal("");
+  const [listing, setListing] = createSignal<{ parent: string; entries: readonly DirectoryEntry[]; truncated: boolean }>();
+  const [active, setActive] = createSignal(0);
+  const [loading, setLoading] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const [home, setHome] = createSignal<string>();
+  let initial = "";
+  let input!: HTMLInputElement;
+  let list!: HTMLDivElement;
+  let request = 0;
+  let debounce: number | undefined;
+  const previous = document.activeElement as HTMLElement | null;
+
+  /** The part after the last slash: what the listing is filtered by. */
+  const needle = () => value().slice(value().lastIndexOf("/") + 1);
+  const recents = createMemo(() => knownProjects(state.info?.cwd, state.sessions, state.projects));
+
+  const rows = createMemo((): Row[] => {
+    const current = listing();
+    if (current === undefined) return [];
+    const typed = needle();
+    const out: Row[] = [];
+    if (value() === initial) out.push(...recents().map((path): Row => ({ kind: "recent", path })));
+    if (typed === "") out.push({ kind: "here", path: current.parent });
+    out.push(...current.entries.map((entry): Row => ({ kind: "entry", entry })));
+    const exact = current.entries.some((entry) => entry.name.toLowerCase() === typed.toLowerCase());
+    if (typed !== "" && !exact) out.push({ kind: "create", path: `${withSlash(current.parent)}${typed}` });
+    return out;
+  });
+
+  const close = () => openDialog(undefined);
+  const refresh = async (typed: string) => {
+    const id = ++request;
+    setLoading(true);
+    try {
+      const next = await workspaceApi().browse(typed);
+      if (id !== request) return;
+      setListing(next);
+      setActive(0);
+      list.scrollTop = 0;
+    } catch {
+      if (id === request) setListing(undefined);
+    } finally {
+      if (id === request) setLoading(false);
+    }
+  };
+  const update = (next: string, immediate = false) => {
+    setValue(next);
+    window.clearTimeout(debounce);
+    if (immediate) void refresh(next);
+    else debounce = window.setTimeout(() => void refresh(next), 50);
+  };
+  const go = (path: string) => {
+    const next = withSlash(shorten(path, home()));
+    update(next, true);
+    input.focus();
+    input.setSelectionRange(next.length, next.length);
+  };
+  const up = () => {
+    const trimmed = value().replace(/\/+$/, "");
+    const cut = trimmed.lastIndexOf("/");
+    if (cut < 0) return;
+    go(trimmed.slice(0, cut) || "/");
+  };
+
+  const open = async (path: string) => {
+    setBusy(true);
+    const opened = await openProject(path);
+    setBusy(false);
+    if (opened) close();
+  };
+  const create = async (path: string) => {
+    setBusy(true);
+    try {
+      const status = await workspaceApi().createDirectory(path);
+      if (await openProject(status.path)) close();
+    } catch (error) {
+      reportError(error, "Could not create the folder");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pick = (row: Row | undefined) => {
+    if (busy()) return;
+    if (row === undefined) { if (value().trim() !== "") void open(value()); return; }
+    switch (row.kind) {
+      case "recent": case "here": void open(row.path); return;
+      case "entry": void open(row.entry.path); return;
+      case "create": void create(row.path); return;
+    }
+  };
+  const move = (delta: number) => {
+    const count = rows().length;
+    if (count === 0) return;
+    setActive((index) => (index + delta + count) % count);
+    list.querySelector(`[data-index="${active()}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+
+  const caretAtEnd = () => input.selectionStart === value().length && input.selectionEnd === value().length;
+  const onKeyDown = (event: KeyboardEvent) => {
+    const row = rows()[active()];
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+    else if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
+    else if ((event.key === "Tab" && !event.shiftKey) || (event.key === "ArrowRight" && caretAtEnd())) {
+      const target = row?.kind === "entry" ? row.entry.path : row?.kind === "recent" ? row.path : undefined;
+      if (target !== undefined) { event.preventDefault(); go(target); }
+      else if (event.key === "Tab") event.preventDefault();
+    } else if (event.key === "Backspace" && value().endsWith("/") && caretAtEnd() && value().length > 1) {
+      event.preventDefault();
+      up();
+    } else if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      pick(row);
+    }
+  };
+
+  /** The listed directory as clickable segments: `~ / code /`. */
+  const crumbs = createMemo(() => {
+    const parent = listing()?.parent;
+    if (parent === undefined) return [];
+    const short = shorten(parent, home());
+    const parts = short.split("/").filter((part, index) => part !== "" || index === 0);
+    let acc = "";
+    return parts.map((part, index) => {
+      acc = index === 0 ? (part === "" ? "/" : part) : `${withSlash(acc)}${part}`;
+      return { label: part === "" ? "/" : part, path: acc };
+    });
+  });
+
+  onMount(async () => {
+    input.focus();
+    // Learn the host user's home, then start beside the host's project.
+    let userHome: string | undefined;
+    try { userHome = (await workspaceApi().browse("~/")).parent; setHome(userHome); } catch { /* absolute paths still work */ }
+    const cwd = state.info?.cwd;
+    initial = cwd === undefined ? "~/" : withSlash(shorten(cwd.slice(0, cwd.lastIndexOf("/")) || "/", userHome));
+    update(initial, true);
+    input.setSelectionRange(initial.length, initial.length);
+  });
+  onCleanup(() => { window.clearTimeout(debounce); previous?.focus?.(); });
+
+  const section = (index: number, row: Row) => {
+    const before = rows()[index - 1];
+    if (row.kind === "recent" && index === 0) return "Recent";
+    if (row.kind !== "recent" && before?.kind === "recent") return "Folders";
+    return undefined;
+  };
+
+  return (
+    <Portal>
+      <div class="backdrop palette-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+        <div class="palette" role="dialog" aria-modal="true" aria-label="Add project" onKeyDown={onKeyDown}>
+          <div class="palette-input">
+            <FolderIcon />
+            <input
+              ref={input}
+              value={value()}
+              placeholder="Type a folder path on the host"
+              aria-label="Folder path"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="add-project-list"
+              aria-activedescendant={`add-project-row-${active()}`}
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck={false}
+              onInput={(event) => update(event.currentTarget.value)}
+            />
+            <Show when={loading() || busy()}><Spinner /></Show>
+          </div>
+          <Show when={crumbs().length > 0}>
+            <nav class="palette-crumbs" aria-label="Current folder">
+              <For each={crumbs()}>
+                {(crumb, index) => (
+                  <>
+                    <Show when={index() > 0}><span class="crumb-sep">/</span></Show>
+                    <button type="button" class="crumb" tabindex="-1" onClick={() => go(crumb.path)}>{crumb.label}</button>
+                  </>
+                )}
+              </For>
+              <Show when={listing()?.truncated}><span class="crumb-note">Showing the first {listing()?.entries.length}</span></Show>
+            </nav>
+          </Show>
+          <div class="palette-list" id="add-project-list" role="listbox" ref={list}>
+            <For each={rows()}>
+              {(row, index) => (
+                <>
+                  <Show when={section(index(), row)}>{(label) => <div class="palette-section">{label()}</div>}</Show>
+                  <div
+                    id={`add-project-row-${index()}`}
+                    class="palette-row"
+                    classList={{ create: row.kind === "create" }}
+                    role="option"
+                    data-index={index()}
+                    data-active={String(index() === active())}
+                    aria-selected={index() === active()}
+                    onPointerMove={() => setActive(index())}
+                    onClick={() => pick(row)}
+                  >
+                    {(() => {
+                      switch (row.kind) {
+                        case "recent":
+                          return <>
+                            <FolderIcon />
+                            <span class="palette-name">{baseName(row.path)}</span>
+                            <span class="palette-path">{shorten(row.path, home())}</span>
+                          </>;
+                        case "here":
+                          return <>
+                            <FolderIcon />
+                            <span class="palette-name">Open <span class="palette-mono">{shorten(row.path, home())}</span></span>
+                          </>;
+                        case "create":
+                          return <>
+                            <FolderPlusIcon />
+                            <span class="palette-name">Create folder <span class="palette-mono">{shorten(row.path, home())}</span></span>
+                          </>;
+                        case "entry":
+                          return <>
+                            <Show when={row.entry.git} fallback={<FolderIcon />}><GitBranchIcon /></Show>
+                            <span class="palette-name"><Highlighted name={row.entry.name} matches={row.entry.matches} /></span>
+                            <Show when={row.entry.git}><span class="tag palette-tag">git</span></Show>
+                            <button
+                              type="button"
+                              class="icon-button palette-into"
+                              aria-label={`Show folders in ${row.entry.name}`}
+                              data-tip="Show folders inside"
+                              tabindex="-1"
+                              onClick={(event) => { event.stopPropagation(); go(row.entry.path); }}
+                            >
+                              <ChevronIcon />
+                            </button>
+                          </>;
+                      }
+                    })()}
+                  </div>
+                </>
+              )}
+            </For>
+            <Show when={!loading() && listing() !== undefined && rows().length === 0}>
+              <div class="palette-empty">No folder here. Check the path.</div>
+            </Show>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}

@@ -1,0 +1,110 @@
+import { describe, expect, it } from "vitest";
+import type { ModelInfo } from "@basis/contracts";
+import { diffStats, parseDiff, readDetails } from "../src/model/details.ts";
+import {
+  displayPath, formatCost, formatDuration, formatTokens, partialStringField, summarizeToolArgs, summarizeUsage, tildePath, truncateLines,
+} from "../src/model/format.ts";
+import { branchSlug, contextSize } from "../src/model/format.ts";
+import { clampThinking, filterModels, knownProjects, thinkingLevels } from "../src/model/prefs.ts";
+import { usage } from "./fixtures.ts";
+
+describe("format", () => {
+  it("formats numbers compactly", () => {
+    expect([formatTokens(950), formatTokens(1234), formatTokens(45_600), formatTokens(2_500_000)]).toEqual(["950", "1.2k", "46k", "2.50M"]);
+    expect([formatCost(0), formatCost(0.00123), formatCost(0.123), formatCost(12.3)]).toEqual(["$0", "$0.0012", "$0.123", "$12.30"]);
+    expect([formatDuration(420), formatDuration(4200), formatDuration(42_000), formatDuration(125_000)]).toEqual(["420ms", "4.2s", "42s", "2m 5s"]);
+  });
+
+  it("shortens paths", () => {
+    expect(tildePath("/home/me/x", "/home/me")).toBe("~/x");
+    expect(tildePath("/home/meow", "/home/me")).toBe("/home/meow");
+    expect(displayPath("/w/p/src/a.ts", "/w/p", "/home/me")).toBe("src/a.ts");
+    expect(displayPath("/home/me/other", "/w/p", "/home/me")).toBe("~/other");
+  });
+
+  it("summarizes built-in tool arguments", () => {
+    expect(summarizeToolArgs("bash", { command: "ls -la" })).toEqual({ primary: "ls -la", shell: true });
+    expect(summarizeToolArgs("read", { path: "/w/a.ts", offset: 10, limit: 5 }, { cwd: "/w" })).toEqual({ primary: "a.ts", secondary: "lines 10–14" });
+    expect(summarizeToolArgs("grep", { pattern: "TODO", path: "/w/src" }, { cwd: "/w" })).toEqual({ primary: "TODO", secondary: "in src" });
+    expect(summarizeToolArgs("custom", { n: 1, q: "hello" })).toEqual({ primary: "hello" });
+    expect(summarizeToolArgs("custom", undefined)).toEqual({});
+  });
+
+  it("reads string fields from partial JSON", () => {
+    expect(partialStringField("{\"command\":\"echo \\\"hi", "command")).toBe("echo \"hi");
+    expect(partialStringField("{\"command\":\"a\\", "command")).toBe("a");
+    expect(partialStringField("{\"com", "command")).toBeUndefined();
+  });
+
+  it("summarizes usage", () => {
+    const s = summarizeUsage({ ...usage(1200, 300, 0.02), cacheRead: 5000 });
+    expect(s).toMatchObject({ input: "1.2k", output: "300", cache: "5.0k", cost: "$0.020" });
+  });
+
+  it("truncates lines", () => {
+    expect(truncateLines("a\nb\nc", 2)).toEqual({ text: "a\nb", hidden: 1 });
+    expect(truncateLines("a", 2)).toEqual({ text: "a", hidden: 0 });
+  });
+});
+
+describe("details", () => {
+  it("reads known shapes and ignores the rest", () => {
+    expect(readDetails({ diff: "+a", exitCode: 2, truncation: { truncated: true }, fullOutputPath: "/tmp/x" }))
+      .toEqual({ diff: "+a", exitCode: 2, truncated: true, fullOutputPath: "/tmp/x" });
+    expect(readDetails("nope")).toEqual({});
+    expect(readDetails({ exitCode: "0" })).toEqual({});
+  });
+
+  it("parses unified diffs", () => {
+    const lines = parseDiff("--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n ctx\n");
+    expect(lines.map((l) => l.kind)).toEqual(["meta", "meta", "hunk", "del", "add", "ctx"]);
+    expect(diffStats(lines)).toEqual({ added: 1, removed: 1 });
+  });
+});
+
+describe("prefs", () => {
+  const model = (ref: string, levels: ModelInfo["thinkingLevels"], reasoning = true): ModelInfo => ({
+    ref, provider: ref.split("/")[0]!, id: ref.split("/")[1]!, name: ref.toUpperCase(), api: "x", reasoning, thinkingLevels: levels,
+    input: ["text"], contextWindow: 1, maxTokens: 1, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  it("filters and groups models by provider", () => {
+    const groups = filterModels([model("a/one", []), model("b/two", []), model("a/three", [])], "a o");
+    expect(groups.map((g) => [g.provider, g.models.map((m) => m.ref)])).toEqual([["a", ["a/one"]]]);
+    expect(filterModels([model("a/one", []), model("b/two", [])], "").map((g) => g.provider)).toEqual(["a", "b"]);
+  });
+  it("offers and clamps thinking levels to the model", () => {
+    const m = model("a/x", ["low", "medium", "high"]);
+    expect(thinkingLevels(model("a/y", ["low"], false))).toEqual([]);
+    // A single level is no choice at all.
+    expect(thinkingLevels(model("a/z", ["off"]))).toEqual([]);
+    expect(clampThinking(model("d/v", ["off", "low", "high", "max"]), "medium")).toBe("high");
+    expect(clampThinking(model("d/v", ["off", "low", "high", "max"]), "xhigh")).toBe("max");
+    expect(clampThinking(m, "medium")).toBe("medium");
+    expect(clampThinking(m, "xhigh")).toBe("high");
+    expect(clampThinking(m, "off")).toBe("low");
+    expect(clampThinking(m, undefined)).toBeUndefined();
+    expect(clampThinking(undefined, "high")).toBeUndefined();
+  });
+  it("lists the host directory, then sessions by recency, then added projects", () => {
+    const sessions = [{ cwd: "/b", updatedAt: 1 }, { cwd: "/c", updatedAt: 5 }, { cwd: "/b", updatedAt: 9 }];
+    expect(knownProjects("/a", sessions, ["/d", "/c"])).toEqual(["/a", "/b", "/c", "/d"]);
+    expect(knownProjects(undefined, [], ["/d"])).toEqual(["/d"]);
+  });
+});
+
+describe("branchSlug", () => {
+  it("names a worktree branch from the first words of the message", () => {
+    expect(branchSlug("Fix the login redirect, please! It loops forever")).toBe("basis/fix-the-login-redirect-please");
+    expect(branchSlug("   ")).toBe("basis/task");
+    expect(branchSlug("é ✨")).toBe("basis/task");
+  });
+});
+
+describe("contextSize", () => {
+  it("abbreviates token counts", () => {
+    expect(contextSize(1_000_000)).toBe("1M");
+    expect(contextSize(1_048_576)).toBe("1M");
+    expect(contextSize(203_000)).toBe("203K");
+    expect(contextSize(2_500_000)).toBe("2.5M");
+  });
+});

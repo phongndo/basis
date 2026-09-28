@@ -1,0 +1,105 @@
+import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { AddProjectDialog } from "./components/add-project.tsx";
+import { ConnectionBanner } from "./components/connection.tsx";
+import { focusPrompt, openModelPicker } from "./components/composer.tsx";
+import { InteractionModal } from "./components/interaction.tsx";
+import { PluginsDialog } from "./components/plugins.tsx";
+import { ProvidersDialog } from "./components/providers.tsx";
+import { SessionView } from "./components/session-view.tsx";
+import { Sidebar } from "./components/sidebar.tsx";
+import { Toasts } from "./components/toasts.tsx";
+import { TooltipLayer } from "./components/tooltip.tsx";
+import { load, save } from "./lib/storage.ts";
+import { cancel, isBusy, newChat, state } from "./store.ts";
+
+const WIDTH_KEY = "basis.sidebar.width";
+const COLLAPSED_KEY = "basis.sidebar.collapsed";
+const DEFAULT_WIDTH = 264;
+const MIN_WIDTH = 208;
+/** The conversation keeps at least this much room. */
+const MIN_MAIN = 560;
+const NARROW = "(max-width: 820px)";
+
+const clampWidth = (width: number) => Math.round(Math.max(MIN_WIDTH, Math.min(width, Math.max(MIN_WIDTH, window.innerWidth - MIN_MAIN))));
+
+const typing = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
+export function App() {
+  const [drawer, setDrawer] = createSignal(false);
+  // The chosen width survives a narrower window; only the displayed width is clamped.
+  const [chosen, setChosen] = createSignal(Number(load(WIDTH_KEY)) || DEFAULT_WIDTH);
+  const [viewport, setViewport] = createSignal(window.innerWidth);
+  const width = () => { viewport(); return clampWidth(chosen()); };
+  const [collapsed, setCollapsed] = createSignal(load(COLLAPSED_KEY) === "1");
+  const [resizing, setResizing] = createSignal(false);
+  const setCollapsedSaved = (value: boolean) => { setCollapsed(value); save(COLLAPSED_KEY, value ? "1" : undefined); };
+  /** On narrow screens the sidebar is a drawer; otherwise it collapses in place. */
+  const toggleSidebar = () => (window.matchMedia(NARROW).matches ? setDrawer(!drawer()) : setCollapsedSaved(!collapsed()));
+
+  const startResize = (event: PointerEvent) => {
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = width();
+    setResizing(true);
+    const move = (next: PointerEvent) => setChosen(clampWidth(startWidth + next.clientX - startX));
+    const end = () => {
+      setResizing(false);
+      save(WIDTH_KEY, String(chosen()));
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+  const resetWidth = () => { setChosen(DEFAULT_WIDTH); save(WIDTH_KEY, undefined); };
+  const onResize = () => setViewport(window.innerWidth);
+
+  const onKey = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return;
+    const mod = event.ctrlKey || event.metaKey;
+    const modal = state.dialog !== undefined || state.interactions.length > 0;
+    if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) { event.preventDefault(); toggleSidebar(); }
+    else if (mod && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); newChat(); setDrawer(false); }
+    else if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && !modal) { event.preventDefault(); openModelPicker(); }
+    else if (event.key === "/" && !mod && !typing(event.target) && !modal) { event.preventDefault(); focusPrompt(); }
+    else if (event.key === "Escape" && !modal && isBusy() && !typing(event.target)) { event.preventDefault(); cancel(); }
+    else if (event.key === "Escape" && drawer()) setDrawer(false);
+  };
+  onMount(() => { document.addEventListener("keydown", onKey); window.addEventListener("resize", onResize); });
+  onCleanup(() => { document.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); });
+
+  return (
+    <div
+      class="app"
+      classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed(), resizing: resizing() }}
+      style={{ "--sidebar": `${width()}px` }}
+    >
+      <Sidebar onPick={() => setDrawer(false)} />
+      <div
+        class="sidebar-rail"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        data-tip="Drag to resize · double-click to reset"
+        onPointerDown={startResize}
+        onDblClick={resetWidth}
+      />
+      <Show when={drawer()}><div class="scrim" onClick={() => setDrawer(false)} /></Show>
+      <div class="main-col">
+        <ConnectionBanner />
+        <SessionView onToggleSidebar={toggleSidebar} />
+      </div>
+      <Show when={state.dialog === "providers"}><ProvidersDialog /></Show>
+      <Show when={state.dialog === "plugins"}><PluginsDialog /></Show>
+      <Show when={state.dialog === "add-project"}><AddProjectDialog /></Show>
+      <InteractionModal />
+      <Toasts />
+      <TooltipLayer />
+    </div>
+  );
+}

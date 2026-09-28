@@ -1,0 +1,53 @@
+import { branchOf } from "@basis/contracts";
+import type { SessionEvent, SessionInfo } from "@basis/contracts";
+
+export interface SessionGroup {
+  readonly cwd: string;
+  /** Newest first. */
+  readonly sessions: readonly SessionInfo[];
+  readonly updatedAt: number;
+}
+
+/** Sessions grouped by working directory; groups and sessions newest first. */
+export const groupSessions = (sessions: readonly SessionInfo[]): SessionGroup[] => {
+  const byCwd = new Map<string, SessionInfo[]>();
+  for (const session of sessions) {
+    const group = byCwd.get(session.cwd);
+    if (group === undefined) byCwd.set(session.cwd, [session]);
+    else group.push(session);
+  }
+  return [...byCwd.entries()]
+    .map(([cwd, list]) => {
+      const sorted = list.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+      return { cwd, sessions: sorted, updatedAt: sorted[0]!.updatedAt };
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+};
+
+/** Replaces or inserts `info` by id. */
+export const upsertSession = (sessions: readonly SessionInfo[], info: SessionInfo): SessionInfo[] => {
+  const index = sessions.findIndex((session) => session.id === info.id);
+  if (index === -1) return [info, ...sessions];
+  const current = sessions[index]!;
+  // Notifications can arrive out of order; never step back.
+  if (current.lastSeq > info.lastSeq || current.updatedAt > info.updatedAt) return sessions.slice();
+  const next = sessions.slice();
+  next[index] = info;
+  return next;
+};
+
+/**
+ * The leaf to render. `SessionInfo.leaf` can lag the log while a turn appends
+ * (the `session-changed` travels separately), so events newer than the info's
+ * `lastSeq` that descend from its leaf win. Otherwise the reported leaf is
+ * authoritative, including a checkout of an earlier event on the same branch.
+ */
+export const resolveLeaf = (events: readonly SessionEvent[], leaf: string | undefined, lastSeq = 0): string | undefined => {
+  const newest = events.at(-1);
+  if (newest === undefined) return undefined;
+  if (leaf === undefined || !events.some((event) => event.id === leaf)) return newest.id;
+  if (leaf === newest.id || newest.seq <= lastSeq) return leaf;
+  return branchOf(events, newest.id).some((event) => event.id === leaf) ? newest.id : leaf;
+};
+
+export const sessionTitle = (session: SessionInfo | undefined): string => session?.title?.trim() || "New session";
