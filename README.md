@@ -19,6 +19,34 @@ capability contracts can expose ordinary values, functions, and promises.
 | [`packages/core/bench`](packages/core/bench/core.ts) | Framework microbenchmarks |
 | [`docs/kernel.md`](docs/kernel.md) | Design rationale and limits |
 
+## Harness
+
+The rest of the workspace is a coding-agent harness built on Basis: every part
+of it, including the agent loop, is a plugin that can be replaced by id.
+
+| Path | Responsibility |
+| --- | --- |
+| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
+| [`plugins/*`](plugins) | The default plugins, one README each |
+| [`apps/host`](apps/host/src/main.ts) | Reads config, loads plugins, hot-reloads on config change |
+| [`apps/web`](apps/web) | The web client, served by the `transport` plugin |
+
+```sh
+nix develop -c pnpm start          # build the web app, start the host, print its URL
+```
+
+With no config, every bundled plugin runs. `~/.basis/config.jsonc` and
+`<project>/.basis/config.jsonc` patch that by plugin id (`enabled: false`, or a
+replacement `config`). Plugin files in `~/.basis/plugins/` or
+`<project>/.basis/plugins/` load automatically and shadow a bundled plugin with
+the same id. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the
+key icon in the web app, or set a provider's API key environment variable.
+
+The session log is the source of truth: every model request can be rebuilt from
+it (`rebuildRequest` in the contracts) and records which plugins contributed
+each part. `scripts/fixtures/mock-openai.ts` is a scripted provider for
+end-to-end runs without an API key.
+
 ## Develop
 
 Use the Nix shell on Linux or Apple silicon macOS. Both development shells supply
