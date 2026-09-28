@@ -1,0 +1,209 @@
+import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import type * as Pi from "@earendil-works/pi-ai";
+import type { AssistantMessage, LlmRequest, ModelInfo, StreamEvent, ThinkingLevel, ToolCall } from "@basis/contracts";
+
+// Pure mappings between pi-ai values and the contract shapes. Contract messages
+// are pi-ai-shaped, so requests pass through; results are rebuilt field by field
+// so pi-only fields (diagnostics, responseModel, rawStopReason, ...) never reach
+// the session log.
+
+const contractLevels: ReadonlySet<string> = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
+export const modelRef = (model: Pi.Model<Pi.Api>): string => `${model.provider}/${model.id}`;
+
+export function toModelInfo(model: Pi.Model<Pi.Api>): ModelInfo {
+  return {
+    ref: modelRef(model),
+    provider: model.provider,
+    id: model.id,
+    name: model.name,
+    api: model.api,
+    reasoning: model.reasoning,
+    thinkingLevels: getSupportedThinkingLevels(model).filter((level): level is ThinkingLevel => contractLevels.has(level)),
+    input: [...model.input],
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    cost: { input: model.cost.input, output: model.cost.output, cacheRead: model.cost.cacheRead, cacheWrite: model.cost.cacheWrite },
+  };
+}
+
+export function toContext(request: LlmRequest): Pi.Context {
+  return {
+    ...(request.system === undefined ? {} : { systemPrompt: request.system }),
+    // Structurally pi-ai messages; pi-ai does not mutate its input.
+    messages: request.messages as unknown as Pi.Message[],
+    ...(request.tools === undefined ? {} : {
+      tools: request.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters as unknown as Pi.TSchema,
+      })),
+    }),
+  };
+}
+
+/** The pi reasoning level for a request: clamped to what the model supports, absent for "off". */
+export function reasoningFor(model: Pi.Model<Pi.Api>, thinking: ThinkingLevel | undefined): Pi.ThinkingLevel | undefined {
+  if (thinking === undefined || thinking === "off" || !model.reasoning) return undefined;
+  const level = clampThinkingLevel(model, thinking);
+  return level === "off" ? undefined : level;
+}
+
+export function toToolCall(call: Pi.ToolCall): ToolCall {
+  return {
+    type: "toolCall",
+    id: call.id,
+    name: call.name,
+    arguments: call.arguments,
+    ...(call.thoughtSignature === undefined ? {} : { thoughtSignature: call.thoughtSignature }),
+    ...(call.namespace === undefined ? {} : { namespace: call.namespace }),
+  };
+}
+
+function toContent(block: Pi.AssistantMessage["content"][number]): AssistantMessage["content"][number] {
+  switch (block.type) {
+    case "text":
+      return { type: "text", text: block.text, ...(block.textSignature === undefined ? {} : { textSignature: block.textSignature }) };
+    case "thinking":
+      return {
+        type: "thinking",
+        thinking: block.thinking,
+        ...(block.thinkingSignature === undefined ? {} : { thinkingSignature: block.thinkingSignature }),
+        ...(block.redacted === undefined ? {} : { redacted: block.redacted }),
+      };
+    case "toolCall":
+      return toToolCall(block);
+  }
+}
+
+/**
+ * Terminal message in contract shape. `pending` (no final reason) and
+ * `deferred` (a handle this plugin never requests) become `error`, so the
+ * message can still be logged and replayed.
+ */
+export function toAssistantMessage(message: Pi.AssistantMessage, errorMessage?: string): AssistantMessage {
+  const { usage } = message;
+  let stopReason: AssistantMessage["stopReason"];
+  let error = errorMessage ?? message.errorMessage;
+  switch (message.stopReason) {
+    case "pending":
+      stopReason = "error";
+      error ??= "The provider ended the response without a stop reason";
+      break;
+    case "deferred":
+      stopReason = "error";
+      error ??= "The provider deferred the response, which is not supported";
+      break;
+    default:
+      stopReason = message.stopReason;
+  }
+  return {
+    role: "assistant",
+    content: message.content.map(toContent),
+    api: message.api,
+    provider: message.provider,
+    model: message.model,
+    ...(message.responseId === undefined ? {} : { responseId: message.responseId }),
+    usage: {
+      input: usage.input,
+      output: usage.output,
+      cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite,
+      ...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
+      totalTokens: usage.totalTokens,
+      cost: { ...usage.cost },
+    },
+    stopReason,
+    ...(error === undefined ? {} : { errorMessage: error }),
+    timestamp: message.timestamp,
+  };
+}
+
+/** Rewrites pi's terse auth failures into something a user can act on. */
+export function explainError(message: string | undefined, provider: { readonly id: string; readonly name: string }): string | undefined {
+  if (message === undefined) return undefined;
+  const login = `Run /login ${provider.id}`;
+  if (message.startsWith("Provider is not configured:") || message.startsWith("No API key for provider:")) {
+    return `${provider.name} is not authenticated. ${login} or set its API key environment variable.`;
+  }
+  if (message.startsWith("OAuth refresh failed") || message.startsWith("OAuth refresh returned")) {
+    return `${message}. ${login} to sign in again.`;
+  }
+  return message;
+}
+
+const emptyMessage = (model: Pi.Model<Pi.Api>): Pi.AssistantMessage => ({
+  role: "assistant",
+  content: [],
+  api: model.api,
+  provider: model.provider,
+  model: model.id,
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  stopReason: "error",
+  timestamp: Date.now(),
+});
+
+/**
+ * Stateful translation of one pi-ai event stream into contract events. It
+ * guarantees the `StreamEvent` protocol even when pi does not: a `start`
+ * precedes everything (pi may fail setup without one), exactly one terminal
+ * is emitted, and events after it are ignored.
+ */
+export function makeEventMapper(model: Pi.Model<Pi.Api>, provider: { readonly id: string; readonly name: string }) {
+  let started = false;
+  let finished = false;
+  let latest: Pi.AssistantMessage | undefined;
+
+  const begin = (): StreamEvent[] => {
+    if (started) return [];
+    started = true;
+    return [{ type: "start" }];
+  };
+  const terminal = (message: Pi.AssistantMessage, fallback?: string): StreamEvent[] => {
+    finished = true;
+    const mapped = toAssistantMessage(message, explainError(message.errorMessage ?? fallback, provider));
+    const type = mapped.stopReason === "error" || mapped.stopReason === "aborted" ? "error" : "done";
+    return [...begin(), { type, message: mapped }];
+  };
+
+  return {
+    get finished() {
+      return finished;
+    },
+    push(event: Pi.AssistantMessageEvent): StreamEvent[] {
+      if (finished) return [];
+      if ("partial" in event) latest = event.partial;
+      switch (event.type) {
+        case "start":
+          return begin();
+        case "text_delta":
+          return [...begin(), { type: "text-delta", index: event.contentIndex, delta: event.delta }];
+        case "thinking_delta":
+          return [...begin(), { type: "thinking-delta", index: event.contentIndex, delta: event.delta }];
+        case "toolcall_start": {
+          const block = event.partial.content[event.contentIndex];
+          const call = block?.type === "toolCall" ? block : undefined;
+          return [...begin(), { type: "toolcall-start", index: event.contentIndex, id: call?.id ?? "", name: call?.name ?? "" }];
+        }
+        case "toolcall_delta":
+          return [...begin(), { type: "toolcall-delta", index: event.contentIndex, delta: event.delta }];
+        case "toolcall_end":
+          return [...begin(), { type: "toolcall-end", index: event.contentIndex, toolCall: toToolCall(event.toolCall) }];
+        case "done":
+          return terminal(event.message);
+        case "error":
+          return terminal(event.error, event.reason === "aborted" ? "Request was aborted" : "Request failed");
+        default:
+          return [];
+      }
+    },
+    /** Call when pi's stream ends or throws; closes a stream that ended without a terminal. */
+    end(cause?: unknown): StreamEvent[] {
+      if (finished) return [];
+      const reason = cause === undefined
+        ? "The provider stream ended without a result"
+        : cause instanceof Error ? cause.message : String(cause);
+      return terminal({ ...(latest ?? emptyMessage(model)), stopReason: "error", errorMessage: reason });
+    },
+  };
+}
