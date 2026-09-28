@@ -29,7 +29,7 @@
             packages = [
               pkgs.git
               pkgs.nodejs_24
-              pkgs.pnpm
+              pkgs.pnpm_12
               pkgs.nixd
               pkgs.nixpkgs-fmt
             ];
