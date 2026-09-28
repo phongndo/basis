@@ -1,0 +1,108 @@
+import { timingSafeEqual } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { Socket } from "node:net";
+import { join, relative, resolve, sep } from "node:path";
+import { Effect, Layer } from "effect";
+import type { Scope } from "effect";
+import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
+import type { HttpApp, HttpServer, HttpServerError } from "@effect/platform";
+import { NodeHttpServer } from "@effect/platform-node";
+import { RpcSerialization, RpcServer } from "@effect/rpc";
+import type { Rpc, RpcGroup } from "@effect/rpc";
+import { HostRpcs } from "@basis/contracts";
+
+export type HostHandlers = Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<typeof HostRpcs>>>;
+
+export interface ServerOptions {
+  readonly host: string;
+  readonly port: number;
+  readonly token: string;
+  readonly version: string;
+  readonly staticDir?: string | undefined;
+}
+
+const equalTokens = (a: string, b: string): boolean => {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
+
+/** Bearer header for HTTP; `?token=` for WebSocket, whose browser API cannot set headers. */
+const presented = (request: HttpServerRequest.HttpServerRequest, url: URL): string | undefined => {
+  const header = request.headers["authorization"];
+  if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length);
+  return url.searchParams.get("token") ?? undefined;
+};
+
+const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+
+/**
+ * A built web app: existing files are served as is; other extensionless GET
+ * paths fall back to `index.html` for client-side routing. Paths cannot
+ * escape `root`.
+ */
+const serveStatic = (root: string, pathname: string) => Effect.gen(function* () {
+  const notFound = HttpServerResponse.text("Not found", { status: 404 });
+  const decoded = yield* Effect.try(() => decodeURIComponent(pathname)).pipe(Effect.orElseSucceed(() => undefined));
+  if (decoded === undefined || decoded.includes("\0")) return notFound;
+  const target = resolve(root, `.${decoded}`);
+  const inside = relative(root, target);
+  if (inside.startsWith("..") || inside.startsWith(sep)) return notFound;
+  const isFile = (path: string) => Effect.promise(() => stat(path).then((info) => info.isFile(), () => false));
+  if (yield* isFile(target)) return yield* HttpServerResponse.file(target);
+  const last = decoded.slice(decoded.lastIndexOf("/") + 1);
+  const index = join(root, "index.html");
+  if (last.includes(".") || !(yield* isFile(index))) return notFound;
+  return yield* HttpServerResponse.file(index, { headers: { "cache-control": "no-cache" } });
+}).pipe(Effect.catchAll(() => Effect.succeed(HttpServerResponse.text("Cannot read file", { status: 500 }))));
+
+/**
+ * Binds the address and serves until the scope closes. `/rpc` (WebSocket,
+ * JSON) and `/rpc/http` (streaming HTTP, NDJSON) share one handler set;
+ * `/rpc*` and `/api*` require the token, static assets do not.
+ */
+export const startServer = (options: ServerOptions, handlers: HostHandlers): Effect.Effect<HttpServer.TcpAddress, HttpServerError.ServeError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const handlerContext = yield* Layer.build(handlers);
+    const websocket = yield* RpcServer.toHttpAppWebsocket(HostRpcs).pipe(Effect.provide(RpcSerialization.layerJson), Effect.provide(handlerContext));
+    const http = yield* RpcServer.toHttpApp(HostRpcs).pipe(Effect.provide(RpcSerialization.layerNdjson), Effect.provide(handlerContext));
+    const platform = yield* Layer.build(NodeHttpServer.layerContext);
+    const root = options.staticDir === undefined ? undefined : resolve(options.staticDir);
+
+    const app: HttpApp.Default<never, Scope.Scope> = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const url = new URL(request.url, "http://localhost");
+      const path = url.pathname;
+      if (under(path, "/rpc") || under(path, "/api")) {
+        const token = presented(request, url);
+        if (token === undefined || !equalTokens(token, options.token)) {
+          return HttpServerResponse.unsafeJson({ error: "Unauthorized" }, { status: 401 });
+        }
+        if (path === "/rpc") return yield* websocket;
+        if (path === "/rpc/http" && request.method === "POST") return yield* http;
+        if (path === "/api/health") return HttpServerResponse.unsafeJson({ ok: true, version: options.version });
+        return HttpServerResponse.unsafeJson({ error: "Not found" }, { status: 404 });
+      }
+      if (request.method !== "GET" && request.method !== "HEAD") return HttpServerResponse.empty({ status: 405 });
+      if (root === undefined) return HttpServerResponse.text("No web app is configured (transport config `staticDir`)", { status: 404 });
+      return yield* serveStatic(root, path).pipe(Effect.provide(platform));
+    });
+
+    // Upgraded WebSockets are not closed by `server.close`, so shutdown destroys every socket itself.
+    const sockets = new Set<Socket>();
+    const node = createServer();
+    node.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    const server = yield* NodeHttpServer.make(() => node, { host: options.host, port: options.port });
+    yield* Effect.addFinalizer(() => Effect.sync(() => {
+      node.close();
+      for (const socket of sockets) socket.destroy();
+    }));
+    yield* server.serve(app);
+    const address = server.address;
+    if (address._tag !== "TcpAddress") return yield* Effect.dieMessage("Expected a TCP listener");
+    return address;
+  });

@@ -1,0 +1,72 @@
+import { Effect } from "effect";
+import type { Context } from "effect";
+import { HostRpcs } from "@basis/contracts";
+import type { Agent, HostControl, Llm, Paths, Sessions, Workspace } from "@basis/contracts";
+import { toHostError, toPluginStatus } from "./errors.ts";
+import type { Hub } from "./hub.ts";
+import type { Interactions } from "./interactions.ts";
+import type { makeLogins } from "./logins.ts";
+
+export interface HandlerServices {
+  readonly version: string;
+  readonly hub: Hub;
+  readonly interactions: Interactions;
+  readonly paths: Context.Tag.Service<Paths>;
+  readonly sessions: Context.Tag.Service<Sessions>;
+  readonly agent: Context.Tag.Service<Agent>;
+  readonly llm: Context.Tag.Service<Llm>;
+  readonly control: Context.Tag.Service<HostControl>;
+  readonly workspace: Context.Tag.Service<Workspace>;
+  /** Runs `Llm.login` in the plugin's scope; see `makeLogins`. */
+  readonly login: ReturnType<typeof makeLogins>;
+}
+
+const cwdOption = (cwd: string | undefined) => (cwd === undefined ? undefined : { cwd });
+
+/** Every RPC maps to one capability call; only the error boundary is transport-specific. */
+export const makeHandlers = ({ version, hub, interactions, paths, sessions, agent, llm, control, workspace, login }: HandlerServices) =>
+  HostRpcs.of({
+    "Session.List": ({ cwd }) => sessions.list(cwdOption(cwd)).pipe(Effect.mapError(toHostError)),
+    "Session.Get": ({ sessionId }) => sessions.get(sessionId).pipe(Effect.mapError(toHostError)),
+    "Session.Create": ({ cwd }) => sessions.create({ cwd: cwd ?? paths.cwd }).pipe(Effect.mapError(toHostError)),
+    "Session.Events": ({ sessionId, after }) =>
+      sessions.events(sessionId, after === undefined ? undefined : { after }).pipe(Effect.mapError(toHostError)),
+    "Session.Checkout": ({ sessionId, eventId }) => sessions.checkout(sessionId, eventId).pipe(Effect.mapError(toHostError)),
+    "Session.SetTitle": ({ sessionId, title }) =>
+      sessions.append(sessionId, { type: "title", title }).pipe(
+        Effect.zipRight(sessions.get(sessionId)),
+        Effect.mapError(toHostError),
+      ),
+
+    // The agent owns the turn's lifetime; this call only waits for it.
+    "Agent.Prompt": ({ sessionId, content, options }) => agent.prompt(sessionId, content, options).pipe(Effect.mapError(toHostError)),
+    "Agent.Cancel": ({ sessionId }) => agent.cancel(sessionId),
+    "Agent.Running": () => agent.running,
+
+    "Llm.Providers": () => llm.providers,
+    "Llm.Models": ({ available }) => llm.models(available === undefined ? undefined : { available }),
+    // Like a turn, the login outlives this call: a dropped client can return and answer its questions.
+    "Llm.Login": ({ provider, type }) => login(provider, type).pipe(Effect.mapError(toHostError)),
+    "Llm.Logout": ({ provider }) => llm.logout(provider).pipe(Effect.mapError(toHostError)),
+
+    "Interaction.Answer": ({ id, answer }) => interactions.answer(id, answer),
+    "Interaction.Dismiss": ({ id }) => interactions.dismiss(id),
+
+    "Workspace.Status": ({ path }) => workspace.status(path),
+    "Workspace.Browse": ({ partialPath }) => workspace.browse(partialPath),
+    "Workspace.CreateDirectory": ({ path }) => workspace.createDirectory(path).pipe(Effect.mapError(toHostError)),
+    "Workspace.CreateWorktree": ({ path, branch, base }) =>
+      workspace.createWorktree(path, base === undefined ? { branch } : { branch, base }).pipe(Effect.mapError(toHostError)),
+    "Workspace.Branches": ({ path }) => workspace.branches(path).pipe(Effect.mapError(toHostError)),
+    "Workspace.Checkout": ({ path, branch, create }) =>
+      workspace.checkout(path, branch, create === undefined ? undefined : { create }).pipe(Effect.mapError(toHostError)),
+
+    "Host.Info": () => Effect.map(control.composition, (composition) => ({ version, cwd: paths.cwd, home: paths.home, composition })),
+    "Host.Events": () => hub.events,
+    "Host.Plugins": () => Effect.map(control.plugins, (plugins) => plugins.map(toPluginStatus)),
+    "Host.RestartPlugin": ({ pluginId }) => control.restart(pluginId).pipe(Effect.mapError(toHostError)),
+    "Host.Reload": () => control.reload.pipe(
+      Effect.map((report) => ({ started: report.started, restarted: report.restarted, stopped: report.stopped })),
+      Effect.mapError(toHostError),
+    ),
+  });
