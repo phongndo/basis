@@ -1,23 +1,26 @@
 {
   "name": "basis",
   "private": true,
-  "workspaces": ["packages/core"],
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "build": "bun run --cwd packages/core build",
-    "check": "bun run build && bun run core:check",
-    "test": "bun run core:test",
-    "example": "bun run build && bun run packages/core/examples/hello.ts",
-    "package:check": "bun run scripts/check-package.ts",
-    "browser:check": "bun run scripts/check-package.ts --browser",
-    "core:check": "bun run --cwd packages/core check",
-    "core:test": "bun run --cwd packages/core test",
-    "core:bench": "bun run --cwd packages/core bench",
-    "core:bench:node": "node --experimental-strip-types packages/core/bench/core.ts",
-    "core:stress": "bun run packages/core/bench/workload.ts",
-    "core:stress:node": "node --expose-gc --experimental-strip-types packages/core/bench/workload.ts",
-    "perf:check": "bun run build && bun run core:bench && bun run core:stress"
+    "build": "pnpm --filter @basis/core build",
+    "check": "pnpm build && pnpm core:check",
+    "test": "pnpm core:test",
+    "example": "pnpm build && node packages/core/examples/hello.ts",
+    "package:check": "node scripts/check-package.ts",
+    "browser:check": "node scripts/check-package.ts --browser",
+    "core:check": "pnpm --filter @basis/core check",
+    "core:test": "pnpm --filter @basis/core test",
+    "core:bench": "pnpm --filter @basis/core bench",
+    "core:stress": "node --expose-gc packages/core/bench/workload.ts",
+    "perf:check": "pnpm build && pnpm core:bench && pnpm core:stress"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "playwright": "1.63.0"
   }
 }

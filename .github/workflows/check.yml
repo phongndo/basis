@@ -17,10 +17,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
-      - run: nix develop -c bun install --frozen-lockfile
-      - run: nix develop -c bun run check
-      - run: nix develop -c bun run test
-      - run: nix develop .#browser -c bun run browser:check
+      - run: nix develop -c pnpm install --frozen-lockfile
+      - run: nix develop -c pnpm check
+      - run: nix develop -c pnpm test
+      - run: nix develop .#browser -c pnpm browser:check
 
   sustained:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -35,11 +35,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
-      - run: nix develop -c bun install --frozen-lockfile
-      - run: nix develop -c bun run test
-      - run: nix develop -c bun run perf:check
-      - run: nix develop -c bun run core:bench:node
-      - run: nix develop -c bun run core:stress:node
+      - run: nix develop -c pnpm install --frozen-lockfile
+      - run: nix develop -c pnpm test
+      - run: nix develop -c pnpm perf:check
       - uses: actions/upload-artifact@v4
         if: always()
         with:

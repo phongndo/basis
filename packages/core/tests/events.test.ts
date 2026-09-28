@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { Deferred, Duration, Effect, Exit, Fiber, Layer, Ref, Schedule, Scope, Stream } from "effect";
 import { definePlugin, Event, Events, makeCore, PluginContext } from "../src/index.ts";
 import { waitFor } from "./support.ts";

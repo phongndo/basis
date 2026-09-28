@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { Context, Deferred, Duration, Effect, Exit, Layer, Ref, Schedule, Scope, Stream } from "effect";
 import { CoreClosed, DeadlineExceeded, definePlugin, makeCore, PluginContext } from "../src/index.ts";
 import type { PluginFault } from "../src/index.ts";

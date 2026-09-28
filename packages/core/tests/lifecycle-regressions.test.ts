@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { Context, Deferred, Duration, Effect, Exit, Fiber, Layer, Schedule, Schema, Scope, Stream } from "effect";
 import { definePlugin, Event, Events, makeCore, makeLoader, PluginContext } from "../src/index.ts";
 import type { Loader } from "../src/index.ts";

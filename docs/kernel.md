@@ -41,8 +41,9 @@ stop its underlying operation. No automatic wrapper can make arbitrary work canc
 **Runtime choice.** The framework remains TypeScript so plugin values, callbacks,
 promises, and errors stay in the same runtime as its consumers. A native core would
 require a second lifetime and value model across an FFI without a demonstrated
-performance benefit. Bun is the development and test runner; the library emits ESM
-JavaScript with declarations and has no Bun-specific production dependencies.
+performance benefit. Node.js is the runtime for development, tests, and the harness
+(including Electron's embedded Node); the library emits ESM JavaScript with
+declarations and uses no runtime-specific APIs, so it also runs in browsers.
 Workload measurements should guide any future native acceleration.
 
 ## Lifecycle
@@ -112,8 +113,7 @@ rollback, and shutdown. Focused regressions cover lifecycle calls from owned wor
 cancellation, deadlines, event closure, and exclusive registrations.
 
 `package:check` installs a packed build in a temporary consumer, checks emitted
-types, and exercises provider replacement and an actual HTTP listener on Bun and
-Node.js. `browser:check` also drives a DOM consumer in Chromium, checking hooks,
+types, and exercises provider replacement and an actual HTTP listener on Node.js. `browser:check` also drives a DOM consumer in Chromium, checking hooks,
 events, replacement, failure isolation, and listener cleanup through package exports.
 
 `core:bench` measures framework costs; `core:stress` checks resource invariants and

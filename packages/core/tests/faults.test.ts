@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { definePlugin, makeCore, makeLoader, PluginContext } from "../src/index.ts";
 import type { ReportedFault } from "../src/index.ts";

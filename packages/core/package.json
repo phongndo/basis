@@ -11,20 +11,24 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "examples", "README.md"],
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "bun run build",
+    "prepack": "pnpm build",
     "check": "tsc --noEmit",
-    "test": "bun test ./tests",
-    "bench": "bun run ./bench/core.ts"
+    "test": "vitest run",
+    "bench": "node bench/core.ts"
   },
   "dependencies": {
     "effect": "3.22.2"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
-    "@types/node": "26.6.2",
-    "typescript": "5.9.3"
+    "@types/node": "24.19.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
   }
 }

@@ -7,9 +7,8 @@ import { finish, record } from "./budgets.ts";
 const cycles = Number(process.env.BASIS_STRESS_CYCLES ?? 200);
 if (!Number.isInteger(cycles) || cycles < 20) throw new Error("BASIS_STRESS_CYCLES must be an integer >= 20");
 const gc = () => {
-  if (typeof Bun !== "undefined") Bun.gc(true);
-  else if (globalThis.gc) globalThis.gc();
-  else throw new Error("Run Node with --expose-gc");
+  if (!globalThis.gc) throw new Error("Run Node with --expose-gc");
+  globalThis.gc();
 };
 class Value extends Context.Tag("stress/Value")<Value, number>() {}
 const Point = Hook.make<number, number>("stress/operation");

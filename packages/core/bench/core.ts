@@ -44,7 +44,7 @@ async function measure<E>(name: string, count: number, effect: Effect.Effect<voi
   console.log(`${name.padEnd(33)} ${values[Math.floor(samples / 2)]!.toFixed(3).padStart(9)} µs/op  [${values[0]!.toFixed(3)}, ${values.at(-1)!.toFixed(3)}]`);
 }
 
-console.log(`${process.versions.bun ? `Bun ${process.versions.bun}` : `Node ${process.version}`} · ${process.platform}/${process.arch} · ${cpus()[0]?.model}`);
+console.log(`Node ${process.version} · ${process.platform}/${process.arch} · ${cpus()[0]?.model}`);
 console.log(`Median batch means, ${samples} samples; brackets show min/max. No external trace exporter.\n`);
 await measure("Effect direct", iterations, repeat(terminal(1), iterations));
 let sink = 0;

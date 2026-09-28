@@ -13,7 +13,7 @@ const run = (command: string, args: string[], cwd = consumer) =>
 
 try {
   // Pack invokes prepack, building exactly what a separate application receives.
-  run(process.execPath, ["pm", "pack", "--filename", join(consumer, "basis-core.tgz"), "--quiet"], core);
+  run("pnpm", ["pack", "--out", join(consumer, "basis-core.tgz")], core);
   cpSync(join(root, "scripts/fixtures/consumer"), consumer, { recursive: true });
   cpSync(join(core, "bench/budgets.ts"), join(consumer, "budgets.ts"));
   writeFileSync(join(consumer, "package.json"), JSON.stringify({
@@ -30,17 +30,15 @@ try {
     },
   }, null, 2));
   // This directory has no workspace links or source aliases.
-  run(process.execPath, ["install", "--ignore-scripts"]);
+  run("pnpm", ["install", "--ignore-workspace", "--ignore-scripts"]);
   run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconfig.json"]);
   run(process.execPath, ["dist/main.js"]);
-  run("node", ["dist/main.js"]);
   run(process.execPath, ["dist/server.js"]);
-  run("node", ["dist/server.js"]);
   if (process.argv.includes("--browser")) {
     const { checkBrowser } = await import("./check-browser.ts");
     await checkBrowser(consumer);
   }
-  console.log("Packed library: declarations, Bun, Node.js, and HTTP consumer checks passed.");
+  console.log("Packed library: declarations, Node.js, and HTTP consumer checks passed.");
 } finally {
   rmSync(consumer, { recursive: true, force: true });
 }

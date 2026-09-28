@@ -7,8 +7,8 @@ and plugin authors define their own contracts and behavior. In the source reposi
 
 Only `effect` is a runtime dependency. Plugins are trusted, in-process modules;
 there is no security sandbox. The package exports ESM JavaScript and TypeScript
-declarations. Bun supplies development tooling; the runtime uses no Bun-specific
-APIs. `package:check` verifies a packed consumer on Bun and Node.js.
+declarations and targets Node.js 24 and browsers. `package:check` verifies a packed
+consumer on Node.js.
 
 
 ## Use
@@ -34,14 +34,14 @@ await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
 See [`examples/hello.ts`](examples/hello.ts) for a capability implementation extended by a separate plugin through its own hook. From the repository root:
 
 ```sh
-nix develop -c bun install --frozen-lockfile
-nix develop -c bun run example
-nix develop -c bun run core:check
-nix develop -c bun run core:test
-nix develop -c bun run core:bench
+nix develop -c pnpm install --frozen-lockfile
+nix develop -c pnpm example
+nix develop -c pnpm core:check
+nix develop -c pnpm core:test
+nix develop -c pnpm core:bench
 ```
 
-The package is private during development. `bun pm pack` in `packages/core` builds
+The package is private during development. `pnpm pack` in `packages/core` builds
 and packs it for local installation into another application.
 
 ## Plugin contract
