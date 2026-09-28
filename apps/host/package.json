@@ -1,0 +1,35 @@
+{
+  "name": "@basis/host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "basis": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "node --conditions=source src/main.ts",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@basis/contracts": "workspace:*",
+    "@basis/core": "workspace:*",
+    "@basis/plugin-agent": "workspace:*",
+    "@basis/plugin-credentials": "workspace:*",
+    "@basis/plugin-host": "workspace:*",
+    "@basis/plugin-interaction": "workspace:*",
+    "@basis/plugin-llm-pi-ai": "workspace:*",
+    "@basis/plugin-project-context": "workspace:*",
+    "@basis/plugin-sessions": "workspace:*",
+    "@basis/plugin-tools": "workspace:*",
+    "@basis/plugin-tools-builtin": "workspace:*",
+    "@basis/plugin-transport": "workspace:*",
+    "@basis/plugin-workspace": "workspace:*",
+    "effect": "3.22.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}
