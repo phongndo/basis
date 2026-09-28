@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "pnpm --filter @basis/core build",
-    "check": "pnpm build && pnpm core:check",
-    "test": "pnpm core:test",
+    "check": "pnpm build && node scripts/check-boundaries.ts && pnpm -r --workspace-concurrency=4 check",
+    "test": "pnpm -r --workspace-concurrency=4 test",
     "example": "pnpm build && node packages/core/examples/hello.ts",
     "package:check": "node scripts/check-package.ts",
     "browser:check": "node scripts/check-package.ts --browser",
