@@ -1,8 +1,9 @@
 export { makeCore } from "./core.ts";
 export type { Core, CoreOptions, CoreSnapshot, PluginSnapshot, PluginState } from "./core.ts";
+export type { ReportedFault } from "./errors.ts";
 export {
   CapabilityMismatch, CompositionError, CoreClosed, DeadlineExceeded, Diagnostic, EventError, FaultPhase, HookError,
-  PluginFault, ReloadError,
+  PluginFault, ReloadError, ShutdownTimeout,
 } from "./errors.ts";
 export { Event, Events } from "./events.ts";
 export type { Observer, ObserveOptions } from "./events.ts";

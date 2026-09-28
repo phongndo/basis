@@ -30,7 +30,7 @@ describe("composition", () => {
     await run(Effect.gen(function* () {
       core = yield* makeCore([]);
       expect(yield* core.run(Effect.succeed(42))).toBe(42);
-      expect(yield* core.inspect).toEqual({ state: "active", plugins: [], hooks: [], events: [] });
+      expect(yield* core.inspect).toEqual({ state: "active", faultSequence: 0, plugins: [], hooks: [], events: [] });
     }));
     expect((await Effect.runPromise(core.inspect)).state).toBe("closed");
     expect(failure(await Effect.runPromiseExit(core.run(Effect.void)))).toBeInstanceOf(CoreClosed);

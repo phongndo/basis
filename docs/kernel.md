@@ -14,8 +14,8 @@ holds the rationale and constraints.
 3. **Two extension primitives, with explicit failure rules.** *Hooks* (interceptors) wrap an operation and fail closed. *Events* notify and are isolated. See below.
 4. **Failure domains.** A required background task failing stops its plugin and dependents while unrelated plugins keep running. Optional tasks and observers report faults without failing their plugin. There is no automatic restart unless the plugin declares a `restart` schedule, and that schedule persists across failures so a broken plugin can exhaust it. An explicit restart retries the named plugin and its halted dependents.
 5. **Staged change.** Replacements activate before the old composition is swapped out. A staging failure preserves the old instances, except for exclusive resources, which require a documented interruption gap.
-6. **Bounded waiting.** Activation and disposal have cooperative deadlines; observer queues are bounded and notifications may be lost. A lifecycle deadline is a fault, never a clean stop.
-7. **Errors are data.** Effect's failure, defect, and interruption stay distinct. Framework-observed lifecycle, hook, observer, and background-work faults carry plugin attribution. Ordinary capability functions are not automatically intercepted. Planning diagnostics are serializable and offer suggestions.
+6. **Bounded waiting.** Activation, disposal, and the shutdown caller have cooperative deadlines. Event and diagnostic backlogs are bounded; stream delivery can lose entries. A lifecycle deadline is a fault, never a clean stop.
+7. **Errors are data.** Effect's failure, defect, and interruption stay distinct. Lifecycle, observer, and background-work faults carry plugin attribution; hooks retain their error channel and tracing attribution. Ordinary capability functions are not automatically intercepted. Planning diagnostics are serializable and offer suggestions.
 8. **Application-owned policy.** Plugins are trusted code with the process's permissions. Applications may implement policy through their own contracts and hooks. The kernel supplies no domain-specific approval service.
 
 ## Primitives
@@ -54,6 +54,13 @@ pending → activating → active → draining → closed
 
 Plugins activate in dependency order and dispose in reverse. `draining` admits no new work while in-flight work finishes. Closing the owning scope interrupts initialization and in-flight `core.run` work, then disposes plugins. Cancellation is cooperative: a stuck asynchronous finalizer can be reported as a deadline fault, but a synchronous loop blocking the event loop also prevents the deadline timer from running. In-process code cannot be forcibly killed by this library.
 
+Shutdown separates the caller's bounded wait from actual resource cleanup. After
+a timeout the core remains `closing`; cleanup continues in dependency order and
+retains resources that unfinished work may still use. It becomes `closed` only
+after cleanup finishes. The [lifetime contract](../packages/core/README.md#lifetime-and-failure-semantics)
+defines deadlines and observable failures. A stuck task has a core-level timeout,
+without inventing a plugin owner.
+
 ## Reload
 
 `Loader.apply(next)`:
@@ -76,7 +83,7 @@ interrupted. The owner scope still controls shutdown.
 
 - `PluginFault { pluginId, phase, operation?, deadline?, cause }` carries a framework-observed failure and its original Effect cause. Phases: `config`, `activate`, `service`, `intercept`, `observe`, `background`, `dispose`.
 - `Diagnostic { severity, pluginId?, path?, message, suggestion? }` is a Schema class for structured composition diagnostics. Config problems carry the path into the config.
-- `Core.faults` streams every fault in order; `Core.inspect` retains the latest fault per plugin.
+- `Core.faults` provides bounded, ordered live delivery with sequence gaps revealing loss; `Core.inspect` retains the latest fault of each current instance. See the [supervision contract](../packages/core/README.md#supervision) for capacity and ownership semantics.
 - `CapabilityMismatch` and `DeadlineExceeded` appear as the cause inside a `PluginFault`, never on their own.
 - Effect's timeout races cannot fire inside an uninterruptible region, and lifecycle bookkeeping is uninterruptible by design. Deadlines therefore wait on a daemon fiber plus a timer rather than `Effect.timeout`; on expiry, cleanup keeps running in the background and is reported, while a drain is abandoned and its stale work interrupted.
 
@@ -104,8 +111,14 @@ toggles. It checks resource ownership, registration lifetimes, dependency state,
 rollback, and shutdown. Focused regressions cover lifecycle calls from owned work,
 cancellation, deadlines, event closure, and exclusive registrations.
 
-`package:check` installs a packed build in a temporary consumer, checks its emitted
-types, and exercises provider replacement and cleanup on Bun and Node.js.
-`core:bench` measures framework costs. Application throughput, reload latency, cold
-start, and memory budgets require representative workloads; these checks do not
-establish superiority over another framework.
+`package:check` installs a packed build in a temporary consumer, checks emitted
+types, and exercises provider replacement and an actual HTTP listener on Bun and
+Node.js. `browser:check` also drives a DOM consumer in Chromium, checking hooks,
+events, replacement, failure isolation, and listener cleanup through package exports.
+
+`core:bench` measures framework costs; `core:stress` checks resource invariants and
+measures startup, operation latency, and memory during lifecycle churn. The
+[budget definitions](../packages/core/bench/budgets.ts) own the numerical limits
+and reference environment. These synthetic workloads do not establish superiority
+over another framework or production stability. CI checks deterministic contracts
+and retains advisory performance results on scheduled/manual runs.

@@ -1,11 +1,11 @@
 import { Effect, Either } from "effect";
 import type { Scope } from "effect";
-import type { Core } from "./core.ts";
+import type { Core, CoreOptions } from "./core.ts";
 import { Diagnostic, ReloadError } from "./errors.ts";
 import type { PluginFault } from "./errors.ts";
 import { makeRuntime, toReloadError } from "./internal/runtime.ts";
 import type { Member } from "./internal/runtime.ts";
-import type { Deadlines, Plugin } from "./plugin.ts";
+import type { Plugin } from "./plugin.ts";
 
 /** One row of a composition, keyed by plugin id. Config is validated by the plugin's schema. */
 export interface PluginEntry {
@@ -36,11 +36,9 @@ export interface ReloadReport {
   readonly faults: readonly PluginFault[];
 }
 
-export interface LoaderOptions {
+export interface LoaderOptions extends Pick<CoreOptions, "deadlines" | "shutdownTimeout"> {
   readonly source: PluginSource;
   readonly composition: Composition;
-  /** Applied to plugins that declare none. */
-  readonly deadlines?: Deadlines;
 }
 
 /**
@@ -63,7 +61,7 @@ export interface Loader {
 
 export function makeLoader(options: LoaderOptions): Effect.Effect<Loader, ReloadError, Scope.Scope> {
   return Effect.gen(function* () {
-    const runtime = yield* makeRuntime(options.deadlines === undefined ? {} : { deadlines: options.deadlines });
+    const runtime = yield* makeRuntime(options);
     let current = options.composition;
 
     const resolve = (composition: Composition): Effect.Effect<readonly Member[], ReloadError> =>

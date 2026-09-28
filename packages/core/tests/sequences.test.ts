@@ -206,6 +206,10 @@ describe("command sequences", () => {
         expect(String(defect)).toContain("cannot dispose");
       }))));
       expect(world.live.size).toBe(0);
-    }), { numRuns: Number(process.env.BASIS_SEQUENCE_RUNS ?? 60) });
+    }), {
+      numRuns: Number(process.env.BASIS_SEQUENCE_RUNS ?? 60),
+      ...(process.env.BASIS_SEQUENCE_SEED === undefined ? {} : { seed: Number(process.env.BASIS_SEQUENCE_SEED) }),
+      ...(process.env.BASIS_SEQUENCE_PATH === undefined ? {} : { path: process.env.BASIS_SEQUENCE_PATH }),
+    });
   }, 60_000);
 });

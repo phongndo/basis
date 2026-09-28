@@ -1,11 +1,12 @@
 import { Cause, Context, Data, Deferred, Duration, Effect, Either, Exit, Fiber, Layer, Option, PubSub, Schedule, Scope, Stream, Tracer } from "effect";
-import type { Core, CoreSnapshot, PluginSnapshot, PluginState } from "../core.ts";
-import { CapabilityMismatch, CompositionError, CoreClosed, DeadlineExceeded, Diagnostic, PluginFault, ReloadError } from "../errors.ts";
+import type { Core, CoreOptions, CoreSnapshot, PluginSnapshot, PluginState } from "../core.ts";
+import { CapabilityMismatch, CompositionError, CoreClosed, DeadlineExceeded, Diagnostic, PluginFault, ReloadError, ShutdownTimeout } from "../errors.ts";
+import type { ReportedFault } from "../errors.ts";
 import { Events } from "../events.ts";
 import { Hooks, PluginContext } from "../hooks.ts";
 import type { PluginIdentity } from "../hooks.ts";
 import type { ReloadReport } from "../loader.ts";
-import type { Deadlines, Plugin } from "../plugin.ts";
+import type { Plugin } from "../plugin.ts";
 import { EventBus } from "./events.ts";
 import type { ObserverHandle } from "./events.ts";
 import { plan } from "./graph.ts";
@@ -30,7 +31,7 @@ export interface Runtime {
   readonly members: Effect.Effect<readonly Member[]>;
   /** Transactional change to the running composition; see docs/kernel.md. */
   readonly apply: (members: readonly Member[], onApplied?: () => void) => Effect.Effect<ReloadReport, ApplyError>;
-  /** Close everything now rather than when the owning scope ends. */
+  /** Begin shutdown now and wait within the closing-caller deadline. */
   readonly shutdown: Effect.Effect<void>;
 }
 
@@ -73,18 +74,26 @@ class TrackedServices extends Map<string, unknown> {
   }
 }
 
-export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): Effect.Effect<Runtime, never, Scope.Scope> {
+export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTimeout"> = {}): Effect.Effect<Runtime, never, Scope.Scope> {
   return Effect.gen(function* () {
     const defaults = {
       activate: Duration.decode(options.deadlines?.activate ?? DEFAULTS.activate),
       dispose: Duration.decode(options.deadlines?.dispose ?? DEFAULTS.dispose),
     };
-    const faults = yield* PubSub.unbounded<PluginFault>();
-    const report = (fault: PluginFault): Effect.Effect<void> => PubSub.publish(faults, fault).pipe(Effect.asVoid);
+    const faults = yield* PubSub.sliding<ReportedFault>(256);
+    const shutdownLimit = Duration.decode(options.shutdownTimeout ?? defaults.dispose);
+    let shutdownFault: ShutdownTimeout | undefined;
+    const pendingDisposals = new Set<Deferred.Deferred<void>>();
+    let faultSequence = 0;
+    const report = (instance: Instance, fault: PluginFault): Effect.Effect<void> => Effect.suspend(() => {
+      const reported = Object.assign(fault, { sequence: ++faultSequence });
+      instance.fault = reported;
+      return PubSub.isShutdown(faults).pipe(Effect.flatMap((closed) => closed ? Effect.void : PubSub.publish(faults, reported).pipe(Effect.asVoid)));
+    });
     const registry = new HookRegistry();
-    const bus = new EventBus(report);
+    const bus = new EventBus();
     const base = Context.empty().pipe(Context.add(Hooks, registry), Context.add(Events, bus)) as Context.Context<never>;
-    /** Owns lifecycle fibers: apply bodies, restart loops, background watchers. Closed first on shutdown. */
+    /** Owns lifecycle fibers: apply bodies, restart loops, background watchers. */
     const supervisor = yield* Scope.make();
     /** Owns core.run fibers. */
     const work = yield* Scope.make();
@@ -134,13 +143,14 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
     const create = (plugin: Plugin, rawConfig: unknown): Effect.Effect<Instance> => Effect.gen(function* () {
       const scope = yield* Scope.make();
       const identity: PluginIdentity = { id: plugin.id, ...(plugin.version === undefined ? {} : { version: plugin.version }) };
-      return {
+      const instance: Instance = {
         id: plugin.id, plugin, rawConfig, identity, scope,
         hooks: registry.owner(identity, scope, false),
-        observers: bus.owner(identity, scope, false),
+        observers: bus.owner(identity, scope, false, (fault) => report(instance, fault)),
         output: Context.empty(),
         state: "pending",
       };
+      return instance;
     });
 
     const background = (instance: Instance, name: string, task: Effect.Effect<unknown, unknown, unknown>, required: boolean) =>
@@ -153,8 +163,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         const watch = Fiber.await(fiber).pipe(Effect.flatMap((exit) => {
           if (Exit.isSuccess(exit) || Cause.isInterruptedOnly(exit.cause)) return Effect.void;
           const fault = new PluginFault({ pluginId: instance.id, phase: "background", operation: name, cause: exit.cause });
-          instance.fault = fault;
-          return report(fault).pipe(Effect.zipRight(required ? fail(instance, fault) : Effect.void));
+          return report(instance, fault).pipe(Effect.zipRight(required ? fail(instance, fault) : Effect.void));
         }));
         yield* Effect.forkIn(Effect.interruptible(watch), supervisor);
       }).pipe(Effect.asVoid);
@@ -215,8 +224,7 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
           return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
         }
         const fault = Option.getOrThrow(Cause.failureOption(exit.cause));
-        instance.fault = fault;
-        yield* report(fault);
+        yield* report(instance, fault);
         yield* dispose(instance, exit, "failed");
         return yield* Effect.fail(fault);
       }));
@@ -226,14 +234,19 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         instance.hooks.stop();
         instance.observers.retire();
         const limit = Duration.decode(instance.plugin.deadlines?.dispose ?? defaults.dispose);
-        const result = yield* withDeadline(Scope.close(instance.scope, exit), limit, "continue").pipe(
+        const settled = yield* Deferred.make<void>();
+        pendingDisposals.add(settled);
+        const close = Scope.close(instance.scope, exit).pipe(Effect.ensuring(Effect.sync(() => {
+          pendingDisposals.delete(settled);
+          Deferred.unsafeDone(settled, Effect.void);
+        })));
+        const result = yield* withDeadline(close, limit, "continue").pipe(
           Effect.map(Option.getOrElse((): Exit.Exit<void, unknown> => Exit.fail(new DeadlineExceeded({ pluginId: instance.id, phase: "dispose", limit })))),
           Effect.withSpan("core.dispose", { attributes: attributes(instance.identity) }),
         );
         if (Exit.isFailure(result) && !Cause.isInterruptedOnly(result.cause)) {
           const fault = new PluginFault({ pluginId: instance.id, phase: "dispose", cause: result.cause, deadline: isDeadline(result.cause) });
-          instance.fault = fault;
-          yield* report(fault);
+          yield* report(instance, fault);
         }
         if (instance.state !== "failed") instance.state = final;
       }));
@@ -277,7 +290,6 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         }
         yield* dispose(instance, Exit.fail(fault), "failed");
         instance.state = "failed";
-        instance.fault = fault;
         if (instance.plugin.restart) yield* Effect.forkIn(Effect.interruptible(restartLoop(instance, instance.plugin.restart, fault)), supervisor);
       })));
 
@@ -462,23 +474,39 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
       if (state !== "active") return Deferred.await(closed).pipe(Effect.orDie);
       state = "closing";
       return Effect.gen(function* () {
-        yield* Scope.close(work, Exit.void);
-        yield* Scope.close(supervisor, Exit.void);
-        registry.close();
-        yield* bus.close();
-        let cause: Cause.Cause<unknown> | undefined;
-        for (const id of [...order].reverse()) {
-          const instance = instances.get(id)!;
-          if (instance.state === "closed" || instance.state === "failed") continue;
-          yield* dispose(instance, Exit.void, "closed");
-          const fault = instance.fault;
-          if (fault?.phase === "dispose") cause = cause ? Cause.sequential(cause, fault.cause) : fault.cause;
+        const awaitDisposals = Effect.suspend(() => Effect.forEach([...pendingDisposals], Deferred.await, { discard: true }));
+        const cleanup = Effect.gen(function* () {
+          // Interrupt work and lifecycle changes together, then preserve resources
+          // until both have actually stopped. A caller deadline never kills them.
+          yield* Effect.all([Scope.close(work, Exit.void), Scope.close(supervisor, Exit.void)], { concurrency: "unbounded", discard: true });
+          registry.close();
+          yield* bus.close();
+          yield* awaitDisposals;
+          let cause: Cause.Cause<unknown> | undefined;
+          for (const id of [...order].reverse()) {
+            const instance = instances.get(id)!;
+            if (instance.state === "closed" || instance.state === "failed") continue;
+            yield* dispose(instance, Exit.void, "closed");
+            const fault = instance.fault;
+            if (fault?.phase === "dispose") {
+              cause = cause ? Cause.sequential(cause, fault.cause) : fault.cause;
+              // Surface the plugin deadline promptly, retaining providers until
+              // that plugin's actual cleanup finishes.
+              if (fault.deadline) yield* Deferred.failCause(closed, cause);
+            }
+            yield* awaitDisposals;
+          }
+          yield* PubSub.shutdown(faults);
+          state = "closed";
+          if (cause) return yield* Effect.failCause(cause);
+        });
+        yield* Effect.forkDaemon(Effect.uninterruptible(cleanup).pipe(Effect.exit, Effect.flatMap((exit) => Deferred.done(closed, exit))));
+        const result = yield* withDeadline(Deferred.await(closed), shutdownLimit, "abandon");
+        if (Option.isNone(result)) {
+          shutdownFault = new ShutdownTimeout({ limit: shutdownLimit });
+          yield* Deferred.fail(closed, shutdownFault);
         }
-        yield* PubSub.shutdown(faults);
-        state = "closed";
-        const result: Exit.Exit<void, unknown> = cause ? Exit.failCause(cause) : Exit.void;
-        yield* Deferred.done(closed, result);
-        return yield* result;
+        return yield* Deferred.await(closed);
       }).pipe(Effect.orDie);
     }));
     yield* Effect.addFinalizer(() => shutdown);
@@ -507,11 +535,13 @@ export function makeRuntime(options: { readonly deadlines?: Deadlines } = {}): E
         })),
       inspect: Effect.sync((): CoreSnapshot => ({
         state,
+        faultSequence,
+        ...(shutdownFault === undefined ? {} : { shutdownFault }),
         plugins: order.map((id) => snapshot(instances.get(id)!)),
         hooks: registry.inspect(),
         events: bus.inspect(),
       })),
-      faults: Stream.fromPubSub(faults),
+      faults: Stream.fromPubSub(faults, { maxChunkSize: 1 }),
       restart: (id) => Effect.suspend((): Effect.Effect<void, ReloadError | CoreClosed> => {
         if (state !== "active") return Effect.fail(new CoreClosed());
         const instance = instances.get(id);
@@ -610,4 +640,3 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }
-

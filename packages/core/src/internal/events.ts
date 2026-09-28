@@ -49,8 +49,6 @@ export class EventBus implements Context.Tag.Service<Events> {
   private readonly entries = new Map<string, Entry>();
   private closed = false;
 
-  constructor(private readonly report: (fault: PluginFault) => Effect.Effect<void>) {}
-
   close(): Effect.Effect<void> {
     return Effect.suspend(() => {
       this.closed = true;
@@ -74,7 +72,7 @@ export class EventBus implements Context.Tag.Service<Events> {
       }));
   }
 
-  owner(identity: PluginIdentity, scope: Scope.Scope, visible: boolean): ObserverHandle {
+  owner(identity: PluginIdentity, scope: Scope.Scope, visible: boolean, report: (fault: PluginFault) => Effect.Effect<void>): ObserverHandle {
     const owner: Owner = { identity, visible, accepting: true };
     const owned = new Set<Entry>();
     const observe = <P, R>(event: Event<P>, observer: Observer<P, R>, options: ObserveOptions = {}) =>
@@ -91,7 +89,7 @@ export class EventBus implements Context.Tag.Service<Events> {
               captureStackTrace: false,
               attributes: { ...attributes(identity), "event.name": event.name },
             }),
-            Effect.catchAllCause((cause) => Cause.isInterruptedOnly(cause) ? Effect.failCause(cause) : this.report(
+            Effect.catchAllCause((cause) => Cause.isInterruptedOnly(cause) ? Effect.failCause(cause) : report(
               new PluginFault({ pluginId: identity.id, phase: "observe", operation: event.name, cause }),
             )),
           )),

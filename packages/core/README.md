@@ -130,7 +130,17 @@ and any persistence needed to recover missed notifications.
 
 Recovery is explicit: `core.restart(id)` reactivates the failed plugin and retries the dependents it halted. The named plugin must activate; a dependent that cannot is left failed, and its own dependents halted, without blocking the rest. A plugin with a `restart` schedule is retried automatically; the schedule persists across failures, so one that keeps failing exhausts it rather than restarting forever. An explicit restart resets it.
 
-`core.faults` streams every fault as it happens; `core.inspect` keeps the latest per plugin.
+`core.faults` streams `ReportedFault` values (`PluginFault` plus a core-wide,
+monotonically increasing `sequence`). Delivery retains at most 256 queued entries
+and drops the oldest without blocking supervision. A consumer may also hold its
+current entry. Sequence gaps reveal missed entries; `core.inspect.faultSequence`
+is the latest reported sequence, including faults from retired instances. A late
+subscriber receives future faults only. Durable fault history belongs to the host.
+
+Inspection records the latest fault before publishing it, even without subscribers.
+Faults belong to plugin instances: replacement/restart begins with no retained
+fault, removal drops its snapshot, and a retired or failed staged instance cannot
+overwrite its replacement's fault. Observer failures leave their plugin active.
 
 ## Loader and reload
 
@@ -153,7 +163,27 @@ If any replacement fails to start, staged instances are disposed and the running
 
 Closing the owner scope stops new work, interrupts initialization and in-flight `core.run` tasks, then disposes plugins in reverse dependency order. Cleanup defects remain visible, and remaining finalizers still run. Failed or interrupted activation rolls back immediately, even when caught inside a longer-lived caller scope. Closing an already-closed core scope cannot reactivate it.
 
-Cancellation and cleanup are cooperative. When the event loop can progress, a stuck activation or finalizer is reported as a `PluginFault` with `deadline: true` once its limit passes; the core moves on and never claims a clean stop, but it cannot kill the work. A synchronous loop blocking the event loop also prevents deadline timers from running. Prefer `PluginContext.background` over raw `Effect.forkScoped` so failures are attributed. Detached fibers, raw timers, and other unmanaged work are outside these guarantees.
+Both `makeCore` and `makeLoader` accept `shutdownTimeout`, a total limit on the
+closing caller's wait, including active tasks and lifecycle supervision. It
+defaults to the core's `deadlines.dispose` (10 seconds), independently of per-plugin
+deadlines. Expiry surfaces a `ShutdownTimeout` defect from scope closure and is
+retained as `core.inspect.shutdownFault`. A plugin disposal deadline may surface
+its attributed fault sooner. Scope finalizers use the defect channel because
+Effect finalizers cannot have typed failures.
+
+Cleanup continues after a timeout. Inspection stays `closing` and new `core.run`
+work is rejected until cleanup finishes; it then becomes `closed`, retaining any
+shutdown timeout for inspection. During shutdown, resources remain alive until
+active work, lifecycle operations, and earlier disposals finish. Providers are
+kept until their dependents actually finish cleanup. A permanently stuck finalizer
+can therefore retain resources permanently. Returning a timeout never means that
+work was killed or resources were released. Reload disposal deadlines still allow
+the applied composition to proceed; shutdown also awaits those earlier disposals.
+
+Cancellation is cooperative. A synchronous loop blocking the event loop prevents
+deadline timers from running. Prefer `PluginContext.background` over raw
+`Effect.forkScoped` so failures are attributed. Detached fibers, raw timers, and
+other unmanaged work are outside these guarantees.
 
 Rollback releases acquired resources and registrations. It cannot undo arbitrary external writes, network requests, or actions performed during module import. A retained capability value is also not revoked by magic: do not use capabilities outside their owner scope. `core.run` and hook dispatch reject use after closure.
 
@@ -173,6 +203,19 @@ Runtime-generated spans do not include hook arguments/results or plugin configur
 
 Dispatch reuses immutable, pre-ordered registration arrays; it does not resolve the plugin graph per call. No-listener dispatch avoids constructing a middleware environment. Lifecycle steps cost more than dispatch: each activation and disposal forks supervised fibers and waits under a deadline, which is measured in the mount and reload cases. The property test in `tests/sequences.test.ts` runs random load/reload/fail/restart sequences against a fault-injecting fixture and checks resource, registration, and dependency invariants after every step; set `BASIS_SEQUENCE_RUNS` to run more cases.
 
-The benchmarks do not establish end-to-end application performance, cold process
-startup, or superiority over other frameworks. Those require their own workloads
-and measurements.
+`core:stress` measures a separate cold package import, individual operation
+latencies, and heap/RSS across 200 mount/reload/fail/restart/dispose cycles, after
+20 warmup cycles. It forces GC every 20 cycles and asserts resource ownership.
+The packed HTTP consumer measures serial loopback request p99/throughput; the
+browser check measures the complete minified fixture including Effect, raw and
+gzip. These are synthetic consumer workloads, not application SLAs or a Cordis
+comparison.
+
+Initial numerical budgets and their reference environment live with the benchmark
+definitions in `bench/budgets.ts` in the source repository. `BASIS_PERF_ENFORCE=1`
+turns budget misses into failing commands; default timing results are advisory.
+`BASIS_BENCH_OUTPUT_DIR` writes dated JSON artifacts. Use an otherwise idle,
+comparable machine for before/after measurements. CI enforces correctness and
+keeps shared-runner performance advisory. Extended sequences accept
+`BASIS_SEQUENCE_RUNS`, `BASIS_SEQUENCE_SEED`, and the fast-check replay
+`BASIS_SEQUENCE_PATH` shown by a failing run.

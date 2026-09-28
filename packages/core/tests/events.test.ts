@@ -33,6 +33,8 @@ describe("events", () => {
       expect(yield* Ref.get(seen)).toEqual(["good:1", "good:2", "good:3"]);
       const fault = yield* faults.await;
       expect(Exit.isSuccess(fault) && fault.value._tag === "Some" && fault.value.value).toMatchObject({ pluginId: "broken", phase: "observe", operation: "test/tick" });
+      const inspected = (yield* core.inspect).plugins.find((plugin) => plugin.id === "broken")?.fault;
+      expect(inspected).toBe(Exit.isSuccess(fault) && fault.value._tag === "Some" ? fault.value.value : undefined);
       // The failed observer's plugin is untouched: observers are not a failure domain.
       expect((yield* core.inspect).plugins.map((p) => p.state)).toEqual(["active", "active"]);
       expect((yield* core.inspect).events).toEqual([{ name: "test/tick", observers: ["broken", "good"] }]);

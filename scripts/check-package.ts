@@ -15,6 +15,7 @@ try {
   // Pack invokes prepack, building exactly what a separate application receives.
   run(process.execPath, ["pm", "pack", "--filename", join(consumer, "basis-core.tgz"), "--quiet"], core);
   cpSync(join(root, "scripts/fixtures/consumer"), consumer, { recursive: true });
+  cpSync(join(core, "bench/budgets.ts"), join(consumer, "budgets.ts"));
   writeFileSync(join(consumer, "package.json"), JSON.stringify({
     name: "basis-external-consumer",
     private: true,
@@ -33,7 +34,13 @@ try {
   run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconfig.json"]);
   run(process.execPath, ["dist/main.js"]);
   run("node", ["dist/main.js"]);
-  console.log("Packed library: declarations, Bun, and Node.js checks passed.");
+  run(process.execPath, ["dist/server.js"]);
+  run("node", ["dist/server.js"]);
+  if (process.argv.includes("--browser")) {
+    const { checkBrowser } = await import("./check-browser.ts");
+    await checkBrowser(consumer);
+  }
+  console.log("Packed library: declarations, Bun, Node.js, and HTTP consumer checks passed.");
 } finally {
   rmSync(consumer, { recursive: true, force: true });
 }

@@ -21,7 +21,8 @@ capability contracts can expose ordinary values, functions, and promises.
 
 ## Develop
 
-Use the Nix shell on Linux or macOS:
+Use the Nix shell on Linux or Apple silicon macOS. Both development shells pin Bun 1.4.2 in
+[`flake.nix`](flake.nix), including CI:
 
 ```sh
 nix develop -c bun install --frozen-lockfile
@@ -30,12 +31,26 @@ nix develop -c bun run test           # core tests, including lifecycle regressi
 nix develop -c bun run example        # compose plugins and invoke a hook
 nix develop -c bun run package:check  # install the packed library into a temporary consumer
 nix develop -c bun run core:bench     # warm framework microbenchmarks
+nix develop -c bun run core:stress    # requires a build; lifecycle churn and memory
+nix develop .#browser -c bun run browser:check # packed consumers plus Chromium
 ```
 
 `package:check` checks the emitted declarations and runs the same consumer on Bun
 and Node.js. It tests provider replacement, dependent reconstruction, and cleanup
 through the package export, outside this workspace. Its temporary install may need
 network access for dependencies.
+
+The `browser` shell supplies pinned Chromium on Linux. On macOS, install the
+development browser with `nix develop .#browser -c bunx playwright install chromium`
+first, or set `BASIS_CHROMIUM` to an existing executable. Linux Chromium is the
+locally verified browser environment; other browsers/platforms need their own runs.
+
+Use `core:bench:node` and `core:stress:node` for Node measurements. `perf:check`
+builds and runs the Bun microbenchmarks and sustained workload. Performance results
+are advisory by default; set `BASIS_PERF_ENFORCE=1` on a comparable idle machine to
+enforce the [documented budgets](packages/core/bench/budgets.ts), and
+`BASIS_BENCH_OUTPUT_DIR` to an artifact directory. The [CI workflow](.github/workflows/check.yml)
+runs correctness checks on changes and extended checks weekly or on demand.
 
 ## Use in another application
 

@@ -1,5 +1,6 @@
 import { cpus } from "node:os";
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
+import { finish, record } from "./budgets.ts";
 import { definePlugin, Event, Events, Hook, Hooks, makeCore, makeLoader, PluginContext } from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 
@@ -7,7 +8,8 @@ import type { Plugin } from "../src/index.ts";
 // Every reported value is a batch mean. Samples use fresh Effect runtime entry but
 // dispatch cases reuse a mounted core, with one core.run per batch (not per hook).
 const samples = 7;
-const iterations = 10_000;
+const iterations = Number(process.env.BASIS_BENCH_ITERATIONS ?? 10_000);
+if (!Number.isInteger(iterations) || iterations < 1) throw new Error("BASIS_BENCH_ITERATIONS must be a positive integer");
 const point = Hook.make<number, number>("bench/increment");
 const tick = Event.make<number>("bench/tick");
 const terminal = (value: number) => Effect.succeed(value + 1);
@@ -38,12 +40,22 @@ async function measure<E>(name: string, count: number, effect: Effect.Effect<voi
     values.push((performance.now() - start) * 1_000 / count);
   }
   values.sort((a, b) => a - b);
+  record(name, values[Math.floor(samples / 2)]!);
   console.log(`${name.padEnd(33)} ${values[Math.floor(samples / 2)]!.toFixed(3).padStart(9)} µs/op  [${values[0]!.toFixed(3)}, ${values.at(-1)!.toFixed(3)}]`);
 }
 
-console.log(`Bun ${Bun.version} · ${process.platform}/${process.arch} · ${cpus()[0]?.model}`);
+console.log(`${process.versions.bun ? `Bun ${process.versions.bun}` : `Node ${process.version}`} · ${process.platform}/${process.arch} · ${cpus()[0]?.model}`);
 console.log(`Median batch means, ${samples} samples; brackets show min/max. No external trace exporter.\n`);
 await measure("Effect direct", iterations, repeat(terminal(1), iterations));
+let sink = 0;
+const increment = (n: number) => n + 1;
+await measure("Plain function", iterations, Effect.sync(() => { for (let n = 0; n < iterations; n++) sink = increment(sink); }));
+class Increment extends Context.Tag("bench/Increment")<Increment, typeof increment>() {}
+await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+  const core = yield* makeCore([definePlugin({ id: "increment", provides: [Increment], layer: Layer.succeed(Increment, increment) })]);
+  const call = yield* core.run(Increment);
+  yield* Effect.promise(() => measure("Captured capability", iterations, core.run(Effect.sync(() => { for (let n = 0; n < iterations; n++) sink = call(sink); }))));
+})));
 
 for (const count of [0, 1, 8, 32]) {
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
@@ -60,7 +72,7 @@ await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
   yield* Effect.promise(() => measure("core.run entry", iterations, repeat(core.run(Effect.void), iterations)));
 })));
 
-for (const count of [0, 8, 32]) {
+for (const count of [0, 8, 32, 128]) {
   const composition = plugins(count);
   await measure(`Mount + dispose / ${count} plugins`, 100, repeat(Effect.scoped(makeCore(composition)), 100));
 }
@@ -74,7 +86,7 @@ for (const count of [0, 1, 8]) {
 }
 
 // Reload: change one plugin's config in a composition where nothing depends on it.
-for (const count of [8, 32]) {
+for (const count of [8, 32, 128]) {
   const all = plugins(count);
   const byId = new Map<string, Plugin>(all.map((plugin) => [plugin.id, plugin]));
   const source = { resolve: (id: string) => Effect.succeed(byId.get(id)!) };
@@ -86,3 +98,5 @@ for (const count of [8, 32]) {
     yield* Effect.promise(() => measure(`Reload one of ${count} plugins`, 100, repeat(Effect.suspend(() => loader.apply(composition(++version))), 100)));
   })));
 }
+if (sink === 0) throw new Error("Unobserved capability result");
+finish("microbench");

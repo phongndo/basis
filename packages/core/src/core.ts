@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import type { Scope, Stream } from "effect";
-import type { CompositionError, CoreClosed, PluginFault, ReloadError } from "./errors.ts";
+import type { Duration, Scope, Stream } from "effect";
+import type { CompositionError, CoreClosed, PluginFault, ReloadError, ReportedFault, ShutdownTimeout } from "./errors.ts";
 import type { Events } from "./events.ts";
 import type { Hooks } from "./hooks.ts";
 import type { EventSnapshot } from "./internal/events.ts";
@@ -21,7 +21,7 @@ export interface PluginSnapshot {
   readonly state: PluginState;
   readonly provides: readonly string[];
   readonly requires: readonly string[];
-  /** The most recent fault, retained while the plugin is failed or closed by one. */
+  /** Latest framework-reported fault of this instance, including optional work and observers. */
   readonly fault?: PluginFault;
   /** Set on a plugin stopped because this dependency failed; restarting it restarts this. */
   readonly haltedBy?: string;
@@ -29,6 +29,10 @@ export interface PluginSnapshot {
 
 export interface CoreSnapshot {
   readonly state: "active" | "closing" | "closed";
+  /** Latest reported sequence, including retired instances; zero before the first fault. */
+  readonly faultSequence: number;
+  /** Retained even if cleanup subsequently finishes. */
+  readonly shutdownFault?: ShutdownTimeout;
   /** Dependency order; independent plugins use code-unit id order. */
   readonly plugins: readonly PluginSnapshot[];
   readonly hooks: readonly HookSnapshot[];
@@ -40,6 +44,8 @@ export interface CoreOptions {
   readonly configs?: Readonly<Record<string, unknown>>;
   /** Applied to plugins that declare none. Defaults: activate 30s, dispose 10s. */
   readonly deadlines?: Deadlines;
+  /** Total closing-caller wait; defaults to the core dispose deadline (10s). Cleanup continues on timeout. */
+  readonly shutdownTimeout?: Duration.DurationInput;
 }
 
 export interface Core<Capabilities = never> {
@@ -52,8 +58,8 @@ export interface Core<Capabilities = never> {
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks | Events>>;
   readonly inspect: Effect.Effect<CoreSnapshot>;
-  /** Every attributed plugin failure, in order, from the moment of subscription. */
-  readonly faults: Stream.Stream<PluginFault>;
+  /** Ordered live faults; retains 256 entries, dropping oldest without blocking. Sequence gaps reveal loss. */
+  readonly faults: Stream.Stream<ReportedFault>;
   /** Reactivate a failed plugin and the dependents it halted. Active plugins are left alone. */
   readonly restart: (pluginId: string) => Effect.Effect<void, ReloadError | CoreClosed>;
 }
@@ -68,7 +74,7 @@ export function makeCore<const Plugins extends readonly Plugin[]>(
   options: CoreOptions = {},
 ): Effect.Effect<Core<Identifiers<Plugins[number]["provides"]>>, CompositionError | PluginFault, Scope.Scope> {
   return Effect.gen(function* () {
-    const runtime = yield* makeRuntime(options.deadlines === undefined ? {} : { deadlines: options.deadlines });
+    const runtime = yield* makeRuntime(options);
     const members = plugins.map((plugin) => {
       const config = options.configs?.[plugin.id];
       return { plugin, ...(config === undefined ? {} : { config }) };

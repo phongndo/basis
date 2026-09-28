@@ -46,6 +46,15 @@ export class CoreClosed extends Data.TaggedError("CoreClosed")<{}> {
   }
 }
 
+/** The closing caller's total wait expired; cleanup continues and the core stays closing. */
+export class ShutdownTimeout extends Data.TaggedError("ShutdownTimeout")<{
+  readonly limit: Duration.Duration;
+}> {
+  override get message(): string {
+    return `Core shutdown did not finish within ${Duration.format(this.limit)}; cleanup is still pending`;
+  }
+}
+
 export class EventError extends Data.TaggedError("EventError")<{
   readonly reason: "PointConflict" | "InvalidBuffer";
   readonly event: string;
@@ -71,8 +80,9 @@ export const FaultPhase = Schema.Literal(
 export type FaultPhase = typeof FaultPhase.Type;
 
 /**
- * Failures observed by framework lifecycle, hook, observer, and background-work
- * supervision are attributed here. Arbitrary capability calls are not intercepted.
+ * Failures observed by lifecycle, observer, and background-work supervision are
+ * attributed here. Hooks preserve their error channel and carry tracing attribution;
+ * arbitrary capability calls are not intercepted.
  * The cause retains typed failures, defects,
  * and their stacks. `deadline` marks a step that ran out of time, which is
  * reported as such and never as a clean stop.
@@ -90,6 +100,9 @@ export class PluginFault extends Data.TaggedError("PluginFault")<{
     return `Plugin "${this.pluginId}" failed during ${where}${this.deadline ? " (deadline exceeded)" : ""}`;
   }
 }
+
+/** A reported fault's sequence is monotonic within one core. Gaps reveal stream loss. */
+export type ReportedFault = PluginFault & { readonly sequence: number };
 
 /** A serializable, actionable message about a composition. Errors block; warnings do not. */
 export class Diagnostic extends Schema.Class<Diagnostic>("@basis/core/Diagnostic")({

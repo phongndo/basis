@@ -8,8 +8,16 @@
     "test": "bun run core:test",
     "example": "bun run build && bun run packages/core/examples/hello.ts",
     "package:check": "bun run scripts/check-package.ts",
+    "browser:check": "bun run scripts/check-package.ts --browser",
     "core:check": "bun run --cwd packages/core check",
     "core:test": "bun run --cwd packages/core test",
-    "core:bench": "bun run --cwd packages/core bench"
+    "core:bench": "bun run --cwd packages/core bench",
+    "core:bench:node": "node --experimental-strip-types packages/core/bench/core.ts",
+    "core:stress": "bun run packages/core/bench/workload.ts",
+    "core:stress:node": "node --expose-gc --experimental-strip-types packages/core/bench/workload.ts",
+    "perf:check": "bun run build && bun run core:bench && bun run core:stress"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   }
 }
