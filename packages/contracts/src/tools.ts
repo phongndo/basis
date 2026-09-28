@@ -1,0 +1,92 @@
+import { Context, Data, Schema } from "effect";
+import type { Effect, Scope } from "effect";
+import { Event, Hook } from "@basis/core";
+import type { PluginContext } from "@basis/core";
+import { ImageContent, TextContent, ToolSpec } from "./llm.ts";
+
+export class ToolResult extends Schema.Class<ToolResult>("basis/ToolResult")({
+  content: Schema.Array(Schema.Union(TextContent, ImageContent)),
+  isError: Schema.optional(Schema.Boolean),
+  /** Structured data for UIs (diffs, exit codes); logged, never sent to the model. */
+  details: Schema.optional(Schema.Unknown),
+}) {}
+
+export interface ToolContext {
+  readonly sessionId: string;
+  readonly toolCallId: string;
+  readonly cwd: string;
+  /** Aborted when the turn is cancelled. Promise-based tools must honor it; Effect tools are interrupted. */
+  readonly signal: AbortSignal;
+}
+
+export class ToolError extends Data.TaggedError("ToolError")<{
+  readonly tool: string;
+  readonly reason: "NotFound" | "InvalidInput" | "Failed" | "Denied" | "Cancelled";
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/**
+ * A tool as registered by a plugin. `execute` may return a Promise or an
+ * Effect; the tools plugin adapts promises once at registration. A thrown or
+ * failed execution becomes an `isError` result for the model.
+ */
+export interface Tool<Input = any> {
+  readonly name: string;
+  /** Model-facing description. */
+  readonly description: string;
+  readonly input: Schema.Schema<Input, any, never>;
+  readonly execute: (input: Input, context: ToolContext) => Promise<ToolResult> | Effect.Effect<ToolResult, unknown>;
+}
+
+export class ToolInvocation extends Schema.Class<ToolInvocation>("basis/ToolInvocation")({
+  sessionId: Schema.String,
+  toolCallId: Schema.String,
+  name: Schema.String,
+  input: Schema.Unknown,
+  cwd: Schema.String,
+}) {}
+
+/**
+ * Around every execution: timeouts, rewrites, logging. A handler that does not
+ * call `next` skips the tool and supplies the result itself.
+ */
+export const ToolExecuteHook = Hook.make<ToolInvocation, ToolResult, ToolError>("basis/tool.execute");
+
+/**
+ * A guard decides whether a call may run. Guards run inside the terminal of
+ * `ToolExecuteHook`, after every handler has shaped the input and just before
+ * the tool, so no hook ordering can route around one. Any `deny` wins; the
+ * model receives the reason as an error result. No guard ships by default.
+ */
+export type GuardDecision = { readonly _tag: "allow" } | { readonly _tag: "deny"; readonly reason: string };
+export type Guard = (invocation: ToolInvocation) => Effect.Effect<GuardDecision, ToolError>;
+
+export const ToolExecuted = Event.make<{
+  readonly invocation: ToolInvocation;
+  readonly result: ToolResult;
+  readonly durationMs: number;
+}>("basis/tool.executed");
+
+/** A registered tool's model-facing spec and the plugin that registered it. */
+export interface ToolContribution {
+  readonly spec: ToolSpec;
+  readonly source: string;
+}
+
+export class Tools extends Context.Tag("basis/Tools")<Tools, {
+  /**
+   * Call during activation: the registering plugin's `PluginContext` supplies
+   * the provenance id. Removed when that plugin's scope closes. A duplicate
+   * name fails with `InvalidInput`.
+   */
+  readonly register: <I>(tool: Tool<I>) => Effect.Effect<void, ToolError, Scope.Scope | PluginContext>;
+  readonly guard: (name: string, guard: Guard) => Effect.Effect<void, never, Scope.Scope | PluginContext>;
+  readonly list: Effect.Effect<readonly ToolContribution[]>;
+  /**
+   * Validates input, runs `ToolExecuteHook`, guards, then the tool. Tool
+   * failures and denials become `isError` results; only interruption and
+   * unknown tools escape as failures.
+   */
+  readonly execute: (invocation: ToolInvocation, signal: AbortSignal) => Effect.Effect<ToolResult, ToolError>;
+}>() {}
