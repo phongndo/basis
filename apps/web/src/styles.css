@@ -2562,7 +2562,7 @@ button.strip-chip:hover:not(:disabled),
   color: var(--err);
 }
 .plugin-fault {
-  margin: 6px 0 0 15px;
+  margin: 6px 0 0 26px;
   padding: 6px 10px;
   border-radius: var(--radius-sm);
   background: var(--err-soft);
@@ -2571,8 +2571,68 @@ button.strip-chip:hover:not(:disabled),
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.plugin > p {
-  margin: 4px 0 0 15px;
+/* The row's left half opens the details; the switch and status stay on the right. */
+.plugin-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.plugin-main > .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--text-3);
+}
+.plugin.open .plugin-main > .chevron {
+  transform: rotate(90deg);
+}
+.plugin.off .plugin-id {
+  color: var(--text-3);
+}
+.plugin-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.plugin-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0 26px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  font-size: 12.5px;
+}
+.plugin-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 8px 0 2px 26px;
+  font-size: 12.5px;
+}
+.plugin-details dt {
+  color: var(--text-3);
+}
+.plugin-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plugin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* ---------------------------------------------------------------- toasts */

@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import type { JSX } from "solid-js";
 import { tildePath } from "../model/format.ts";
 import { knownProjects } from "../model/prefs.ts";
+import { pluginGroups, pluginText } from "../model/plugins.ts";
 import { filterGroups } from "../model/settings.ts";
 import type { EntryGroup, Searchable } from "../model/settings.ts";
 import {
@@ -16,6 +17,7 @@ import {
   selectedModel,
   setContentWidth,
   setNewWorktree,
+  setPluginEnabled,
   setTheme,
   state,
   worktreeDraftState,
@@ -23,8 +25,9 @@ import {
 import type { ContentWidth, SettingsSection, Theme } from "../store.ts";
 import { ModelPicker, ThinkingPicker } from "./composer.tsx";
 import { ArrowLeftIcon, FolderIcon, FolderPlusIcon, KeyIcon, PaletteIcon, PuzzleIcon, RefreshIcon, SearchIcon, SlidersIcon, Spinner, XIcon } from "./icons.tsx";
-import { HostFacts, PluginRow, pluginText } from "./plugins.tsx";
+import { HostFacts, PluginRow } from "./plugins.tsx";
 import { ProviderRow, providerGroups, providerText } from "./providers.tsx";
+import { Toggle } from "./toggle.tsx";
 
 interface Entry extends Searchable {
   readonly view: () => JSX.Element;
@@ -67,10 +70,6 @@ function Segmented<T extends string>(props: { label: string; value: T; options: 
       </For>
     </div>
   );
-}
-
-function Toggle(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <button class="switch" role="switch" aria-label={props.label} aria-checked={props.checked} onClick={() => props.onChange(!props.checked)} />;
 }
 
 const THEMES: readonly { value: Theme; label: string }[] = [
@@ -191,14 +190,24 @@ export function SettingsView() {
     })),
   );
 
-  const plugins = createMemo((): EntryGroup<Entry>[] => [
-    {
-      entries: state.plugins.map((plugin) => ({
+  const plugins = createMemo((): EntryGroup<Entry>[] => {
+    const groups = pluginGroups(state.plugins);
+    return groups.map((group) => ({
+      // One group needs no heading; several say where each plugin comes from.
+      ...(groups.length > 1 ? { title: group.title } : {}),
+      entries: group.plugins.map((plugin) => ({
         text: `plugin ${pluginText(plugin)}`,
-        view: () => <PluginRow plugin={plugin} busy={busy()} onRestart={() => void run(plugin.id, () => restartPlugin(plugin.id))} />,
+        view: () => (
+          <PluginRow
+            plugin={plugin}
+            busy={busy()}
+            onRestart={(force) => void run(plugin.id, () => restartPlugin(plugin.id, force ? { force } : undefined))}
+            onToggle={(enabled) => void run(plugin.id, () => setPluginEnabled(plugin, enabled))}
+          />
+        ),
       })),
-    },
-  ]);
+    }));
+  });
 
   const hostCwd = () => state.info?.cwd;
   const projects = createMemo((): EntryGroup<Entry>[] => [

@@ -15,6 +15,7 @@ import type {
   PluginStatus,
   PromptContent,
   ProviderInfo,
+  ReloadResult,
   SessionEvent,
   SessionInfo,
   ThinkingLevel,
@@ -589,9 +590,9 @@ export const dismissInteraction = (id: string): void => {
     .catch((error) => reportError(error));
 };
 
-export const restartPlugin = async (pluginId: string): Promise<void> => {
+export const restartPlugin = async (pluginId: string, options?: { force?: boolean }): Promise<void> => {
   try {
-    await client().host.restartPlugin(pluginId);
+    await client().host.restartPlugin(pluginId, options);
     toast({ level: "info", message: `Restarted ${pluginId}` });
     await refreshPlugins();
   } catch (error) {
@@ -599,15 +600,41 @@ export const restartPlugin = async (pluginId: string): Promise<void> => {
   }
 };
 
+/** `started x; restarted y; stopped z`, leaving out `except` (a plugin the message already names). */
+const describeReload = (result: ReloadResult, except?: string): string => {
+  const list = (ids: readonly string[]) => ids.filter((id) => id !== except);
+  const parts = [
+    list(result.started).length > 0 ? `started ${list(result.started).join(", ")}` : "",
+    list(result.restarted).length > 0 ? `restarted ${list(result.restarted).join(", ")}` : "",
+    list(result.stopped).length > 0 ? `stopped ${list(result.stopped).join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : "nothing changed";
+};
+
+/** Writes the plugin's `enabled` row where it is set now (the user file unless the project file decides), then reloads. */
+export const setPluginEnabled = async (plugin: PluginStatus, enabled: boolean): Promise<void> => {
+  const verb = enabled ? "on" : "off";
+  try {
+    const result = await client().host.configure({ [plugin.id]: { enabled } }, plugin.scope === "project" ? { scope: "project" } : undefined);
+    await refreshPlugins();
+    const after = state.plugins.find((candidate) => candidate.id === plugin.id);
+    // The host applied what the files say; if another file still decides the other way, say so rather than claim success.
+    if (after !== undefined && after.enabled !== enabled) {
+      toast({ level: "warning", message: `${plugin.id} is still ${after.enabled ? "on" : "off"}: the ${after.scope ?? "user"} config decides it` });
+      return;
+    }
+    const also = describeReload(result, plugin.id);
+    toast({ level: "info", message: `Turned ${plugin.id} ${verb}${also === "nothing changed" ? "" : `; ${also}`}` });
+  } catch (error) {
+    reportError(error, `Could not turn ${plugin.id} ${verb}`);
+  }
+};
+
 export const reloadConfig = async (): Promise<void> => {
   try {
     const result = await client().host.reload();
-    const parts = [
-      result.started.length > 0 ? `started ${result.started.join(", ")}` : "",
-      result.restarted.length > 0 ? `restarted ${result.restarted.join(", ")}` : "",
-      result.stopped.length > 0 ? `stopped ${result.stopped.join(", ")}` : "",
-    ].filter(Boolean);
-    toast({ level: "info", message: parts.length > 0 ? `Config reloaded: ${parts.join("; ")}` : "Config reloaded; nothing changed" });
+    const summary = describeReload(result);
+    toast({ level: "info", message: summary === "nothing changed" ? "Config reloaded; nothing changed" : `Config reloaded: ${summary}` });
     await refreshPlugins();
   } catch (error) {
     reportError(error, "Reload failed");
