@@ -1,7 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import { dismissToast, state } from "../store.ts";
 import type { Toast } from "../store.ts";
-import { AlertIcon, CopyIcon, ExternalIcon, XIcon } from "./icons.tsx";
+import { AlertIcon, CheckIcon, CopyIcon, ExternalIcon, XIcon } from "./icons.tsx";
 import { copyText } from "./markdown.tsx";
 
 function CodeBox(props: { code: string }) {
@@ -25,6 +25,12 @@ function CodeBox(props: { code: string }) {
 }
 
 function ToastView(props: { toast: Toast }) {
+  const [copied, setCopied] = createSignal(false);
+  const copy = () =>
+    void copyText(props.toast.message).then((ok) => {
+      setCopied(ok);
+      setTimeout(() => setCopied(false), 1500);
+    });
   return (
     <div class={`toast toast-${props.toast.level}`} role={props.toast.level === "error" ? "alert" : "status"}>
       <div class="toast-main">
@@ -37,6 +43,11 @@ function ToastView(props: { toast: Toast }) {
             <span class="toast-source">{props.toast.source}</span>
           </Show>
         </div>
+        <Show when={props.toast.level !== "info"}>
+          <button class="icon-button" aria-label="Copy message" data-tip={copied() ? "Copied" : "Copy"} onClick={copy}>
+            {copied() ? <CheckIcon /> : <CopyIcon />}
+          </button>
+        </Show>
         <button class="icon-button" aria-label="Dismiss" onClick={() => dismissToast(props.toast.id)}>
           <XIcon />
         </button>
