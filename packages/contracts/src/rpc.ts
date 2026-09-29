@@ -1,6 +1,7 @@
 import { Rpc, RpcGroup } from "@effect/rpc";
 import { Schema } from "effect";
 import { PromptContent, TurnOptions } from "./agent.ts";
+import { CommandInfo, CommandResult } from "./commands.ts";
 import { CompositionInfo, NoticePayload } from "./host.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
 import { AuthType, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
@@ -45,6 +46,7 @@ export const HostEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literal("interaction-closed"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("notice"), notice: NoticePayload }),
   Schema.Struct({ type: Schema.Literal("plugins-changed"), plugins: Schema.Array(PluginStatus) }),
+  Schema.Struct({ type: Schema.Literal("commands-changed"), commands: Schema.Array(CommandInfo) }),
 );
 export type HostEvent = typeof HostEvent.Type;
 
@@ -94,6 +96,14 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Workspace.Checkout", {
     payload: { path: Schema.String, branch: Schema.String, create: Schema.optional(Schema.Boolean) },
     success: WorkspaceStatus,
+    error: HostError,
+  }),
+
+  Rpc.make("Command.List", { success: Schema.Array(CommandInfo) }),
+  /** Returns when the command ends; its questions arrive as `interaction` events. `cwd` defaults to the host's. */
+  Rpc.make("Command.Run", {
+    payload: { id: Schema.String, cwd: Schema.optional(Schema.String), sessionId: Schema.optional(Schema.String) },
+    success: CommandResult,
     error: HostError,
   }),
 

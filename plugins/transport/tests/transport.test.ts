@@ -10,12 +10,13 @@ import type { Mailbox } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
-import { HostError, HostRpcs, Interaction, InteractionError, Notice } from "@basis/contracts";
+import { CommandsChanged, HostError, HostRpcs, Interaction, InteractionError, Notice } from "@basis/contracts";
 import type { HostEvent } from "@basis/contracts";
 import { Events, makeCore } from "@basis/core";
 import type { Core } from "@basis/core";
+import commands from "@basis/plugin-commands";
 import transport, { readDiscovery } from "../src/index.ts";
-import { fakeAgent, fakeHostControl, fakeInteraction, fakeLlm, fakePaths, fakeSessions, fakeWorkspace } from "./fakes.ts";
+import { fakeAgent, fakeGreeter, fakeHostControl, fakeInteraction, fakeLlm, fakePaths, fakeSessions, fakeWorkspace } from "./fakes.ts";
 import type { ControlHolder } from "./fakes.ts";
 
 type Client = RpcClient.RpcClient<RpcGroup.Rpcs<typeof HostRpcs>, RpcClientError.RpcClientError>;
@@ -70,9 +71,12 @@ const withHost = <A, E>(
         const home = owned ?? (yield* Effect.promise(() => mkdtemp(join(tmpdir(), "basis-transport-"))));
         if (owned === undefined) yield* Effect.addFinalizer(() => Effect.promise(() => rm(home, { recursive: true, force: true })));
         const holder: ControlHolder = { restarted: [] };
-        const core = yield* makeCore([transport, fakeAgent, fakeSessions, fakeLlm, fakeInteraction, fakeHostControl(holder), fakePaths(home), fakeWorkspace], {
-          configs: { transport: { port: 0, interactionGraceMs: 100, ...config } },
-        });
+        const core = yield* makeCore(
+          [transport, fakeAgent, fakeSessions, fakeLlm, fakeInteraction, fakeHostControl(holder), fakePaths(home), fakeWorkspace, commands, fakeGreeter],
+          {
+            configs: { transport: { port: 0, interactionGraceMs: 100, ...config } },
+          },
+        );
         holder.core = core;
         const found = yield* readDiscovery(home);
         if (found === undefined) return yield* Effect.dieMessage("no discovery file");
@@ -329,6 +333,36 @@ describe("transport", () => {
           });
           yield* second.Interaction.Answer({ id: "i1", answer: { type: "select", value: "b" } });
           expect(yield* Fiber.join(select)).toBe("b");
+        }),
+      ),
+    30_000,
+  );
+
+  test(
+    "lists commands and runs one, asking its question through the event stream",
+    () =>
+      withHost((host) =>
+        Effect.gen(function* () {
+          const client = yield* host.connect("websocket");
+          const events = yield* subscribe(host, client);
+          expect(yield* client.Command.List()).toEqual([{ id: "test.greet", title: "Greet…", category: "Test", source: "greeter" }]);
+
+          const answered = yield* Effect.fork(client.Command.Run({ id: "test.greet", cwd: "/project", sessionId: "s1" }));
+          const [asked] = (yield* waitFor(events, (event) => event.type === "interaction")).slice(-1);
+          if (asked?.type !== "interaction") throw new Error("expected an interaction");
+          yield* client.Interaction.Answer({ id: asked.request.id, answer: { type: "ask", value: "Ada" } });
+          expect(yield* Fiber.join(answered)).toEqual({ message: "Hello, Ada, in /project (s1)" });
+
+          const dismissed = yield* Effect.fork(client.Command.Run({ id: "test.greet" }));
+          const [again] = (yield* waitFor(events, (event) => event.type === "interaction")).slice(-1);
+          if (again?.type !== "interaction") throw new Error("expected an interaction");
+          yield* client.Interaction.Dismiss({ id: again.request.id });
+          expect(hostError(yield* Fiber.await(dismissed))).toMatchObject({ code: "Cancelled", subject: "test.greet" });
+
+          expect(hostError(yield* Effect.exit(client.Command.Run({ id: "nope" })))).toMatchObject({ code: "NotFound", subject: "nope" });
+
+          yield* host.core.run(Effect.flatMap(Events, (bus) => bus.publish(CommandsChanged, { commands: [] })));
+          yield* waitFor(events, (event) => event.type === "commands-changed" && event.commands.length === 0);
         }),
       ),
     30_000,

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Effect, Layer, Schema } from "effect";
-import { Agent, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, Sessions, Workspace } from "@basis/contracts";
+import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, Sessions, Workspace } from "@basis/contracts";
 import { definePlugin, Events, PluginContext } from "@basis/core";
 import { makeHandlers } from "./handlers.ts";
 import { makeHub } from "./hub.ts";
@@ -48,7 +48,7 @@ export default definePlugin({
   id: "transport",
   version: VERSION,
   config: TransportConfig,
-  requires: [Paths, Sessions, Agent, Llm, HostControl, Workspace],
+  requires: [Paths, Sessions, Agent, Llm, HostControl, Workspace, Commands],
   // Owns the listening port: a reload stops this instance before starting its replacement.
   exclusive: true,
   layer: (config) =>
@@ -56,7 +56,7 @@ export default definePlugin({
       Effect.gen(function* () {
         const owner = yield* PluginContext;
         const events = yield* Events;
-        const [paths, sessions, agent, llm, control, workspace] = yield* Effect.all([Paths, Sessions, Agent, Llm, HostControl, Workspace]);
+        const [paths, sessions, agent, llm, control, workspace, commands] = yield* Effect.all([Paths, Sessions, Agent, Llm, HostControl, Workspace, Commands]);
 
         let hub: Hub | undefined;
         const interactions = makeInteractions(() => hub!, config.interactionGraceMs);
@@ -65,7 +65,9 @@ export default definePlugin({
 
         const token = config.token ?? generatedToken;
         const login = makeLogins(llm, yield* Effect.scope);
-        const handlers = HostRpcs.toLayer(makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, login }));
+        const handlers = HostRpcs.toLayer(
+          makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, login }),
+        );
         const address = yield* startServer({ host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir }, handlers);
         const url = `http://${clientHost(address.hostname)}:${address.port}`;
         yield* publishDiscovery(paths.home, { url, token, pid: process.pid, startedAt: Date.now() });

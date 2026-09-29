@@ -167,6 +167,12 @@ importers:
       '@basis/plugin-agent':
         specifier: workspace:*
         version: link:../../plugins/agent
+      '@basis/plugin-commands':
+        specifier: workspace:*
+        version: link:../../plugins/commands
+      '@basis/plugin-commands-builtin':
+        specifier: workspace:*
+        version: link:../../plugins/commands-builtin
       '@basis/plugin-credentials':
         specifier: workspace:*
         version: link:../../plugins/credentials
@@ -315,6 +321,50 @@ importers:
         version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0)(esbuild@0.28.2))
 
   plugins/agent:
+    dependencies:
+      '@basis/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@basis/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0)(esbuild@0.28.2))
+
+  plugins/commands:
+    dependencies:
+      '@basis/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@basis/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0)(esbuild@0.28.2))
+
+  plugins/commands-builtin:
     dependencies:
       '@basis/contracts':
         specifier: workspace:*
@@ -539,6 +589,9 @@ importers:
         specifier: 3.22.2
         version: 3.22.2
     devDependencies:
+      '@basis/plugin-commands':
+        specifier: workspace:*
+        version: link:../commands
       '@types/node':
         specifier: 24.19.0
         version: 24.19.0

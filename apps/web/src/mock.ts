@@ -1,5 +1,5 @@
 import type { ConnectionStatus, Host } from "@basis/client";
-import { emptyUsage } from "@basis/contracts";
+import { HostError, emptyUsage } from "@basis/contracts";
 import type {
   AssistantMessage,
   EventData,
@@ -111,6 +111,24 @@ const MODELS: ModelInfo[] = [
     maxTokens: 128_000,
     cost: { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
   },
+];
+
+const MOCK_COMMANDS = [
+  {
+    id: "workspace.new-branch",
+    title: "Create branch…",
+    category: "Git",
+    description: "Create a branch from HEAD and switch to it",
+    source: "commands-workspace",
+  },
+  {
+    id: "workspace.checkout",
+    title: "Switch branch…",
+    category: "Git",
+    description: "Check out another branch in the working directory",
+    source: "commands-workspace",
+  },
+  { id: "host.reload", title: "Reload config", category: "Host", description: "Re-read the config files and apply them", source: "commands-host" },
 ];
 
 export const createMockHost = (): Host => {
@@ -617,6 +635,41 @@ export const createMockHost = (): Host => {
         pendingAnswers.get(interactionId)?.(undefined);
         pendingAnswers.delete(interactionId);
         emit({ type: "interaction-closed", id: interactionId });
+      },
+    },
+    commands: {
+      list: async () => MOCK_COMMANDS.slice(),
+      run: async (commandId) => {
+        const cancelled = () => new HostError({ code: "Cancelled", message: "Cancelled", subject: commandId });
+        switch (commandId) {
+          case "host.reload":
+            await sleep(400);
+            return { message: "Config reloaded: restarted basis/agent" };
+          case "workspace.checkout": {
+            const answer = await ask({
+              type: "interaction",
+              request: {
+                type: "select",
+                id: id("i"),
+                title: "Switch to which branch?",
+                options: mockBranches.filter((name) => name !== currentBranch).map((name) => ({ value: name, label: name })),
+              },
+            });
+            if (answer?.type !== "select") throw cancelled();
+            await sleep(250);
+            currentBranch = answer.value.replace(/^origin\//, "");
+            return { message: `Switched to ${currentBranch}` };
+          }
+          case "workspace.new-branch": {
+            const answer = await ask({ type: "interaction", request: { type: "ask", id: id("i"), title: "New branch name", placeholder: "feature/name" } });
+            if (answer?.type !== "ask") throw cancelled();
+            mockBranches.unshift(answer.value);
+            currentBranch = answer.value;
+            return { message: `Created and switched to ${answer.value}` };
+          }
+          default:
+            throw new HostError({ code: "NotFound", message: `No command "${commandId}"`, subject: commandId });
+        }
       },
     },
     host: {

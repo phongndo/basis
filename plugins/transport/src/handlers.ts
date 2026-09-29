@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { Context } from "effect";
 import { HostRpcs } from "@basis/contracts";
-import type { Agent, HostControl, Llm, Paths, Sessions, Workspace } from "@basis/contracts";
+import type { Agent, Commands, HostControl, Llm, Paths, Sessions, Workspace } from "@basis/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
 import type { Interactions } from "./interactions.ts";
@@ -17,6 +17,7 @@ export interface HandlerServices {
   readonly llm: Context.Tag.Service<Llm>;
   readonly control: Context.Tag.Service<HostControl>;
   readonly workspace: Context.Tag.Service<Workspace>;
+  readonly commands: Context.Tag.Service<Commands>;
   /** Runs `Llm.login` in the plugin's scope; see `makeLogins`. */
   readonly login: ReturnType<typeof makeLogins>;
 }
@@ -24,7 +25,7 @@ export interface HandlerServices {
 const cwdOption = (cwd: string | undefined) => (cwd === undefined ? undefined : { cwd });
 
 /** Every RPC maps to one capability call; only the error boundary is transport-specific. */
-export const makeHandlers = ({ version, hub, interactions, paths, sessions, agent, llm, control, workspace, login }: HandlerServices) =>
+export const makeHandlers = ({ version, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, login }: HandlerServices) =>
   HostRpcs.of({
     "Session.List": ({ cwd }) => sessions.list(cwdOption(cwd)).pipe(Effect.mapError(toHostError)),
     "Session.Get": ({ sessionId }) => sessions.get(sessionId).pipe(Effect.mapError(toHostError)),
@@ -56,6 +57,10 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Workspace.Branches": ({ path }) => workspace.branches(path).pipe(Effect.mapError(toHostError)),
     "Workspace.Checkout": ({ path, branch, create }) =>
       workspace.checkout(path, branch, create === undefined ? undefined : { create }).pipe(Effect.mapError(toHostError)),
+
+    "Command.List": () => commands.list,
+    "Command.Run": ({ id, cwd, sessionId }) =>
+      commands.run(id, { cwd: cwd ?? paths.cwd, ...(sessionId === undefined ? {} : { sessionId }) }).pipe(Effect.mapError(toHostError)),
 
     "Host.Info": () => Effect.map(control.composition, (composition) => ({ version, cwd: paths.cwd, home: paths.home, composition })),
     "Host.Events": () => hub.events,

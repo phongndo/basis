@@ -1,6 +1,6 @@
 import { Deferred, Effect, Queue, Stream } from "effect";
 import type { Context } from "effect";
-import { AssistantDelta, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted } from "@basis/contracts";
+import { AssistantDelta, CommandsChanged, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted } from "@basis/contracts";
 import type { HostEvent, InteractionRequest } from "@basis/contracts";
 import type { CoreClosed, Event, EventError, PluginContext } from "@basis/core";
 import { toPluginStatus } from "./errors.ts";
@@ -48,6 +48,7 @@ export const makeHub = (owner: Context.Tag.Service<PluginContext>, open: () => I
     yield* forward(SessionChanged, (e) => ({ type: "session-changed", info: e.info }));
     yield* forward(Notice, (notice) => ({ type: "notice", notice }));
     yield* forward(PluginsChanged, (e) => ({ type: "plugins-changed", plugins: e.plugins.map(toPluginStatus) }));
+    yield* forward(CommandsChanged, (e) => ({ type: "commands-changed", commands: e.commands }));
 
     const join = Effect.gen(function* () {
       const subscriber: Subscriber = { feed: yield* Queue.sliding<HostEvent>(SUBSCRIBER_BUFFER), inbox: yield* Queue.unbounded<HostEvent>() };

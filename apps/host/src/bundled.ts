@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import type { Composition, Plugin, PluginEntry } from "@basis/core";
 import agent from "@basis/plugin-agent";
+import commands from "@basis/plugin-commands";
+import * as builtinCommands from "@basis/plugin-commands-builtin";
 import credentials from "@basis/plugin-credentials";
 import interaction from "@basis/plugin-interaction";
 import llm from "@basis/plugin-llm-pi-ai";
@@ -22,7 +24,26 @@ export const cliCommand = `node --conditions=source ${fileURLToPath(new URL("../
  * closure over the loader, so it arrives as an argument.
  */
 export function bundled(host: Plugin): readonly Plugin[] {
-  return [host, interaction, credentials, llm, tools, read, write, edit, bash, sessions, agent, projectContext, workspace, transport];
+  return [
+    host,
+    interaction,
+    credentials,
+    llm,
+    tools,
+    read,
+    write,
+    edit,
+    bash,
+    sessions,
+    agent,
+    projectContext,
+    workspace,
+    commands,
+    builtinCommands.host,
+    builtinCommands.llm,
+    builtinCommands.workspace,
+    transport,
+  ];
 }
 
 /** Config the app supplies for bundled plugins, beneath whatever a config file sets. */

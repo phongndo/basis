@@ -12,6 +12,7 @@ interface Tagged {
   readonly pluginId?: unknown;
   readonly tool?: unknown;
   readonly path?: unknown;
+  readonly command?: unknown;
   readonly diagnostics?: readonly Diagnostic[];
 }
 
@@ -26,15 +27,15 @@ export const formatDiagnostic = (diagnostic: Diagnostic): string =>
 /**
  * Domain errors cross the wire as `HostError`. `code` is the error's `reason`
  * when it has one (`Busy`, `NotFound`), else its tag (`ReloadError`,
- * `CoreClosed`); `subject` is the session, provider, plugin, tool, or workspace
- * path concerned.
+ * `CoreClosed`); `subject` is the session, provider, plugin, tool, workspace
+ * path, or command concerned.
  * A `ReloadError`'s diagnostics become the message, one per line.
  */
 export const toHostError = (error: unknown): HostError => {
   if (error instanceof HostError) return error;
   if (!isTagged(error)) return new HostError({ code: "Unknown", message: error instanceof Error ? error.message : String(error) });
   const code = text(error.reason) ?? error._tag;
-  const subject = text(error.sessionId) ?? text(error.provider) ?? text(error.pluginId) ?? text(error.tool) ?? text(error.path);
+  const subject = text(error.sessionId) ?? text(error.provider) ?? text(error.pluginId) ?? text(error.tool) ?? text(error.path) ?? text(error.command);
   const message = error.diagnostics?.length ? error.diagnostics.map(formatDiagnostic).join("\n") : (text(error.message) ?? code);
   return new HostError({ code, message, ...(subject === undefined ? {} : { subject }) });
 };

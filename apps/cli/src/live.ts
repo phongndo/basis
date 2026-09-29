@@ -281,6 +281,8 @@ const eventLine = (event: HostEvent): string => {
       return `question ${event.id} closed`;
     case "plugins-changed":
       return `plugins: ${event.plugins.map((plugin) => `${plugin.id}=${plugin.state}`).join(" ")}`;
+    case "commands-changed":
+      return `commands: ${event.commands.map((command) => command.id).join(" ")}`;
   }
 };
 

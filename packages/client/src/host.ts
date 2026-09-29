@@ -2,6 +2,8 @@ import { Cause, Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import { HostError } from "@basis/contracts";
 import type {
   AuthType,
+  CommandInfo,
+  CommandResult,
   DirectoryListing,
   GitBranch,
   HostEvent,
@@ -75,6 +77,11 @@ export interface Host {
     readonly createWorktree: (path: string, options: { branch: string; base?: string }) => Promise<WorkspaceStatus>;
     readonly branches: (path: string) => Promise<readonly GitBranch[]>;
     readonly checkout: (path: string, branch: string, options?: { create?: boolean }) => Promise<WorkspaceStatus>;
+  };
+  readonly commands: {
+    readonly list: () => Promise<readonly CommandInfo[]>;
+    /** Resolves when the command ends; its questions arrive as `interaction` events. */
+    readonly run: (id: string, context?: { cwd?: string; sessionId?: string }) => Promise<CommandResult>;
   };
   readonly host: {
     readonly info: () => Promise<HostInfo>;
@@ -217,6 +224,17 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       branches: (path) => call(rpc.Workspace.Branches({ path })),
       checkout: (path, branch, options) =>
         call(rpc.Workspace.Checkout(options?.create === undefined ? { path, branch } : { path, branch, create: options.create })),
+    },
+    commands: {
+      list: () => call(rpc.Command.List()),
+      run: (id, context) =>
+        call(
+          rpc.Command.Run({
+            id,
+            ...(context?.cwd === undefined ? {} : { cwd: context.cwd }),
+            ...(context?.sessionId === undefined ? {} : { sessionId: context.sessionId }),
+          }),
+        ),
     },
     host: {
       info: () => call(rpc.Host.Info()),

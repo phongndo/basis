@@ -4,6 +4,7 @@ import {
   Agent,
   AgentError,
   AssistantDelta,
+  Commands,
   emptyUsage,
   HostControl,
   Interaction,
@@ -208,6 +209,24 @@ export const fakeInteraction = definePlugin({
         ask: (title) => ask({ type: "ask", id: `i${++count}`, title }, (answer) => String(answer.value)),
         select: (title, options) => ask({ type: "select", id: `i${++count}`, title, options }, (answer) => answer.value as never),
       };
+    }),
+  ),
+});
+
+/** Contributes one command that asks a question, as any plugin adding to the palette would. */
+export const fakeGreeter = definePlugin({
+  id: "greeter",
+  requires: [Commands, Interaction],
+  layer: Layer.scopedDiscard(
+    Effect.gen(function* () {
+      const [commands, interaction] = yield* Effect.all([Commands, Interaction]);
+      yield* commands.register({
+        id: "test.greet",
+        title: "Greet…",
+        category: "Test",
+        run: ({ cwd, sessionId }) =>
+          Effect.map(interaction.ask("Name?"), (name) => ({ message: `Hello, ${name}, in ${cwd}${sessionId === undefined ? "" : ` (${sessionId})`}` })),
+      });
     }),
   ),
 });
