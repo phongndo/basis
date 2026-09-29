@@ -85,8 +85,9 @@ export class Tools extends Context.Tag("basis/Tools")<Tools, {
   readonly list: Effect.Effect<readonly ToolContribution[]>;
   /**
    * Validates input, runs `ToolExecuteHook`, guards, then the tool. Tool
-   * failures and denials become `isError` results; only interruption and
-   * unknown tools escape as failures.
+   * failures and denials become `isError` results; only unknown tools
+   * (`NotFound`), an aborted `signal` (`Cancelled`, which interrupts the tool
+   * and publishes no `ToolExecuted`), and interruption escape as failures.
    */
   readonly execute: (invocation: ToolInvocation, signal: AbortSignal) => Effect.Effect<ToolResult, ToolError>;
 }>() {}
