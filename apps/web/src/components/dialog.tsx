@@ -5,10 +5,12 @@ import { XIcon } from "./icons.tsx";
 
 /**
  * Modal shell: backdrop, Esc to close, focus moved in on open and restored on
- * close, Tab kept inside.
+ * close, Tab kept inside. Without a `title` there is no header: the body leads
+ * (a search field) and names the dialog through `label`.
  */
 export function Dialog(props: {
-  title: JSX.Element;
+  title?: JSX.Element;
+  label?: string;
   onClose?: (() => void) | undefined;
   children: JSX.Element;
   footer?: JSX.Element;
@@ -55,15 +57,17 @@ export function Dialog(props: {
           if (event.target === event.currentTarget) props.onClose?.();
         }}
       >
-        <div ref={panel} class={`dialog ${props.class ?? ""}`} role="dialog" aria-modal="true" tabindex="-1" onKeyDown={onKey}>
-          <header class="dialog-head">
-            <h2>{props.title}</h2>
-            <Show when={props.onClose}>
-              <button class="icon-button" aria-label="Close" onClick={() => props.onClose?.()}>
-                <XIcon />
-              </button>
-            </Show>
-          </header>
+        <div ref={panel} class={`dialog ${props.class ?? ""}`} role="dialog" aria-modal="true" aria-label={props.label} tabindex="-1" onKeyDown={onKey}>
+          <Show when={props.title}>
+            <header class="dialog-head">
+              <h2>{props.title}</h2>
+              <Show when={props.onClose}>
+                <button class="icon-button" aria-label="Close" onClick={() => props.onClose?.()}>
+                  <XIcon />
+                </button>
+              </Show>
+            </header>
+          </Show>
           <div class="dialog-body">{props.children}</div>
           <Show when={props.footer}>
             <footer class="dialog-foot">{props.footer}</footer>

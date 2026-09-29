@@ -2486,10 +2486,6 @@ button.strip-chip:hover:not(:disabled),
   overflow-wrap: anywhere;
   font-size: 11.5px;
 }
-.welcome {
-  color: var(--text-2);
-}
-
 .choices {
   display: flex;
   flex-direction: column;
@@ -3441,20 +3437,13 @@ button {
   flex: 1;
   min-height: 0;
 }
-.providers-dialog .welcome {
-  padding: 0 18px 12px;
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-}
 .dialog-search {
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 44px;
-  padding: 0 18px;
-  border-top: 1px solid var(--border);
+  height: 52px;
+  padding: 0 10px 0 18px;
   border-bottom: 1px solid var(--border);
   color: var(--text-3);
 }
@@ -3467,7 +3456,7 @@ button {
   border: 0;
   outline: none;
   background: transparent;
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .dialog-search input::placeholder {
   color: var(--text-3);

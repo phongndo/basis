@@ -2,7 +2,7 @@ import { For, Show, createMemo, createSignal, onMount } from "solid-js";
 import type { ProviderInfo } from "@basis/contracts";
 import { allModels, loadAllModels, login, logout, openDialog, state } from "../store.ts";
 import { Dialog } from "./dialog.tsx";
-import { ChevronDownIcon, MoreIcon, SearchIcon, Spinner } from "./icons.tsx";
+import { ChevronDownIcon, MoreIcon, SearchIcon, Spinner, XIcon } from "./icons.tsx";
 import { Popover } from "./popover.tsx";
 
 type Method = ProviderInfo["auth"][number];
@@ -61,13 +61,8 @@ export function ProvidersDialog() {
   );
 
   return (
-    <Dialog title={state.welcome ? "Welcome to basis" : "Providers"} onClose={() => openDialog(undefined)} class="providers-dialog">
-      <Show when={state.welcome}>
-        <p class="welcome">
-          Connect a model provider to start. Sign in with a subscription you already have, or add an API key. Credentials stay on the machine running the host.
-        </p>
-      </Show>
-      <label class="dialog-search">
+    <Dialog label="Providers" onClose={() => openDialog(undefined)} class="providers-dialog">
+      <div class="dialog-search">
         <SearchIcon />
         <input
           data-autofocus
@@ -78,7 +73,10 @@ export function ProvidersDialog() {
           value={query()}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-      </label>
+        <button class="icon-button" aria-label="Close" onClick={() => openDialog(undefined)}>
+          <XIcon />
+        </button>
+      </div>
       <div class="provider-scroll">
         <Show when={!state.providersLoaded}>
           <p class="provider-empty">

@@ -73,7 +73,7 @@ interface State {
   dialog: Dialog;
   /** Provider id whose login is running. */
   loggingIn: string | undefined;
-  /** First run with nothing configured: the providers dialog shows a welcome. */
+  /** First run with nothing configured: the providers dialog opened by itself and closes once one is set up. */
   welcome: boolean;
 }
 
