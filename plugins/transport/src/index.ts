@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Effect, Layer, Schema } from "effect";
-import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, Sessions, Workspace } from "@basis/contracts";
-import { definePlugin, Events, PluginContext } from "@basis/core";
+import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, Sessions, Workspace } from "@lemma/contracts";
+import { definePlugin, Events, PluginContext } from "@lemma/core";
 import { makeHandlers } from "./handlers.ts";
 import { makeHub } from "./hub.ts";
 import type { Hub } from "./hub.ts";

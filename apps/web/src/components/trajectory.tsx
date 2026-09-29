@@ -14,8 +14,8 @@ import {
   recordRequest,
   recordStatus,
   sortRecords,
-} from "@basis/contracts";
-import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest } from "@basis/contracts";
+} from "@lemma/contracts";
+import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest } from "@lemma/contracts";
 import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
 import { activeBranch, checkoutSession, isBusy, reportError, state, trajectory } from "../store.ts";
 import { CopyIcon, XIcon } from "./icons.tsx";
@@ -924,7 +924,7 @@ function ToolsList(props: { request: TrajectoryRequest }) {
   );
 }
 
-/** How a request's system prompt differs from the request before it (`basis inspect --request N --diff`). */
+/** How a request's system prompt differs from the request before it (`lemma inspect --request N --diff`). */
 function Diff(props: { previous: TrajectoryRequest | undefined; request: TrajectoryRequest }) {
   const sections = createMemo(() => promptDiff(props.previous, props.request));
   return (

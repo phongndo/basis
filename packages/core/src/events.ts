@@ -1,7 +1,7 @@
 import { Context } from "effect";
 import type { Effect, Stream } from "effect";
 
-const EventTypeId: unique symbol = Symbol("@basis/core/Event");
+const EventTypeId: unique symbol = Symbol("@lemma/core/Event");
 
 /**
  * A fire-and-forget notification. Publishing never fails and never waits for
@@ -35,7 +35,7 @@ export interface ObserveOptions {
 /** An observer failure becomes a `PluginFault` (phase "observe") for its owner and affects nothing else. */
 export type Observer<Payload, Requirements = never> = (payload: Payload) => Effect.Effect<void, unknown, Requirements>;
 
-export class Events extends Context.Tag("@basis/core/Events")<
+export class Events extends Context.Tag("@lemma/core/Events")<
   Events,
   {
     readonly publish: <P>(event: Event<P>, payload: P) => Effect.Effect<void>;

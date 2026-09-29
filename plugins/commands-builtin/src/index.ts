@@ -1,8 +1,8 @@
 import { Effect, Layer } from "effect";
 import type { Context } from "effect";
-import { definePlugin } from "@basis/core";
-import { CommandError, Commands, HostControl, Interaction, Llm, Workspace } from "@basis/contracts";
-import type { Command } from "@basis/contracts";
+import { definePlugin } from "@lemma/core";
+import { CommandError, Commands, HostControl, Interaction, Llm, Workspace } from "@lemma/contracts";
+import type { Command } from "@lemma/contracts";
 
 type Ask = Context.Tag.Service<typeof Interaction>;
 

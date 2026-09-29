@@ -1,4 +1,4 @@
-import type { Usage } from "@basis/contracts";
+import type { Usage } from "@lemma/contracts";
 
 export const formatTokens = (n: number): string => {
   if (n < 1_000) return String(n);
@@ -163,7 +163,7 @@ export const truncateLines = (text: string, max: number): { readonly text: strin
   return { text: lines.slice(0, max).join("\n"), hidden: lines.length - max };
 };
 
-/** A branch name for a new worktree from the first message: `basis/fix-login-redirect`. */
+/** A branch name for a new worktree from the first message: `lemma/fix-login-redirect`. */
 export const branchSlug = (text: string): string => {
   const words = text
     .toLowerCase()
@@ -172,7 +172,7 @@ export const branchSlug = (text: string): string => {
     .filter(Boolean)
     .slice(0, 5);
   const slug = words.join("-").replace(/-+/g, "-").slice(0, 40).replace(/-+$/, "");
-  return `basis/${slug === "" ? "task" : slug}`;
+  return `lemma/${slug === "" ? "task" : slug}`;
 };
 
 /** A context window for display: `1_000_000` → `1M`, `203_000` → `203K`. */

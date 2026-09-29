@@ -1,6 +1,6 @@
 import { Context } from "effect";
 
-// Applications and plugin authors own these contracts; Basis supplies composition.
+// Applications and plugin authors own these contracts; the core supplies composition.
 export class Formatter extends Context.Tag("consumer/Formatter")<
   Formatter,
   {

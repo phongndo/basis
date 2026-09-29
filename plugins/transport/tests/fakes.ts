@@ -22,7 +22,7 @@ import {
   TurnStarted,
   Workspace,
   WorkspaceError,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import type {
   AssistantMessage,
   GitBranch,
@@ -32,9 +32,9 @@ import type {
   SessionEvent,
   SessionInfo,
   WorkspaceStatus,
-} from "@basis/contracts";
-import { definePlugin, Events, Hooks, ReloadError, Diagnostic } from "@basis/core";
-import type { Core } from "@basis/core";
+} from "@lemma/contracts";
+import { definePlugin, Events, Hooks, ReloadError, Diagnostic } from "@lemma/core";
+import type { Core } from "@lemma/core";
 
 /** In-memory session logs that publish the same events the real plugin does. */
 export const fakeSessions = definePlugin({
@@ -273,7 +273,7 @@ export const fakePaths = (home: string) =>
     layer: Layer.succeed(Paths, {
       home,
       userConfig: `${home}/config.jsonc`,
-      projectConfig: "/work/.basis/config.jsonc",
+      projectConfig: "/work/.lemma/config.jsonc",
       auth: `${home}/auth.json`,
       sessions: `${home}/sessions`,
       cwd: "/work",

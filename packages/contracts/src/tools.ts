@@ -1,10 +1,10 @@
 import { Context, Data, Schema } from "effect";
 import type { Effect, Scope } from "effect";
-import { Event, Hook } from "@basis/core";
-import type { PluginContext } from "@basis/core";
+import { Event, Hook } from "@lemma/core";
+import type { PluginContext } from "@lemma/core";
 import { ImageContent, TextContent, ToolSpec } from "./llm.ts";
 
-export class ToolResult extends Schema.Class<ToolResult>("basis/ToolResult")({
+export class ToolResult extends Schema.Class<ToolResult>("lemma/ToolResult")({
   content: Schema.Array(Schema.Union(TextContent, ImageContent)),
   isError: Schema.optional(Schema.Boolean),
   /** Structured data for UIs (diffs, exit codes); logged, never sent to the model. */
@@ -39,7 +39,7 @@ export interface Tool<Input = any> {
   readonly execute: (input: Input, context: ToolContext) => Promise<ToolResult> | Effect.Effect<ToolResult, unknown>;
 }
 
-export class ToolInvocation extends Schema.Class<ToolInvocation>("basis/ToolInvocation")({
+export class ToolInvocation extends Schema.Class<ToolInvocation>("lemma/ToolInvocation")({
   sessionId: Schema.String,
   toolCallId: Schema.String,
   name: Schema.String,
@@ -51,7 +51,7 @@ export class ToolInvocation extends Schema.Class<ToolInvocation>("basis/ToolInvo
  * Around every execution: timeouts, rewrites, logging. A handler that does not
  * call `next` skips the tool and supplies the result itself.
  */
-export const ToolExecuteHook = Hook.make<ToolInvocation, ToolResult, ToolError>("basis/tool.execute");
+export const ToolExecuteHook = Hook.make<ToolInvocation, ToolResult, ToolError>("lemma/tool.execute");
 
 /**
  * A guard decides whether a call may run. Guards run inside the terminal of
@@ -66,7 +66,7 @@ export const ToolExecuted = Event.make<{
   readonly invocation: ToolInvocation;
   readonly result: ToolResult;
   readonly durationMs: number;
-}>("basis/tool.executed");
+}>("lemma/tool.executed");
 
 /** A registered tool's model-facing spec and the plugin that registered it. */
 export interface ToolContribution {
@@ -74,7 +74,7 @@ export interface ToolContribution {
   readonly source: string;
 }
 
-export class Tools extends Context.Tag("basis/Tools")<
+export class Tools extends Context.Tag("lemma/Tools")<
   Tools,
   {
     /**

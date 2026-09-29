@@ -10,7 +10,7 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "paths": { "@basis/core": ["./src/index.ts"] },
+    "paths": { "@lemma/core": ["./src/index.ts"] },
     "allowImportingTsExtensions": true,
     "noEmit": true
   },

@@ -1,5 +1,5 @@
-import { addUsage, emptyUsage } from "@basis/contracts";
-import type { AssistantMessage, ImageContent, SessionEvent, TextContent, Timing, ToolCall, ToolResultMessage, Usage } from "@basis/contracts";
+import { addUsage, emptyUsage } from "@lemma/contracts";
+import type { AssistantMessage, ImageContent, SessionEvent, TextContent, Timing, ToolCall, ToolResultMessage, Usage } from "@lemma/contracts";
 
 /**
  * Projection of a session branch into what the chat transcript renders.

@@ -1,5 +1,5 @@
-import type { ConnectionStatus, Host } from "@basis/client";
-import { HostError, emptyUsage } from "@basis/contracts";
+import type { ConnectionStatus, Host } from "@lemma/client";
+import { HostError, emptyUsage } from "@lemma/contracts";
 import type {
   AssistantMessage,
   EventData,
@@ -13,7 +13,7 @@ import type {
   SessionInfo,
   StreamEvent,
   Usage,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 
 /**
  * Dev-only in-browser fake of the host (`?mock`, or `?mock=fresh` for a first
@@ -23,7 +23,7 @@ import type {
  */
 
 const HOME = "/home/dev";
-const CWD = `${HOME}/code/basis`;
+const CWD = `${HOME}/code/lemma`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let idSeq = 0;
 const id = (prefix: string) => `${prefix}${(++idSeq).toString(36)}`;
@@ -156,12 +156,12 @@ export const createMockHost = (): Host => {
     { id: "google", name: "Google Gemini", auth: [{ type: "api_key", name: "API key", interactive: true }], configured: false },
   ];
   const plugins: PluginStatus[] = [
-    { id: "basis/sessions", version: "0.1.0", state: "active" },
-    { id: "basis/agent", version: "0.1.0", state: "active" },
-    { id: "basis/llm-pi-ai", version: "0.1.0", state: "active" },
-    { id: "basis/tools-builtin", version: "0.1.0", state: "active" },
-    { id: "basis/project-context", version: "0.1.0", state: "active" },
-    { id: "basis/transport", version: "0.1.0", state: "active" },
+    { id: "lemma/sessions", version: "0.1.0", state: "active" },
+    { id: "lemma/agent", version: "0.1.0", state: "active" },
+    { id: "lemma/llm-pi-ai", version: "0.1.0", state: "active" },
+    { id: "lemma/tools-builtin", version: "0.1.0", state: "active" },
+    { id: "lemma/project-context", version: "0.1.0", state: "active" },
+    { id: "lemma/transport", version: "0.1.0", state: "active" },
   ];
   const sessions = new Map<string, { info: SessionInfo; events: SessionEvent[] }>();
   const listeners = new Set<(event: HostEvent) => void>();
@@ -230,7 +230,7 @@ export const createMockHost = (): Host => {
       t,
       true,
     );
-    const callA = { type: "toolCall" as const, id: "c1", name: "bash", arguments: { command: "pnpm --filter @basis/client test -- --reporter=dot" } };
+    const callA = { type: "toolCall" as const, id: "c1", name: "bash", arguments: { command: "pnpm --filter @lemma/client test -- --reporter=dot" } };
     const callB = {
       type: "toolCall" as const,
       id: "c2",
@@ -563,7 +563,7 @@ export const createMockHost = (): Host => {
             type: "notice",
             notice: {
               level: "info",
-              source: "basis/llm-pi-ai",
+              source: "lemma/llm-pi-ai",
               message: `Enter this code to finish logging in to ${p.name}`,
               code: "WDJB-MJHT",
               links: [{ url: "https://github.com/login/device", label: "Open login page" }],
@@ -586,7 +586,7 @@ export const createMockHost = (): Host => {
       browse: async (partialPath) => {
         const parent = partialPath.endsWith("/") ? partialPath.replace(/\/+$/, "") || "/" : partialPath.slice(0, partialPath.lastIndexOf("/")) || "/";
         const needle = partialPath.endsWith("/") ? "" : partialPath.slice(partialPath.lastIndexOf("/") + 1).toLowerCase();
-        const names = ["basis", "dotfiles", "nix-config", "notes", "pi-extensions", "tau"];
+        const names = ["lemma", "dotfiles", "nix-config", "notes", "pi-extensions", "tau"];
         const entries = names
           .filter((name) => name.includes(needle))
           .map((name) => ({
@@ -637,7 +637,7 @@ export const createMockHost = (): Host => {
         switch (commandId) {
           case "host.reload":
             await sleep(400);
-            return { message: "Config reloaded: restarted basis/agent" };
+            return { message: "Config reloaded: restarted lemma/agent" };
           case "workspace.checkout": {
             const answer = await ask({
               type: "interaction",
@@ -681,7 +681,7 @@ export const createMockHost = (): Host => {
       },
       reload: async () => {
         await sleep(400);
-        return { started: [], restarted: ["basis/agent"], stopped: [] };
+        return { started: [], restarted: ["lemma/agent"], stopped: [] };
       },
     },
     status: () => status,

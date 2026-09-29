@@ -1,6 +1,6 @@
 import { JSONSchema } from "effect";
 import type { Schema } from "effect";
-import type { JsonSchema } from "@basis/contracts";
+import type { JsonSchema } from "@lemma/contracts";
 
 type Json = Record<string, unknown>;
 

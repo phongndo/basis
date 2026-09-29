@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
-import type { DirectoryEntry } from "@basis/contracts";
+import type { DirectoryEntry } from "@lemma/contracts";
 import { Portal } from "solid-js/web";
 import { knownProjects } from "../model/prefs.ts";
 import { openDialog, openProject, reportError, state, workspaceApi } from "../store.ts";

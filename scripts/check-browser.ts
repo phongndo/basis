@@ -37,7 +37,7 @@ export async function checkBrowser(consumer: string) {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
-  const executablePath = process.env.BASIS_CHROMIUM;
+  const executablePath = process.env.LEMMA_CHROMIUM;
   try {
     const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
     try {

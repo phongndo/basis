@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { access, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
-import { ToolResult } from "@basis/contracts";
+import { ToolResult } from "@lemma/contracts";
 
 export const text = (value: string, details?: unknown): ToolResult =>
   new ToolResult({ content: [{ type: "text", text: value }], ...(details === undefined ? {} : { details }) });

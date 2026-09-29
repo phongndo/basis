@@ -1,8 +1,8 @@
 import { Cause, Effect, Layer, Stream } from "effect";
 import type { Context } from "effect";
-import { HostControl, Notice, Paths, PluginsChanged } from "@basis/contracts";
-import { definePlugin, Events, PluginContext } from "@basis/core";
-import type { Plugin, PluginFault } from "@basis/core";
+import { HostControl, Notice, Paths, PluginsChanged } from "@lemma/contracts";
+import { definePlugin, Events, PluginContext } from "@lemma/core";
+import type { Plugin, PluginFault } from "@lemma/core";
 import { HOST_PLUGIN_ID } from "./config.ts";
 import { PathsSchema } from "./paths.ts";
 

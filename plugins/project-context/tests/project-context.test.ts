@@ -3,14 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { definePlugin, Hooks, makeCore } from "@basis/core";
-import { AgentRequestHook, Paths } from "@basis/contracts";
-import type { RequestDraft, RequestPlan } from "@basis/contracts";
+import { definePlugin, Hooks, makeCore } from "@lemma/core";
+import { AgentRequestHook, Paths } from "@lemma/contracts";
+import type { RequestDraft, RequestPlan } from "@lemma/contracts";
 import projectContext, { makeLoader } from "../src/index.ts";
 
 let dir: string;
 beforeEach(async () => {
-  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-context-")));
+  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "lemma-context-")));
 });
 afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });

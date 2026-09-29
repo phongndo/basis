@@ -1,9 +1,9 @@
 {
-  "name": "@basis/cli",
+  "name": "@lemma/cli",
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "basis": "./src/main.ts"
+    "lemma": "./src/main.ts"
   },
   "type": "module",
   "scripts": {
@@ -11,12 +11,12 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@basis/client": "workspace:*",
-    "@basis/contracts": "workspace:*",
-    "@basis/host": "workspace:*",
-    "@basis/plugin-host": "workspace:*",
-    "@basis/plugin-transport": "workspace:*",
     "@effect/rpc": "0.76.2",
+    "@lemma/client": "workspace:*",
+    "@lemma/contracts": "workspace:*",
+    "@lemma/host": "workspace:*",
+    "@lemma/plugin-host": "workspace:*",
+    "@lemma/plugin-transport": "workspace:*",
     "effect": "3.22.2"
   },
   "devDependencies": {

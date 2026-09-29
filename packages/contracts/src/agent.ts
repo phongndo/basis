@@ -1,6 +1,6 @@
 import { Context, Data, Schema } from "effect";
 import type { Effect } from "effect";
-import { Event, Hook } from "@basis/core";
+import { Event, Hook } from "@lemma/core";
 import { AssistantMessage, ImageContent, Message, ModelRef, StreamEvent, TextContent, ThinkingLevel, Usage } from "./llm.ts";
 import type { ToolResultMessage } from "./llm.ts";
 import type { ToolContribution } from "./tools.ts";
@@ -49,7 +49,7 @@ export interface RequestDraft {
 export type RequestPlan = Omit<RequestDraft, "history" | "sessionId" | "turnId" | "cwd">;
 
 /** Runs before every model call. Skills, project context, and prompt plugins contribute here. */
-export const AgentRequestHook = Hook.make<RequestDraft, RequestPlan, AgentError>("basis/agent.request");
+export const AgentRequestHook = Hook.make<RequestDraft, RequestPlan, AgentError>("lemma/agent.request");
 
 /**
  * Runs after each step. The default continues while the model asked for tools
@@ -62,24 +62,24 @@ export interface StepOutcome {
   readonly message: AssistantMessage;
   readonly results: readonly ToolResultMessage[];
 }
-export const AgentContinueHook = Hook.make<StepOutcome, "continue" | "stop", AgentError>("basis/agent.continue");
+export const AgentContinueHook = Hook.make<StepOutcome, "continue" | "stop", AgentError>("lemma/agent.continue");
 
-export const TurnStarted = Event.make<{ readonly sessionId: string; readonly turnId: string }>("basis/agent.turn.started");
+export const TurnStarted = Event.make<{ readonly sessionId: string; readonly turnId: string }>("lemma/agent.turn.started");
 export const TurnEnded = Event.make<{
   readonly sessionId: string;
   readonly turnId: string;
   readonly usage: Usage;
   readonly reason: "done" | "cancelled" | "error" | "max-steps";
-}>("basis/agent.turn.ended");
+}>("lemma/agent.turn.ended");
 /** Live model output for UIs; the durable record is the `message` or `attempt` event appended when the stream settles. */
 export const AssistantDelta = Event.make<{
   readonly sessionId: string;
   readonly turnId: string;
   readonly stepId: string;
   readonly event: StreamEvent;
-}>("basis/agent.delta");
+}>("lemma/agent.delta");
 
-export class Agent extends Context.Tag("basis/Agent")<
+export class Agent extends Context.Tag("lemma/Agent")<
   Agent,
   {
     /**

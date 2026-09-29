@@ -1,4 +1,4 @@
-# @basis/plugin-workspace
+# @lemma/plugin-workspace
 
 Provides `Workspace` (`status`, `branches`, `checkout`) by running the `git` CLI. Requires nothing. No config.
 

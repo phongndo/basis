@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import type { ProviderInfo } from "@basis/contracts";
+import type { ProviderInfo } from "@lemma/contracts";
 import { allModels, login, logout, state } from "../store.ts";
 import { ChevronDownIcon, MoreIcon, Spinner } from "./icons.tsx";
 import { Popover } from "./popover.tsx";

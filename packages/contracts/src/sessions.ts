@@ -1,6 +1,6 @@
 import { Context, Data, Schema } from "effect";
 import type { Effect } from "effect";
-import { Event } from "@basis/core";
+import { Event } from "@lemma/core";
 import { AssistantMessage, Message, ThinkingLevel, ToolSpec } from "./llm.ts";
 
 /**
@@ -126,10 +126,10 @@ export class SessionError extends Data.TaggedError("SessionError")<{
   readonly cause?: unknown;
 }> {}
 
-export const SessionAppended = Event.make<{ readonly sessionId: string; readonly event: SessionEvent }>("basis/session.appended");
-export const SessionChanged = Event.make<{ readonly info: SessionInfo }>("basis/session.changed");
+export const SessionAppended = Event.make<{ readonly sessionId: string; readonly event: SessionEvent }>("lemma/session.appended");
+export const SessionChanged = Event.make<{ readonly info: SessionInfo }>("lemma/session.changed");
 
-export class Sessions extends Context.Tag("basis/Sessions")<
+export class Sessions extends Context.Tag("lemma/Sessions")<
   Sessions,
   {
     readonly create: (options?: { readonly cwd?: string }) => Effect.Effect<SessionInfo, SessionError>;

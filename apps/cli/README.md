@@ -1,24 +1,24 @@
-# @basis/cli
+# @lemma/cli
 
-The `basis` command: everything the web app can do, from a shell, for people
-and for agents. `basis serve` runs the host app in the terminal; every other
-command is a client of an already-running host. `basis --help` lists the
+The `lemma` command: everything the web app can do, from a shell, for people
+and for agents. `lemma serve` runs the host app in the terminal; every other
+command is a client of an already-running host. `lemma --help` lists the
 commands, flags, and exit codes.
 
 ```sh
-nix develop -c pnpm basis status
-nix develop -c pnpm basis run new "fix the failing test" --follow
-nix develop -c pnpm basis inspect <session> --filter "is:error" --json
+nix develop -c pnpm lemma status
+nix develop -c pnpm lemma run new "fix the failing test" --follow
+nix develop -c pnpm lemma inspect <session> --filter "is:error" --json
 ```
 
-The CLI and the web app share their logic through `@basis/contracts`: the
+The CLI and the web app share their logic through `@lemma/contracts`: the
 trajectory projection, the ledger of records, the filter language, sorting,
 time ranges, and prompt diffs are one implementation, so the two show the same
 records and accept the same queries.
 
 ## Behavior
 
-- **Attach only.** The host is found through `$BASIS_HOME/transport.json`
+- **Attach only.** The host is found through `$LEMMA_HOME/transport.json`
   (`readDiscovery` from the transport plugin). With no running host the command
   fails with exit code 3 and code `NoHost`; it never starts one itself. Running a
   second host in-process would break the sessions store's single-writer

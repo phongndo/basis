@@ -5,7 +5,7 @@ import type { CliError, Command, Io, Options } from "./command.ts";
 import { formatBranches, formatListing, formatWorkspace } from "./format.ts";
 
 /**
- * `basis workspace …`: the project directory controls the web app's
+ * `lemma workspace …`: the project directory controls the web app's
  * workspace bar and add-project dialog offer, over `Workspace`.
  */
 

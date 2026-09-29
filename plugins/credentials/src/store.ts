@@ -3,7 +3,7 @@ import { mkdir, open, readFile, rename, rm, utimes } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { Duration, Effect, Either, Schedule, Schema } from "effect";
-import { Credential, CredentialError } from "@basis/contracts";
+import { Credential, CredentialError } from "@lemma/contracts";
 
 /** The raw file: provider id → entry. Entries are decoded on use so unknown ones survive a write untouched. */
 export type RawStore = Readonly<Record<string, unknown>>;

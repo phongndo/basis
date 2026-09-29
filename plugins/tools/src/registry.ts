@@ -1,8 +1,8 @@
 import { Cause, Effect, ParseResult, Schema } from "effect";
 import type { Context } from "effect";
-import { Events, Hooks, PluginContext } from "@basis/core";
-import { ToolError, ToolExecuteHook, ToolExecuted, ToolResult } from "@basis/contracts";
-import type { Guard, Tool, ToolContext, ToolContribution, ToolInvocation, Tools } from "@basis/contracts";
+import { Events, Hooks, PluginContext } from "@lemma/core";
+import { ToolError, ToolExecuteHook, ToolExecuted, ToolResult } from "@lemma/contracts";
+import type { Guard, Tool, ToolContext, ToolContribution, ToolInvocation, Tools } from "@lemma/contracts";
 import { capResult } from "./content.ts";
 import { toolParameters } from "./schema.ts";
 

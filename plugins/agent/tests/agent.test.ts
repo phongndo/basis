@@ -1,10 +1,10 @@
 import * as fs from "node:fs/promises";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { definePlugin, Events, makeCore, PluginContext } from "@basis/core";
-import type { Plugin } from "@basis/core";
-import { Agent, AgentContinueHook, AgentRequestHook, branchOf, rebuildRequest, Sessions, ToolResult } from "@basis/contracts";
-import type { EventData, LlmRequest, SessionEvent, Tool } from "@basis/contracts";
+import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
+import { Agent, AgentContinueHook, AgentRequestHook, branchOf, rebuildRequest, Sessions, ToolResult } from "@lemma/contracts";
+import type { EventData, LlmRequest, SessionEvent, Tool } from "@lemma/contracts";
 import sessions from "../../sessions/src/index.ts";
 import tools from "../../tools/src/index.ts";
 import agent from "../src/index.ts";
@@ -312,19 +312,19 @@ describe("agent", () => {
           yield* Effect.flatMap(Agent, (a) => a.prompt(id, text("go"), { thinking: "high" }));
           expect(requests[0]).toMatchObject({ model: "fake/m2", thinking: "high" });
           expect(requests[0]!.system!.startsWith("Custom base.\n\n<environment>")).toBe(true);
-          expect(requests[0]!.system).toContain(`Basis session: ${id}`);
-          expect(requests[0]!.system).not.toContain("Basis CLI:");
+          expect(requests[0]!.system).toContain(`Lemma session: ${id}`);
+          expect(requests[0]!.system).not.toContain("Lemma CLI:");
         }),
     );
   });
 
   it("names the configured CLI in the environment section", async () => {
-    await withAgent({ scripts: [reply("hi")], models: ["fake/m1"], config: { cli: "basis-test" } }, ({ requests }) =>
+    await withAgent({ scripts: [reply("hi")], models: ["fake/m1"], config: { cli: "lemma-test" } }, ({ requests }) =>
       Effect.gen(function* () {
         const { id } = yield* newSession;
         yield* Effect.flatMap(Agent, (a) => a.prompt(id, text("go")));
-        expect(requests[0]!.system).toContain("Basis CLI: `basis-test`");
-        expect(requests[0]!.system).toContain(`Basis session: ${id}`);
+        expect(requests[0]!.system).toContain("Lemma CLI: `lemma-test`");
+        expect(requests[0]!.system).toContain(`Lemma session: ${id}`);
       }),
     );
   });

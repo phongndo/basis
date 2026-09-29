@@ -4,8 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Effect, Either, Layer } from "effect";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { definePlugin, makeCore } from "@basis/core";
-import { Paths, Workspace, WorkspaceError } from "@basis/contracts";
+import { definePlugin, makeCore } from "@lemma/core";
+import { Paths, Workspace, WorkspaceError } from "@lemma/contracts";
 import workspace, { expandPath, makeWorkspace, matchName } from "../src/index.ts";
 
 // Isolate every git call, ours and the plugin's, from the machine's config.
@@ -16,7 +16,7 @@ beforeAll(() => {
 
 let dir: string;
 beforeEach(async () => {
-  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-workspace-")));
+  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "lemma-workspace-")));
 });
 afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
@@ -244,12 +244,12 @@ describe("browse", () => {
   });
 
   it("filters by the typed name, prefix matches first, hidden only when asked", async () => {
-    for (const name of ["basis", "my-basis", "other", ".basis-cache"]) await fs.mkdir(path.join(dir, name));
-    expect(names(await run(ws.browse(`${dir}/BAS`)))).toEqual(["basis", "my-basis"]);
+    for (const name of ["lemma", "my-lemma", "other", ".lemma-cache"]) await fs.mkdir(path.join(dir, name));
+    expect(names(await run(ws.browse(`${dir}/LEM`)))).toEqual(["lemma", "my-lemma"]);
     // Letters in order match too, after prefix and substring matches.
-    expect(names(await run(ws.browse(`${dir}/bss`)))).toEqual(["basis", "my-basis"]);
-    expect((await run(ws.browse(`${dir}/bas`))).entries[0]!.matches).toEqual([0, 1, 2]);
-    expect(names(await run(ws.browse(`${dir}/.ba`)))).toEqual([".basis-cache"]);
+    expect(names(await run(ws.browse(`${dir}/lma`)))).toEqual(["lemma", "my-lemma"]);
+    expect((await run(ws.browse(`${dir}/lem`))).entries[0]!.matches).toEqual([0, 1, 2]);
+    expect(names(await run(ws.browse(`${dir}/.le`)))).toEqual([".lemma-cache"]);
   });
 
   it("follows symlinks to directories, expands ~, and lists nothing for missing or relative parents", async () => {
@@ -267,11 +267,11 @@ describe("browse", () => {
 
 describe("matchName", () => {
   it("ranks prefix over substring over scattered, tighter scattered first", () => {
-    expect(matchName("basis", "ba")).toEqual({ score: 3, matches: [0, 1] });
-    expect(matchName("my-basis", "bas")).toEqual({ score: 2, matches: [3, 4, 5] });
-    expect(matchName("basis", "bss")!.matches).toEqual([0, 2, 4]);
+    expect(matchName("lemma", "le")).toEqual({ score: 3, matches: [0, 1] });
+    expect(matchName("my-lemma", "lem")).toEqual({ score: 2, matches: [3, 4, 5] });
+    expect(matchName("lemma", "lma")!.matches).toEqual([0, 2, 4]);
     expect(matchName("b-s-s-long-name", "bss")!.score).toBeLessThan(matchName("bss", "bss")!.score);
-    expect(matchName("basis", "x")).toBeUndefined();
+    expect(matchName("lemma", "x")).toBeUndefined();
   });
 });
 

@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Effect } from "effect";
-import type { Tool, ToolContext, ToolResult } from "@basis/contracts";
+import type { Tool, ToolContext, ToolResult } from "@lemma/contracts";
 
 export const context = (cwd: string, signal: AbortSignal = new AbortController().signal): ToolContext => ({ sessionId: "s", toolCallId: "c", cwd, signal });
 
@@ -23,4 +23,4 @@ export const attempt = async <I>(tool: Tool<I>, input: unknown, ctx: ToolContext
 
 export const textOf = (result: ToolResult): string => result.content.map((part) => (part.type === "text" ? part.text : `<image ${part.mimeType}>`)).join("\n");
 
-export const tempDir = () => fs.mkdtemp(path.join(os.tmpdir(), "basis-tools-"));
+export const tempDir = () => fs.mkdtemp(path.join(os.tmpdir(), "lemma-tools-"));

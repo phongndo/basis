@@ -1,6 +1,6 @@
-# @basis/plugin-sessions
+# @lemma/plugin-sessions
 
-Provides `Sessions` (`@basis/contracts`): each session is an append-only tree of
+Provides `Sessions` (`@lemma/contracts`): each session is an append-only tree of
 `SessionEvent`s stored as one JSONL file. Requires `Paths`. No config.
 
 ```ts

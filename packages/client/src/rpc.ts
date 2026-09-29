@@ -3,7 +3,7 @@ import type { Scope } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
-import { HostRpcs } from "@basis/contracts";
+import { HostRpcs } from "@lemma/contracts";
 
 /** The typed Effect surface: `rpc.Session.List({})`, `rpc.Host.Events()`, ... */
 export type HostRpcClient = RpcClient.RpcClient<RpcGroup.Rpcs<typeof HostRpcs>, RpcClientError.RpcClientError>;

@@ -1,8 +1,8 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { Effect, Either } from "effect";
-import { SessionError } from "@basis/contracts";
-import type { SessionEvent, SessionInfo } from "@basis/contracts";
+import { SessionError } from "@lemma/contracts";
+import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 import { decodeLine, encodeLine } from "./format.ts";
 import type { Header, Line } from "./format.ts";
 

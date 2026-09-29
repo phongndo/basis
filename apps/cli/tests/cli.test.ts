@@ -8,19 +8,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { ledger, promptDiff, trajectory } from "@basis/contracts";
-import type { SessionEvent, SessionInfo } from "@basis/contracts";
+import { ledger, promptDiff, trajectory } from "@lemma/contracts";
+import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 import { ExitCode, parseOffset, run } from "../src/cli.ts";
 import { toAnswer } from "../src/live.ts";
 import { formatDiff, formatRecords, formatSession, formatStep, formatSystem, formatTrajectory } from "../src/format.ts";
 
-const hostMain = fileURLToPath(new URL("../../host/src/main.ts", import.meta.url));
+const hostMain = fileURLToPath(new URL("../../../packages/host/src/main.ts", import.meta.url));
 
 const invoke = async (argv: readonly string[], home: string, cwd = "/") => {
   let out = "";
   const err: string[] = [];
   const code = await run(argv, {
-    env: { BASIS_HOME: home },
+    env: { LEMMA_HOME: home },
     cwd,
     out: (text) => {
       out += `${text}\n`;
@@ -47,7 +47,7 @@ const freePort = () =>
 describe("without a host", () => {
   let home: string;
   beforeAll(async () => {
-    home = await mkdtemp(join(tmpdir(), "basis-cli-"));
+    home = await mkdtemp(join(tmpdir(), "lemma-cli-"));
   });
   afterAll(() => rm(home, { recursive: true, force: true }));
 
@@ -102,7 +102,7 @@ describe("against a running host", () => {
   let mock: ChildProcess;
 
   beforeAll(async () => {
-    home = await mkdtemp(join(tmpdir(), "basis-cli-"));
+    home = await mkdtemp(join(tmpdir(), "lemma-cli-"));
     // A scripted provider: a prompt gets a bash call, the tool result gets a streamed answer.
     const port = await freePort();
     mock = spawn(process.execPath, [mockProvider], { env: { ...process.env, PORT: String(port) }, stdio: ["ignore", "pipe", "ignore"] });
@@ -117,7 +117,7 @@ describe("against a running host", () => {
       }),
     );
     host = spawn(process.execPath, ["--conditions=source", hostMain, "--no-open"], {
-      env: { ...process.env, BASIS_HOME: home, INIT_CWD: home },
+      env: { ...process.env, LEMMA_HOME: home, INIT_CWD: home },
       stdio: "ignore",
     });
     const deadline = Date.now() + 20_000;
@@ -167,6 +167,8 @@ describe("against a running host", () => {
       ["bash", "ok"],
       ["bash", "ok"],
     ]);
+    // The host consumes the INIT_CWD it was started with, so a CLI the agent runs uses the agent's directory.
+    expect(JSON.stringify(tools)).toContain("INIT_CWD=unset");
     expect(JSON.parse((await invoke(["inspect", session, "--records", "--sort", "duration", "--desc", "--json"], home)).out)[0].kind).toBe("assistant");
     expect((await invoke(["cancel", session], home)).code).toBe(ExitCode.ok);
   }, 30_000);
@@ -179,7 +181,7 @@ describe("against a running host", () => {
   });
 
   test("session list is scoped to a directory unless --all", async () => {
-    const empty = await mkdtemp(join(tmpdir(), "basis-cli-empty-"));
+    const empty = await mkdtemp(join(tmpdir(), "lemma-cli-empty-"));
     try {
       expect(await invoke(["session", "list"], home, empty)).toMatchObject({ code: ExitCode.ok, out: `No sessions in ${empty}.` });
     } finally {
@@ -204,7 +206,7 @@ describe("against a running host", () => {
     expect(listed).toEqual(expect.arrayContaining(["host.reload", "host.restart-plugin", "llm.logout", "workspace.checkout", "workspace.new-branch"]));
     expect(await invoke(["do", "host.reload"], home)).toMatchObject({ code: ExitCode.ok, out: "Config reloaded; nothing changed" });
 
-    const repo = await mkdtemp(join(tmpdir(), "basis-cli-repo-"));
+    const repo = await mkdtemp(join(tmpdir(), "lemma-cli-repo-"));
     try {
       execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
       execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"], { cwd: repo });
@@ -222,7 +224,7 @@ describe("against a running host", () => {
   }, 30_000);
 
   test("a rejected token fails instead of waiting", async () => {
-    const other = await mkdtemp(join(tmpdir(), "basis-cli-"));
+    const other = await mkdtemp(join(tmpdir(), "lemma-cli-"));
     try {
       const discovery = JSON.parse(await readFile(join(home, "transport.json"), "utf8"));
       await writeFile(join(other, "transport.json"), JSON.stringify({ ...discovery, token: "wrong" }));

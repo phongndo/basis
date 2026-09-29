@@ -1,9 +1,9 @@
 import { Effect, Layer } from "effect";
 import type { AuthContext } from "@earendil-works/pi-ai";
-import { PluginContext, definePlugin, makeCore } from "@basis/core";
-import type { Plugin } from "@basis/core";
-import { Credentials, Interaction, Notice } from "@basis/contracts";
-import type { Credential, InteractionError, Llm, NoticePayload } from "@basis/contracts";
+import { PluginContext, definePlugin, makeCore } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
+import { Credentials, Interaction, Notice } from "@lemma/contracts";
+import type { Credential, InteractionError, Llm, NoticePayload } from "@lemma/contracts";
 
 export function fakeCredentials(initial: Record<string, Credential> = {}) {
   const store = new Map<string, Credential>(Object.entries(initial));

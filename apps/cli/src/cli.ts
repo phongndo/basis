@@ -14,11 +14,11 @@ import {
   recordSummary,
   sortRecords,
   trajectory,
-} from "@basis/contracts";
-import type { LedgerSort, TrajectoryStep, TrajectoryTurn } from "@basis/contracts";
-import { makeHostRpc, makeHostRpcHttp, rpcUrl } from "@basis/client";
-import { resolvePaths } from "@basis/plugin-host";
-import { readDiscovery } from "@basis/plugin-transport";
+} from "@lemma/contracts";
+import type { LedgerSort, TrajectoryStep, TrajectoryTurn } from "@lemma/contracts";
+import { makeHostRpc, makeHostRpcHttp, rpcUrl } from "@lemma/client";
+import { resolvePaths } from "@lemma/plugin-host";
+import { readDiscovery } from "@lemma/plugin-transport";
 import { CliError, ExitCode, usage } from "./command.ts";
 import type { Command, Failure, Io, Options, QuestionPolicy } from "./command.ts";
 import {
@@ -53,10 +53,10 @@ import { workspaceCommand } from "./workspace.ts";
 export { CliError, ExitCode } from "./command.ts";
 export type { Io } from "./command.ts";
 
-export const USAGE = `Usage: basis <command> [options] [--json]
+export const USAGE = `Usage: lemma <command> [options] [--json]
 
 Everything the web app can do, from a shell. Every command except serve talks
-to the running host found in $BASIS_HOME/transport.json (default ~/.basis).
+to the running host found in $LEMMA_HOME/transport.json (default ~/.lemma).
 
 Host
   serve                          Run the host in this terminal
@@ -73,7 +73,7 @@ Sessions and turns
   session title <id> <title>     Rename a session
   session checkout <id> <event>  Move the session's leaf: the next prompt branches from that event
   run <id|new> <prompt…>         Send a prompt and wait for the turn to end
-    --model <provider/model>     Model for this turn (see basis models)
+    --model <provider/model>     Model for this turn (see lemma models)
     --thinking <level>           off, minimal, low, medium, high, xhigh, max
     --image <file>               Attach an image (repeatable)
     --follow                     Stream the turn: text, tool calls, results (NDJSON with --json)
@@ -203,7 +203,7 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
     case "models":
       return extra(1) ?? modelsCommand;
     case "login":
-      if (sub === undefined) return usage("login needs a provider id (see basis providers)");
+      if (sub === undefined) return usage("login needs a provider id (see lemma providers)");
       return extra(2) ?? loginCommand(sub);
     case "logout":
       if (sub === undefined) return usage("logout needs a provider id");
@@ -352,7 +352,7 @@ const findStep = (turns: readonly TrajectoryTurn[], selector: string): { turn: T
 };
 
 /**
- * The running host for this `BASIS_HOME`: one-shot HTTP calls for most
+ * The running host for this `LEMMA_HOME`: one-shot HTTP calls for most
  * commands, and a WebSocket (opened only when a command follows events) for
  * streaming and questions, as the web app uses.
  */
@@ -363,7 +363,7 @@ const connect = (io: Io) =>
     if (discovery === undefined) {
       return yield* new CliError({
         code: "NoHost",
-        message: `No running Basis host for ${paths.home}. Start one with \`basis serve\`.`,
+        message: `No running Lemma host for ${paths.home}. Start one with \`lemma serve\`.`,
         exit: ExitCode.unavailable,
       });
     }
@@ -394,7 +394,7 @@ const report = (io: Io, json: boolean, error: CliError): number => {
   if (json) {
     io.err(JSON.stringify({ error: { code: error.code, message: error.message, ...(error.subject === undefined ? {} : { subject: error.subject }) } }));
   } else {
-    io.err(`basis: ${error.message}`);
+    io.err(`lemma: ${error.message}`);
   }
   return error.exit;
 };

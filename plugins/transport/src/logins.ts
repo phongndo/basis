@@ -1,7 +1,7 @@
 import { Deferred, Effect, Fiber } from "effect";
 import type { Context, Scope } from "effect";
-import { HostError } from "@basis/contracts";
-import type { AuthType, Llm, LlmError } from "@basis/contracts";
+import { HostError, InteractionOrigin } from "@lemma/contracts";
+import type { AuthType, Llm, LlmError } from "@lemma/contracts";
 
 interface Running {
   readonly type: AuthType;
@@ -32,7 +32,7 @@ export const makeLogins = (llm: Context.Tag.Service<Llm>, scope: Scope.Scope) =>
           const entry: Running = { type, fiber: yield* Deferred.make<Fiber.RuntimeFiber<void, LlmError>>() };
           running.set(provider, entry);
           const forked = yield* Effect.forkIn(
-            Effect.interruptible(llm.login(provider, type)).pipe(
+            Effect.interruptible(Effect.locally(llm.login(provider, type), InteractionOrigin, `login:${provider}`)).pipe(
               Effect.ensuring(
                 Effect.sync(() => {
                   if (running.get(provider) === entry) running.delete(provider);

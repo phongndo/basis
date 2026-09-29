@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { Effect, Layer } from "effect";
-import { Interaction, InteractionError, InteractionHook } from "@basis/contracts";
-import type { InteractionAnswer, InteractionRequest } from "@basis/contracts";
-import { definePlugin, Hooks } from "@basis/core";
+import { Effect, FiberRef, Layer } from "effect";
+import { Interaction, InteractionError, InteractionHook, InteractionOrigin } from "@lemma/contracts";
+import type { InteractionAnswer, InteractionRequest } from "@lemma/contracts";
+import { definePlugin, Hooks } from "@lemma/core";
 
 type Answer<T extends InteractionRequest["type"]> = Extract<InteractionAnswer, { type: T }>["value"];
 
 /**
- * Every question becomes an `InteractionHook` invocation with a fresh id.
+ * Every question becomes an `InteractionHook` invocation with a fresh id and
+ * the asking fiber's `InteractionOrigin`.
  * Whichever UI or transport plugin is attached answers by handling the hook;
  * the terminal is reached only when nobody does, and fails `Unavailable`.
  */
@@ -21,7 +22,8 @@ export default definePlugin({
       const hooks = yield* Hooks;
 
       const request = <T extends InteractionRequest["type"]>(request: Extract<InteractionRequest, { type: T }>): Effect.Effect<Answer<T>, InteractionError> =>
-        hooks.invoke(InteractionHook, request, unavailable).pipe(
+        FiberRef.get(InteractionOrigin).pipe(
+          Effect.flatMap((origin) => hooks.invoke(InteractionHook, origin === undefined ? request : { ...request, origin }, unavailable)),
           // An answerer that breaks the protocol is no usable answerer: callers recover as if nobody were attached.
           Effect.flatMap((answer) =>
             answer.type === request.type

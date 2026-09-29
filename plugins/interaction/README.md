@@ -1,4 +1,4 @@
-# @basis/plugin-interaction
+# @lemma/plugin-interaction
 
 Provides `Interaction` (`confirm`, `ask`, `select`). Every question becomes an `InteractionRequest` with a fresh `randomUUID()` id and runs `InteractionHook`; whichever UI or transport plugin is attached answers by handling the hook. This plugin knows nothing about how a question is displayed. No config.
 

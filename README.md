@@ -1,10 +1,42 @@
-# Basis
+# Lemma
 
-A domain-neutral TypeScript meta-framework for composing replaceable plugins.
+A coding-agent harness in which every part, including the agent loop, is a
+plugin that can be replaced by id. Plugins are composed by the core in
+[`packages/core`](#core).
 
-Basis provides typed capabilities, plugin-defined hooks and events, scoped resources,
+| Path                                                    | Responsibility                                                                           |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
+| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                     |
+| [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                |
+| [`apps/web`](apps/web)                                  | The web client, served by the `transport` plugin                                         |
+| [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents    |
+
+```sh
+nix develop -c pnpm start          # build the web app, start the host, print its URL
+nix develop -c pnpm lemma status   # query the running host; `pnpm lemma --help` lists commands
+```
+
+With no config, every bundled plugin runs. `~/.lemma/config.jsonc` and
+`<project>/.lemma/config.jsonc` patch that by plugin id (`enabled: false`, or a
+replacement `config`). Plugin files in `~/.lemma/plugins/` or
+`<project>/.lemma/plugins/` load automatically and shadow a bundled plugin with
+the same id. Project files and plugins can run code and redirect credentials, so
+they load only for projects listed (or under a directory listed) in
+`"trustedProjects"` in `~/.lemma/config.jsonc`; otherwise the host warns and
+ignores them. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the
+key icon in the web app, or set a provider's API key environment variable.
+
+The session log is the source of truth: every model request can be rebuilt from
+it (`rebuildRequest` in the contracts) and records which plugins contributed
+each part. `scripts/fixtures/mock-openai.ts` is a scripted provider for
+end-to-end runs without an API key.
+
+## Core
+
+The core is a domain-neutral TypeScript plugin framework. It provides typed capabilities, plugin-defined hooks and events, scoped resources,
 failure supervision, and reloads. Applications define their own contracts and choose
-their own plugins. The framework has no required server, transport, persistence,
+their own plugins. The core has no required server, transport, persistence,
 user interface, or domain model.
 
 The library lives in [`packages/core`](packages/core/README.md). Its only runtime
@@ -18,39 +50,6 @@ capability contracts can expose ordinary values, functions, and promises.
 | [`packages/core/examples`](packages/core/examples/hello.ts) | A capability extended through a plugin-defined hook |
 | [`packages/core/bench`](packages/core/bench/core.ts)        | Framework microbenchmarks                           |
 | [`docs/kernel.md`](docs/kernel.md)                          | Design rationale and limits                         |
-
-## Harness
-
-The rest of the workspace is a coding-agent harness built on Basis: every part
-of it, including the agent loop, is a plugin that can be replaced by id.
-
-| Path                                                    | Responsibility                                                                           |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
-| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                     |
-| [`apps/host`](apps/host/src/main.ts)                    | Reads config, loads plugins, hot-reloads on config change                                |
-| [`apps/web`](apps/web)                                  | The web client, served by the `transport` plugin                                         |
-| [`apps/cli`](apps/cli/README.md)                        | The `basis` command: everything the web app does, from a shell, for people and agents    |
-
-```sh
-nix develop -c pnpm start          # build the web app, start the host, print its URL
-nix develop -c pnpm basis status   # query the running host; `pnpm basis --help` lists commands
-```
-
-With no config, every bundled plugin runs. `~/.basis/config.jsonc` and
-`<project>/.basis/config.jsonc` patch that by plugin id (`enabled: false`, or a
-replacement `config`). Plugin files in `~/.basis/plugins/` or
-`<project>/.basis/plugins/` load automatically and shadow a bundled plugin with
-the same id. Project files and plugins can run code and redirect credentials, so
-they load only for projects listed (or under a directory listed) in
-`"trustedProjects"` in `~/.basis/config.jsonc`; otherwise the host warns and
-ignores them. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the
-key icon in the web app, or set a provider's API key environment variable.
-
-The session log is the source of truth: every model request can be rebuilt from
-it (`rebuildRequest` in the contracts) and records which plugins contributed
-each part. `scripts/fixtures/mock-openai.ts` is a scripted provider for
-end-to-end runs without an API key.
 
 ## Develop
 
@@ -84,25 +83,25 @@ access for dependencies.
 
 The `browser` shell supplies pinned Chromium on Linux. On macOS, install the
 development browser with `nix develop .#browser -c pnpm exec playwright install chromium`
-first, or set `BASIS_CHROMIUM` to an existing executable. Linux Chromium is the
+first, or set `LEMMA_CHROMIUM` to an existing executable. Linux Chromium is the
 locally verified browser environment; other browsers/platforms need their own runs.
 
 `perf:check` builds and runs the microbenchmarks and sustained workload. Performance results
-are advisory by default; set `BASIS_PERF_ENFORCE=1` on a comparable idle machine to
+are advisory by default; set `LEMMA_PERF_ENFORCE=1` on a comparable idle machine to
 enforce the [documented budgets](packages/core/bench/budgets.ts), and
-`BASIS_BENCH_OUTPUT_DIR` to an artifact directory. The [CI workflow](.github/workflows/check.yml)
+`LEMMA_BENCH_OUTPUT_DIR` to an artifact directory. The [CI workflow](.github/workflows/check.yml)
 runs correctness checks on changes and extended checks weekly or on demand.
 
-## Use in another application
+## Use the core in another application
 
 The package is currently private and can be packed locally:
 
 ```sh
 nix develop -c pnpm build
-nix develop -c pnpm --filter @basis/core pack --pack-destination /tmp
+nix develop -c pnpm --filter @lemma/core pack --pack-destination /tmp
 ```
 
-Install the resulting tarball in the consuming application and import `@basis/core`.
+Install the resulting tarball in the consuming application and import `@lemma/core`.
 The package contains ESM JavaScript, TypeScript declarations, and the example;
 Effect remains an external dependency. See the [library README](packages/core/README.md)
 for composition and plugin authoring.

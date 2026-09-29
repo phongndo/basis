@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import { run } from "./cli.ts";
 
 const argv = process.argv.slice(2);
-// `basis inspect … | head` closes the pipe early; that ends the output, it is not a failure.
+// `lemma inspect … | head` closes the pipe early; that ends the output, it is not a failure.
 process.stdout.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EPIPE") process.exit(0);
   else throw error;
@@ -32,11 +32,11 @@ const ask = (question: string, secret: boolean) =>
 
 if (argv[0] === "serve") {
   // The host app runs until SIGINT/SIGTERM and reads its own flags (`--no-open`) from argv.
-  await import("@basis/host");
+  await import("@lemma/host");
 } else {
   process.exitCode = await run(argv, {
     env: process.env,
-    // `pnpm basis` runs from the workspace root; INIT_CWD is where the user invoked it.
+    // `pnpm lemma` runs from the workspace root; INIT_CWD is where the user invoked it.
     cwd: process.env.INIT_CWD ?? process.cwd(),
     out: (text) => {
       process.stdout.write(`${text}\n`);

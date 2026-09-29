@@ -2,10 +2,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Deferred, Duration, Effect, Layer, Schema, Stream } from "effect";
-import { definePlugin, PluginContext } from "@basis/core";
-import type { Plugin } from "@basis/core";
-import { AssistantDelta, emptyUsage, HostControl, Llm, LlmError, Paths, ToolResult, Tools, TurnEnded, TurnStarted } from "@basis/contracts";
-import type { AssistantMessage, LlmRequest, ModelInfo, StreamEvent, Tool, ToolCall, Usage } from "@basis/contracts";
+import { definePlugin, PluginContext } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
+import { AssistantDelta, emptyUsage, HostControl, Llm, LlmError, Paths, ToolResult, Tools, TurnEnded, TurnStarted } from "@lemma/contracts";
+import type { AssistantMessage, LlmRequest, ModelInfo, StreamEvent, Tool, ToolCall, Usage } from "@lemma/contracts";
 
 export const model = (ref: string): ModelInfo => {
   const [provider, id] = ref.split("/") as [string, string];
@@ -124,7 +124,7 @@ export const paths = (dir: string, cwd: string) =>
     layer: Layer.succeed(Paths, { home: dir, userConfig: "", projectConfig: "", auth: "", sessions: path.join(dir, "sessions"), cwd }),
   });
 
-export const tempDir = () => fs.mkdtemp(path.join(os.tmpdir(), "basis-agent-"));
+export const tempDir = () => fs.mkdtemp(path.join(os.tmpdir(), "lemma-agent-"));
 
 /** Tools under test, registered by a plugin with id `test-tools`. */
 export function testTools(extra: readonly Tool<any>[] = []) {

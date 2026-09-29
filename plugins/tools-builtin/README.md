@@ -1,11 +1,11 @@
-# @basis/plugin-tools-builtin
+# @lemma/plugin-tools-builtin
 
 The four coding tools, each its own plugin whose id is the tool name: `read`,
 `write`, `edit`, `bash`. Each requires `Tools`. Behavior, descriptions, and limits
 follow pi's tools.
 
 ```ts
-import builtin, { bash, edit, read, write } from "@basis/plugin-tools-builtin";
+import builtin, { bash, edit, read, write } from "@lemma/plugin-tools-builtin";
 
 makeCore([tools, ...builtin]); // default export: all four, as an array
 makeCore([tools, read, write, edit, myBash]); // replace one by leaving it out

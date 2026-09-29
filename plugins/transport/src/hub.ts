@@ -1,8 +1,8 @@
 import { Deferred, Effect, Queue, Stream } from "effect";
 import type { Context } from "effect";
-import { AssistantDelta, CommandsChanged, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted } from "@basis/contracts";
-import type { HostEvent, InteractionRequest } from "@basis/contracts";
-import type { CoreClosed, Event, EventError, PluginContext } from "@basis/core";
+import { AssistantDelta, CommandsChanged, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted } from "@lemma/contracts";
+import type { HostEvent, InteractionRequest } from "@lemma/contracts";
+import type { CoreClosed, Event, EventError, PluginContext } from "@lemma/core";
 import { toPluginStatus } from "./errors.ts";
 
 /** Per-subscriber buffer for kernel events. A slow client loses the oldest and repairs from the session log. */

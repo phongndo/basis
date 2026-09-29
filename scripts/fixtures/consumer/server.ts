@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
-import { definePlugin, makeLoader, PluginContext } from "@basis/core";
-import type { Plugin } from "@basis/core";
+import { definePlugin, makeLoader, PluginContext } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
 import { finish, record } from "./budgets.js";
 
 class Greeting extends Context.Tag("http/Greeting")<Greeting, string>() {}

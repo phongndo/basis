@@ -1,4 +1,4 @@
-import type { SessionEvent, StreamEvent, ToolCall } from "@basis/contracts";
+import type { SessionEvent, StreamEvent, ToolCall } from "@lemma/contracts";
 
 /**
  * Streaming state for one session: what the model is producing right now,

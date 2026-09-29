@@ -1,5 +1,5 @@
 {
-  description = "Basis TypeScript library development environment";
+  description = "Lemma development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -39,7 +39,7 @@
             inputsFrom = [ default ];
           } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             packages = [ pkgs.chromium ];
-            BASIS_CHROMIUM = "${pkgs.chromium}/bin/chromium";
+            LEMMA_CHROMIUM = "${pkgs.chromium}/bin/chromium";
           });
         }
       );

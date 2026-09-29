@@ -1,7 +1,7 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect";
-import { definePlugin, Events, Hooks, PluginContext } from "@basis/core";
-import { Agent, AgentError, HostControl, Llm, Sessions, Tools } from "@basis/contracts";
-import type { ModelInfo, PromptContent, TurnOptions } from "@basis/contracts";
+import { definePlugin, Events, Hooks, PluginContext } from "@lemma/core";
+import { Agent, AgentError, HostControl, InteractionOrigin, Llm, Sessions, Tools } from "@lemma/contracts";
+import type { ModelInfo, PromptContent, TurnOptions } from "@lemma/contracts";
 import { newId, runTurn } from "./turn.ts";
 
 export { basePrompt, environment, titleFrom } from "./prompt.ts";
@@ -13,7 +13,7 @@ export const AgentConfig = Schema.Struct({
   defaultModel: Schema.optional(Schema.String),
   /** Replaces the default base prompt; the environment section is still added. */
   systemPrompt: Schema.optional(Schema.String),
-  /** Shell command that runs the `basis` CLI; named in the environment section so the agent can inspect itself. */
+  /** Shell command that runs the `lemma` CLI; named in the environment section so the agent can inspect itself. */
   cli: Schema.optional(Schema.String),
   /** Model calls allowed in one turn before it ends with `max-steps`. */
   maxSteps: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 200 }),
@@ -107,7 +107,9 @@ export default definePlugin({
                 }
                 running.set(sessionId, entry);
                 const forked = yield* Effect.forkIn(
-                  Effect.interruptible(turn(sessionId, content, options, entry.controller.signal)).pipe(
+                  Effect.interruptible(
+                    Effect.locally(turn(sessionId, content, options, entry.controller.signal), InteractionOrigin, `session:${sessionId}`),
+                  ).pipe(
                     Effect.ensuring(
                       Effect.sync(() => {
                         if (running.get(sessionId) === entry) running.delete(sessionId);

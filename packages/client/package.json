@@ -1,5 +1,5 @@
 {
-  "name": "@basis/client",
+  "name": "@lemma/client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@basis/contracts": "workspace:*",
     "@effect/platform": "0.97.2",
     "@effect/rpc": "0.76.2",
+    "@lemma/contracts": "workspace:*",
     "effect": "3.22.2"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
-# @basis/core
+# @lemma/core
 
-An Effect-native, domain-neutral plugin runtime. Basis composes typed capabilities,
+An Effect-native, domain-neutral plugin runtime. It composes typed capabilities,
 plugin-defined hooks and events, configuration, and scoped lifetimes. Applications
 and plugin authors define their own contracts and behavior. In the source repository,
 `docs/kernel.md` holds the design rationale.
@@ -14,7 +14,7 @@ consumer on Node.js.
 
 ```ts
 import { Context, Effect, Layer } from "effect";
-import { definePlugin, makeCore } from "@basis/core";
+import { definePlugin, makeCore } from "@lemma/core";
 
 class Greeting extends Context.Tag("example/Greeting")<Greeting, string>() {}
 
@@ -69,7 +69,7 @@ Contracts belong to the application or a shared plugin package. Consumers import
 the contract, not the provider implementation. A capability can contain ordinary
 values, functions, promises, or Effects. Effect owns setup and cleanup; a
 promise-based operation must cooperate with cancellation, for example by accepting
-an `AbortSignal` passed through `Effect.tryPromise`. Basis does not intercept arbitrary
+an `AbortSignal` passed through `Effect.tryPromise`. The core does not intercept arbitrary
 capability functions or automatically cancel the work they start.
 
 Registrations made in another plugin's registry must be released with the
@@ -99,7 +99,7 @@ const hooks = yield * Hooks;
 const result = yield * hooks.invoke(Render, "hello", Effect.succeed);
 ```
 
-These snippets assume the exports are imported from `@basis/core`; the complete runnable example shows the wiring.
+These snippets assume the exports are imported from `@lemma/core`; the complete runnable example shows the wiring.
 
 The hook contract is deliberately one mechanism: awaited, sequential around middleware. A handler can modify the input passed to `next`, wrap its result, or short-circuit by not calling it. Side-effect observers can call `next` and preserve the result. Plugins needing fan-out or streams can provide those capabilities using Effect; the core does not silently detach event listeners or create queues.
 
@@ -201,7 +201,7 @@ Runtime-generated spans do not include hook arguments/results or plugin configur
 
 `core:bench` reports warm microbenchmarks for direct Effects, hook dispatch at several chain lengths (with tracing enabled/disabled), event publishing, `core.run` entry, mounting/disposing compositions, and reloading one plugin. It prints the runtime and machine and reports median/min/max **batch means**, not per-request latency percentiles. No external trace exporter is attached.
 
-Dispatch reuses immutable, pre-ordered registration arrays; it does not resolve the plugin graph per call. No-listener dispatch avoids constructing a middleware environment. Lifecycle steps cost more than dispatch: each activation and disposal forks supervised fibers and waits under a deadline, which is measured in the mount and reload cases. The property test in `tests/sequences.test.ts` runs random load/reload/fail/restart sequences against a fault-injecting fixture and checks resource, registration, and dependency invariants after every step; set `BASIS_SEQUENCE_RUNS` to run more cases.
+Dispatch reuses immutable, pre-ordered registration arrays; it does not resolve the plugin graph per call. No-listener dispatch avoids constructing a middleware environment. Lifecycle steps cost more than dispatch: each activation and disposal forks supervised fibers and waits under a deadline, which is measured in the mount and reload cases. The property test in `tests/sequences.test.ts` runs random load/reload/fail/restart sequences against a fault-injecting fixture and checks resource, registration, and dependency invariants after every step; set `LEMMA_SEQUENCE_RUNS` to run more cases.
 
 `core:stress` measures a separate cold package import, individual operation
 latencies, and heap/RSS across 200 mount/reload/fail/restart/dispose cycles, after
@@ -212,10 +212,10 @@ gzip. These are synthetic consumer workloads, not application SLAs or a Cordis
 comparison.
 
 Initial numerical budgets and their reference environment live with the benchmark
-definitions in `bench/budgets.ts` in the source repository. `BASIS_PERF_ENFORCE=1`
+definitions in `bench/budgets.ts` in the source repository. `LEMMA_PERF_ENFORCE=1`
 turns budget misses into failing commands; default timing results are advisory.
-`BASIS_BENCH_OUTPUT_DIR` writes dated JSON artifacts. Use an otherwise idle,
+`LEMMA_BENCH_OUTPUT_DIR` writes dated JSON artifacts. Use an otherwise idle,
 comparable machine for before/after measurements. CI enforces correctness and
 keeps shared-runner performance advisory. Extended sequences accept
-`BASIS_SEQUENCE_RUNS`, `BASIS_SEQUENCE_SEED`, and the fast-check replay
-`BASIS_SEQUENCE_PATH` shown by a failing run.
+`LEMMA_SEQUENCE_RUNS`, `LEMMA_SEQUENCE_SEED`, and the fast-check replay
+`LEMMA_SEQUENCE_PATH` shown by a failing run.

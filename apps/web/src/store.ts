@@ -1,8 +1,8 @@
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { SessionLog, describeError, startPrompt } from "@basis/client";
-import type { ConnectionStatus, Host } from "@basis/client";
-import { HostError, branchOf, trajectory as projectTrajectory } from "@basis/contracts";
+import { SessionLog, describeError, startPrompt } from "@lemma/client";
+import type { ConnectionStatus, Host } from "@lemma/client";
+import { HostError, branchOf, trajectory as projectTrajectory } from "@lemma/contracts";
 import type {
   AuthType,
   CommandInfo,
@@ -20,7 +20,7 @@ import type {
   ThinkingLevel,
   TurnOptions,
   WorkspaceStatus,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import { load, save } from "./lib/storage.ts";
 import { applyDelta, emptyLive, endTurn, reconcileLive, settleStep } from "./model/live.ts";
 import type { LiveState } from "./model/live.ts";
@@ -71,7 +71,7 @@ interface State {
   /** Project directories added by hand, so they are offered before they have sessions. */
   projects: readonly string[];
   plugins: readonly PluginStatus[];
-  /** What plugins offer to run (the palette's host commands, `basis do`). */
+  /** What plugins offer to run (the palette's host commands, `lemma do`). */
   commands: readonly CommandInfo[];
   interactions: readonly InteractionRequest[];
   toasts: readonly Toast[];
@@ -85,11 +85,11 @@ interface State {
   welcome: boolean;
 }
 
-const MODEL_KEY = "basis.model";
-const THINKING_KEY = "basis.thinkingByModel";
-const PROJECTS_KEY = "basis.projects";
-const THEME_KEY = "basis.theme";
-const WIDTH_KEY = "basis.contentWidth";
+const MODEL_KEY = "lemma.model";
+const THINKING_KEY = "lemma.thinkingByModel";
+const PROJECTS_KEY = "lemma.projects";
+const THEME_KEY = "lemma.theme";
+const WIDTH_KEY = "lemma.contentWidth";
 
 const loadJson = <A>(key: string, fallback: A): A => {
   try {
@@ -249,7 +249,7 @@ export const refreshPlugins = async (): Promise<void> => {
   setState("plugins", await client().host.plugins());
 };
 
-/** Every model the host knows, usable or not (`basis models --all`); loaded when the providers settings ask. */
+/** Every model the host knows, usable or not (`lemma models --all`); loaded when the providers settings ask. */
 const [allModelsSignal, setAllModels] = createSignal<readonly ModelInfo[] | undefined>();
 export const allModels = allModelsSignal;
 export const loadAllModels = async (): Promise<void> => {
@@ -277,7 +277,7 @@ const updateLive = (sessionId: string, update: (state: LiveState) => LiveState):
 /** The last ended turn per session, so a late `turn-started` cannot mark it running again (see `trackTurn`). */
 let endedTurns: Readonly<Record<string, string>> = {};
 
-/** The most recent host events, newest last, for the event log (`basis events`). */
+/** The most recent host events, newest last, for the event log (`lemma events`). */
 export interface LoggedEvent {
   readonly seq: number;
   readonly at: number;
@@ -393,7 +393,7 @@ const [workspace, setWorkspace] = createSignal<WorkspaceStatus | undefined>();
 export const workspaceStatus = workspace;
 export const setWorkspaceStatus = setWorkspace;
 
-const WORKTREE_KEY = "basis.newWorktree";
+const WORKTREE_KEY = "lemma.newWorktree";
 /**
  * For a new chat in a git repository: start it in a fresh worktree branched
  * from `base` (the current branch when unset). Whether to is remembered.
@@ -520,7 +520,7 @@ export const chooseThinking = (level: ThinkingLevel): void => {
   save(THINKING_KEY, JSON.stringify(state.thinkingByModel));
 };
 
-const FAVORITES_KEY = "basis.favoriteModels";
+const FAVORITES_KEY = "lemma.favoriteModels";
 const [favorites, setFavorites] = createSignal<readonly string[]>(loadJson(FAVORITES_KEY, []));
 export const favoriteModels = favorites;
 export const toggleFavorite = (ref: string): void => {
@@ -644,7 +644,7 @@ export const setView = (view: SessionViewKind): void => {
   setState("view", view);
 };
 
-/** Moves the active session's leaf to `eventId`: the next prompt branches from there (`basis session checkout`). */
+/** Moves the active session's leaf to `eventId`: the next prompt branches from there (`lemma session checkout`). */
 export const checkoutSession = async (eventId: string): Promise<void> => {
   const sessionId = state.activeId;
   if (sessionId === undefined) return;

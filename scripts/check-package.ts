@@ -7,23 +7,23 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const core = join(root, "packages/core");
 const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
-const consumer = mkdtempSync(join(tmpdir(), "basis-package-check-"));
+const consumer = mkdtempSync(join(tmpdir(), "lemma-package-check-"));
 const run = (command: string, args: string[], cwd = consumer) => execFileSync(command, args, { cwd, stdio: "inherit" });
 
 try {
   // Pack invokes prepack, building exactly what a separate application receives.
-  run("pnpm", ["pack", "--out", join(consumer, "basis-core.tgz")], core);
+  run("pnpm", ["pack", "--out", join(consumer, "lemma-core.tgz")], core);
   cpSync(join(root, "scripts/fixtures/consumer"), consumer, { recursive: true });
   cpSync(join(core, "bench/budgets.ts"), join(consumer, "budgets.ts"));
   writeFileSync(
     join(consumer, "package.json"),
     JSON.stringify(
       {
-        name: "basis-external-consumer",
+        name: "lemma-external-consumer",
         private: true,
         type: "module",
         dependencies: {
-          "@basis/core": "file:./basis-core.tgz",
+          "@lemma/core": "file:./lemma-core.tgz",
           effect: manifest.dependencies.effect,
         },
         devDependencies: {

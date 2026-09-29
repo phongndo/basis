@@ -1,5 +1,5 @@
 import * as os from "node:os";
-import type { PromptContent, SystemSection } from "@basis/contracts";
+import type { PromptContent, SystemSection } from "@lemma/contracts";
 
 /**
  * The default base prompt, after pi's: an identity line and guidelines for the
@@ -23,7 +23,7 @@ export function basePrompt(toolNames: ReadonlySet<string>): string {
   if (toolNames.has("write")) rules.push("Use write only for new files or complete rewrites.");
   rules.push("Be concise in your responses", "Show file paths clearly when working with files");
   return [
-    "You are an expert coding assistant operating inside Basis, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+    "You are an expert coding assistant operating inside Lemma, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
     `Guidelines:\n${rules.map((rule) => `- ${rule}`).join("\n")}`,
   ].join("\n\n");
 }
@@ -32,7 +32,7 @@ export interface EnvironmentFacts {
   readonly cwd: string;
   /** The session this turn belongs to, so the agent can inspect its own log. */
   readonly sessionId: string;
-  /** How to run the `basis` CLI from a shell, when the host app knows. */
+  /** How to run the `lemma` CLI from a shell, when the host app knows. */
   readonly cli?: string;
 }
 
@@ -48,11 +48,11 @@ export function environment(facts: EnvironmentFacts, now: Date = new Date()): st
     `Current working directory: ${facts.cwd}`,
     `Current date: ${date}`,
     `Platform: ${os.platform()} (${os.arch()})`,
-    `Basis session: ${facts.sessionId}`,
+    `Lemma session: ${facts.sessionId}`,
     ...(facts.cli === undefined
       ? []
       : [
-          `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
+          `Lemma CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
         ]),
     "</environment>",
   ].join("\n");

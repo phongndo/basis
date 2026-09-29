@@ -7,11 +7,11 @@ import { isTrusted, loadComposition, projectPluginsDir, resolvePaths } from "../
 import type { PathsService } from "../src/index.ts";
 
 async function withPaths<A>(body: (paths: PathsService) => Promise<A>): Promise<A> {
-  const root = await mkdtemp(join(tmpdir(), "basis-host-"));
+  const root = await mkdtemp(join(tmpdir(), "lemma-host-"));
   try {
-    const paths = resolvePaths({ env: { BASIS_HOME: join(root, "home") }, cwd: join(root, "project") });
+    const paths = resolvePaths({ env: { LEMMA_HOME: join(root, "home") }, cwd: join(root, "project") });
     await mkdir(paths.home, { recursive: true });
-    await mkdir(join(paths.cwd, ".basis"), { recursive: true });
+    await mkdir(join(paths.cwd, ".lemma"), { recursive: true });
     return await body(paths);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -19,23 +19,23 @@ async function withPaths<A>(body: (paths: PathsService) => Promise<A>): Promise<
 }
 
 describe("resolvePaths", () => {
-  test("defaults to ~/.basis and derives every location", () => {
+  test("defaults to ~/.lemma and derives every location", () => {
     const paths = resolvePaths({ env: { HOME: "/home/me" }, cwd: "/work/app" });
     expect(paths).toEqual({
-      home: "/home/me/.basis",
-      userConfig: "/home/me/.basis/config.jsonc",
-      projectConfig: "/work/app/.basis/config.jsonc",
-      auth: "/home/me/.basis/auth.json",
-      sessions: "/home/me/.basis/sessions",
+      home: "/home/me/.lemma",
+      userConfig: "/home/me/.lemma/config.jsonc",
+      projectConfig: "/work/app/.lemma/config.jsonc",
+      auth: "/home/me/.lemma/auth.json",
+      sessions: "/home/me/.lemma/sessions",
       cwd: "/work/app",
     });
   });
 
-  test("BASIS_HOME overrides the home directory", () => {
-    const paths = resolvePaths({ env: { HOME: "/home/me", BASIS_HOME: "/var/basis" }, cwd: "/work/app" });
-    expect(paths.home).toBe("/var/basis");
-    expect(paths.auth).toBe("/var/basis/auth.json");
-    expect(paths.projectConfig).toBe("/work/app/.basis/config.jsonc");
+  test("LEMMA_HOME overrides the home directory", () => {
+    const paths = resolvePaths({ env: { HOME: "/home/me", LEMMA_HOME: "/var/lemma" }, cwd: "/work/app" });
+    expect(paths.home).toBe("/var/lemma");
+    expect(paths.auth).toBe("/var/lemma/auth.json");
+    expect(paths.projectConfig).toBe("/work/app/.lemma/config.jsonc");
   });
 });
 

@@ -8,8 +8,8 @@ import type { Plugin } from "../src/index.ts";
 // Every reported value is a batch mean. Samples use fresh Effect runtime entry but
 // dispatch cases reuse a mounted core, with one core.run per batch (not per hook).
 const samples = 7;
-const iterations = Number(process.env.BASIS_BENCH_ITERATIONS ?? 10_000);
-if (!Number.isInteger(iterations) || iterations < 1) throw new Error("BASIS_BENCH_ITERATIONS must be a positive integer");
+const iterations = Number(process.env.LEMMA_BENCH_ITERATIONS ?? 10_000);
+if (!Number.isInteger(iterations) || iterations < 1) throw new Error("LEMMA_BENCH_ITERATIONS must be a positive integer");
 const point = Hook.make<number, number>("bench/increment");
 const tick = Event.make<number>("bench/tick");
 const terminal = (value: number) => Effect.succeed(value + 1);

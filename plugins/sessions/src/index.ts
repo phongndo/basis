@@ -1,6 +1,6 @@
 import { Layer } from "effect";
-import { definePlugin } from "@basis/core";
-import { Paths, Sessions } from "@basis/contracts";
+import { definePlugin } from "@lemma/core";
+import { Paths, Sessions } from "@lemma/contracts";
 import { make } from "./sessions.ts";
 
 export { Checkout, Header, decodeLine, encodeCwd, encodeLine, fileName } from "./format.ts";

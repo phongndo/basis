@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SessionEvent, SessionInfo } from "@basis/contracts";
+import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 import { groupSessions, resolveLeaf, trackTurn, upsertSession } from "../src/model/sessions.ts";
 
 const info = (id: string, cwd: string, updatedAt: number, lastSeq = 0): SessionInfo => ({ id, cwd, createdAt: 0, updatedAt, lastSeq });

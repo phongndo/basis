@@ -1,20 +1,20 @@
 import { Context, Schema } from "effect";
 import type { Effect } from "effect";
-import { Event } from "@basis/core";
-import type { CoreClosed, PluginSnapshot, ReloadError, ReloadReport } from "@basis/core";
+import { Event } from "@lemma/core";
+import type { CoreClosed, PluginSnapshot, ReloadError, ReloadReport } from "@lemma/core";
 
 /**
  * Locations the host resolves once. Plugins never compute paths themselves.
- * Defaults: `~/.basis` for user data; `<cwd>/.basis` for project data.
+ * Defaults: `~/.lemma` for user data; `<cwd>/.lemma` for project data.
  */
-export class Paths extends Context.Tag("basis/Paths")<
+export class Paths extends Context.Tag("lemma/Paths")<
   Paths,
   {
-    /** `~/.basis` (or `$BASIS_HOME`). */
+    /** `~/.lemma` (or `$LEMMA_HOME`). */
     readonly home: string;
     /** `<home>/config.jsonc` */
     readonly userConfig: string;
-    /** `<cwd>/.basis/config.jsonc` */
+    /** `<cwd>/.lemma/config.jsonc` */
     readonly projectConfig: string;
     /** `<home>/auth.json` */
     readonly auth: string;
@@ -63,14 +63,14 @@ export const NoticePayload = Schema.Struct({
   code: Schema.optional(Schema.String),
 });
 export type NoticePayload = typeof NoticePayload.Type;
-export const Notice = Event.make<NoticePayload>("basis/notice");
+export const Notice = Event.make<NoticePayload>("lemma/notice");
 
 /**
  * Handle on the loader, provided by the host application (which owns it) so
  * transports and UIs can inspect and change the running composition without
  * reaching into the kernel.
  */
-export class HostControl extends Context.Tag("basis/HostControl")<
+export class HostControl extends Context.Tag("lemma/HostControl")<
   HostControl,
   {
     readonly plugins: Effect.Effect<readonly PluginSnapshot[]>;
@@ -82,4 +82,4 @@ export class HostControl extends Context.Tag("basis/HostControl")<
 >() {}
 
 /** Emitted after any composition change or plugin fault so clients can refresh plugin views. */
-export const PluginsChanged = Event.make<{ readonly plugins: readonly PluginSnapshot[] }>("basis/plugins.changed");
+export const PluginsChanged = Event.make<{ readonly plugins: readonly PluginSnapshot[] }>("lemma/plugins.changed");

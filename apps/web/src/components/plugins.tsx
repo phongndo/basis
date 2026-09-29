@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import type { PluginStatus } from "@basis/contracts";
+import type { PluginStatus } from "@lemma/contracts";
 import { state } from "../store.ts";
 import { tildePath } from "../model/format.ts";
 import { Spinner } from "./icons.tsx";

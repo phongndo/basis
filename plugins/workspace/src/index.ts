@@ -4,9 +4,9 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 import type { Context } from "effect";
-import { definePlugin } from "@basis/core";
-import { Paths, Workspace, WorkspaceError } from "@basis/contracts";
-import type { DirectoryEntry, DirectoryListing, GitBranch, GitStatus, WorkspaceStatus } from "@basis/contracts";
+import { definePlugin } from "@lemma/core";
+import { Paths, Workspace, WorkspaceError } from "@lemma/contracts";
+import type { DirectoryEntry, DirectoryListing, GitBranch, GitStatus, WorkspaceStatus } from "@lemma/contracts";
 
 export const READ_TIMEOUT_MS = 5_000;
 export const CHECKOUT_TIMEOUT_MS = 15_000;
@@ -133,7 +133,7 @@ export const parseBranches = (output: string): GitBranch[] => {
 export interface WorkspaceOptions {
   /** What `~` expands to. Defaults to the OS home directory. */
   readonly home?: string;
-  /** Where `createWorktree` puts worktrees, one folder per repository. Defaults to `<home>/.basis/worktrees`. */
+  /** Where `createWorktree` puts worktrees, one folder per repository. Defaults to `<home>/.lemma/worktrees`. */
   readonly worktrees?: string;
 }
 
@@ -145,7 +145,7 @@ const folderName = (branch: string) => branch.replace(/[/\\]+/g, "-");
 
 export const makeWorkspace = (options: WorkspaceOptions = {}): Context.Tag.Service<Workspace> => {
   const home = options.home ?? homedir();
-  const worktrees = options.worktrees ?? join(home, ".basis", "worktrees");
+  const worktrees = options.worktrees ?? join(home, ".lemma", "worktrees");
 
   const gitStatus = async (dir: string): Promise<GitStatus | undefined> => {
     const [root, status, short, common] = await Promise.all([
@@ -328,7 +328,7 @@ export const makeWorkspace = (options: WorkspaceOptions = {}): Context.Tag.Servi
 };
 
 export const WorkspaceConfig = Schema.Struct({
-  /** Where new worktrees go; defaults to `worktrees` in the host's home (`~/.basis/worktrees`). */
+  /** Where new worktrees go; defaults to `worktrees` in the host's home (`~/.lemma/worktrees`). */
   worktrees: Schema.optional(Schema.String),
 });
 

@@ -1,23 +1,23 @@
 import { fileURLToPath } from "node:url";
-import type { Composition, Plugin, PluginEntry } from "@basis/core";
-import agent from "@basis/plugin-agent";
-import commands from "@basis/plugin-commands";
-import * as builtinCommands from "@basis/plugin-commands-builtin";
-import credentials from "@basis/plugin-credentials";
-import interaction from "@basis/plugin-interaction";
-import llm from "@basis/plugin-llm-pi-ai";
-import projectContext from "@basis/plugin-project-context";
-import sessions from "@basis/plugin-sessions";
-import tools from "@basis/plugin-tools";
-import { bash, edit, read, write } from "@basis/plugin-tools-builtin";
-import transport from "@basis/plugin-transport";
-import workspace from "@basis/plugin-workspace";
+import type { Composition, Plugin, PluginEntry } from "@lemma/core";
+import agent from "@lemma/plugin-agent";
+import commands from "@lemma/plugin-commands";
+import * as builtinCommands from "@lemma/plugin-commands-builtin";
+import credentials from "@lemma/plugin-credentials";
+import interaction from "@lemma/plugin-interaction";
+import llm from "@lemma/plugin-llm-pi-ai";
+import projectContext from "@lemma/plugin-project-context";
+import sessions from "@lemma/plugin-sessions";
+import tools from "@lemma/plugin-tools";
+import { bash, edit, read, write } from "@lemma/plugin-tools-builtin";
+import transport from "@lemma/plugin-transport";
+import workspace from "@lemma/plugin-workspace";
 
 /** The web app build the transport serves when no `staticDir` is configured. */
-export const webDist = fileURLToPath(new URL("../../web/dist", import.meta.url));
+export const webDist = fileURLToPath(new URL("../../../apps/web/dist", import.meta.url));
 
-/** How the agent runs this checkout's `basis` CLI from its shell; `node` is on PATH wherever the host runs. */
-export const cliCommand = `node --conditions=source ${fileURLToPath(new URL("../../cli/src/main.ts", import.meta.url))}`;
+/** How the agent runs this checkout's `lemma` CLI from its shell; `node` is on PATH wherever the host runs. */
+export const cliCommand = `node --conditions=source ${fileURLToPath(new URL("../../../apps/cli/src/main.ts", import.meta.url))}`;
 
 /**
  * Everything a fresh install runs. The host plugin is built by main.ts with a

@@ -7,16 +7,16 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { Effect, Layer } from "effect";
-import { Credentials, Paths } from "@basis/contracts";
-import type { Credential } from "@basis/contracts";
-import { definePlugin, makeCore } from "@basis/core";
+import { Credentials, Paths } from "@lemma/contracts";
+import type { Credential } from "@lemma/contracts";
+import { definePlugin, makeCore } from "@lemma/core";
 import credentials, { withFileLock } from "../src/index.ts";
 
 let root: string;
 let home: string;
 let auth: string;
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "basis-credentials-"));
+  root = await mkdtemp(join(tmpdir(), "lemma-credentials-"));
   // Not created: the plugin creates the directory (0700) on first write.
   home = join(root, "home");
   auth = join(home, "auth.json");

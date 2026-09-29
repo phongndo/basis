@@ -263,9 +263,9 @@ describe("command sequences", () => {
         expect(world.live.size).toBe(0);
       }),
       {
-        numRuns: Number(process.env.BASIS_SEQUENCE_RUNS ?? 60),
-        ...(process.env.BASIS_SEQUENCE_SEED === undefined ? {} : { seed: Number(process.env.BASIS_SEQUENCE_SEED) }),
-        ...(process.env.BASIS_SEQUENCE_PATH === undefined ? {} : { path: process.env.BASIS_SEQUENCE_PATH }),
+        numRuns: Number(process.env.LEMMA_SEQUENCE_RUNS ?? 60),
+        ...(process.env.LEMMA_SEQUENCE_SEED === undefined ? {} : { seed: Number(process.env.LEMMA_SEQUENCE_SEED) }),
+        ...(process.env.LEMMA_SEQUENCE_PATH === undefined ? {} : { path: process.env.LEMMA_SEQUENCE_PATH }),
       },
     );
   }, 60_000);

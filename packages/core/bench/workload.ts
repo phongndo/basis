@@ -4,8 +4,8 @@ import { Context, Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { definePlugin, Hook, Hooks, makeLoader, PluginContext } from "../src/index.ts";
 import { finish, record } from "./budgets.ts";
 
-const cycles = Number(process.env.BASIS_STRESS_CYCLES ?? 200);
-if (!Number.isInteger(cycles) || cycles < 20) throw new Error("BASIS_STRESS_CYCLES must be an integer >= 20");
+const cycles = Number(process.env.LEMMA_STRESS_CYCLES ?? 200);
+if (!Number.isInteger(cycles) || cycles < 20) throw new Error("LEMMA_STRESS_CYCLES must be an integer >= 20");
 const gc = () => {
   if (!globalThis.gc) throw new Error("Run Node with --expose-gc");
   globalThis.gc();

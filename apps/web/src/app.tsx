@@ -14,8 +14,8 @@ import { modKey } from "./lib/keys.ts";
 import { load, save } from "./lib/storage.ts";
 import { cancel, isBusy, newChat, openDialog, openSettings, state } from "./store.ts";
 
-const WIDTH_KEY = "basis.sidebar.width";
-const COLLAPSED_KEY = "basis.sidebar.collapsed";
+const WIDTH_KEY = "lemma.sidebar.width";
+const COLLAPSED_KEY = "lemma.sidebar.collapsed";
 const DEFAULT_WIDTH = 264;
 const MIN_WIDTH = 208;
 /** The conversation keeps at least this much room. */

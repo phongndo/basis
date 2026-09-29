@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyDelta, emptyLive, endTurn, parseDraftArgs, settleStep, reconcileLive } from "../src/model/live.ts";
 import type { LiveState } from "../src/model/live.ts";
-import type { StreamEvent } from "@basis/contracts";
+import type { StreamEvent } from "@lemma/contracts";
 import { assistant } from "./fixtures.ts";
 
 const feed = (events: StreamEvent[], state: LiveState = emptyLive, stepId = "s1") => events.reduce((s, event) => applyDelta(s, "t1", stepId, event), state);

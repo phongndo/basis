@@ -1,9 +1,9 @@
 import { Data } from "effect";
 import type { Effect, Scope } from "effect";
 import type { RpcClientError } from "@effect/rpc";
-import type { HostError } from "@basis/contracts";
-import type { HostRpcClient } from "@basis/client";
-import type { Discovery } from "@basis/plugin-transport";
+import type { HostError } from "@lemma/contracts";
+import type { HostRpcClient } from "@lemma/client";
+import type { Discovery } from "@lemma/plugin-transport";
 
 /** Exit codes a calling script or agent can branch on; `--json` errors also carry a `code`. */
 export const ExitCode = { ok: 0, failed: 1, usage: 2, unavailable: 3 } as const;
@@ -15,7 +15,7 @@ export class CliError extends Data.TaggedError("CliError")<{
   readonly exit: number;
 }> {}
 
-export const usage = (message: string) => new CliError({ code: "Usage", message: `${message}\nRun \`basis --help\` for usage.`, exit: ExitCode.usage });
+export const usage = (message: string) => new CliError({ code: "Usage", message: `${message}\nRun \`lemma --help\` for usage.`, exit: ExitCode.usage });
 
 export interface Io {
   readonly env: Readonly<Record<string, string | undefined>>;

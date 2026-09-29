@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Effect, Layer } from "effect";
-import { definePlugin, Diagnostic, makeLoader } from "@basis/core";
-import type { Composition, Plugin } from "@basis/core";
+import { definePlugin, Diagnostic, makeLoader } from "@lemma/core";
+import type { Composition, Plugin } from "@lemma/core";
 import { Formatter, Message } from "./contracts.js";
 
 const active = new Set<string>();

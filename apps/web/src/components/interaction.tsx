@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
-import type { InteractionRequest } from "@basis/contracts";
+import type { InteractionRequest } from "@lemma/contracts";
 import { answerInteraction, dismissInteraction, state } from "../store.ts";
 import { Dialog } from "./dialog.tsx";
 

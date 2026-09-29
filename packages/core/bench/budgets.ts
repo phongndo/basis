@@ -25,7 +25,7 @@ export const budgets = {
 } as const;
 
 const measurements: Record<string, { value: number; limit?: number; passed?: boolean }> = {};
-export const enforced = process.env.BASIS_PERF_ENFORCE === "1";
+export const enforced = process.env.LEMMA_PERF_ENFORCE === "1";
 
 export function record(name: string, value: number) {
   const limit = budgets[name as keyof typeof budgets];
@@ -47,7 +47,7 @@ export function finish(name: string) {
     measurements,
   };
   console.log(JSON.stringify(report));
-  const directory = process.env.BASIS_BENCH_OUTPUT_DIR;
+  const directory = process.env.LEMMA_BENCH_OUTPUT_DIR;
   if (directory) {
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${name}.json`), JSON.stringify(report, null, 2) + "\n");

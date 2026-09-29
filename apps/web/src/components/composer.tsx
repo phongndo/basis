@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import type { ImageContent, ModelInfo, PromptContent, ThinkingLevel } from "@basis/contracts";
+import type { ImageContent, ModelInfo, PromptContent, ThinkingLevel } from "@lemma/contracts";
 import { contextSize } from "../model/format.ts";
 import { DEFAULT_THINKING, filterModels, thinkingLevels } from "../model/prefs.ts";
 import {

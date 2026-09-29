@@ -4,8 +4,8 @@ import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { Schema } from "effect";
-import { ToolResult } from "@basis/contracts";
-import type { Tool } from "@basis/contracts";
+import { ToolResult } from "@lemma/contracts";
+import type { Tool } from "@lemma/contracts";
 import { OutputAccumulator } from "./output.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "./truncate.ts";
 import type { Truncation } from "./truncate.ts";
@@ -119,7 +119,7 @@ export const bashTool: Tool<BashInput> = {
     // Recheck after the lookup; from here to installing the abort listener runs synchronously.
     if (signal.aborted) throw new Error("Command aborted");
 
-    const output = new OutputAccumulator("basis-bash");
+    const output = new OutputAccumulator("lemma-bash");
     const child = spawn("bash", ["-c", command], { cwd, detached: true, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     const onData = (data: Buffer) => output.append(data);
     child.stdout.on("data", onData);

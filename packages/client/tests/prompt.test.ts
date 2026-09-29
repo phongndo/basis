@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { HostEvent } from "@basis/contracts";
+import type { HostEvent } from "@lemma/contracts";
 import { startPrompt } from "../src/prompt.ts";
 
 const fakeHost = () => {

@@ -1,8 +1,8 @@
-# @basis/plugin-commands
+# @lemma/plugin-commands
 
-Provides `Commands` (`@basis/contracts`): the registry of actions a person can
+Provides `Commands` (`@lemma/contracts`): the registry of actions a person can
 run from any client, such as the web app's command palette (Cmd+K on macOS,
-Ctrl+K elsewhere) or `basis do <id>`. Command plugins require `Commands` and
+Ctrl+K elsewhere) or `lemma do <id>`. Command plugins require `Commands` and
 register during activation. A command that needs input asks for it with
 `Interaction`, so every client that can answer questions can run it.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ModelInfo } from "@basis/contracts";
+import type { ModelInfo } from "@lemma/contracts";
 import { diffStats, parseDiff, readDetails } from "../src/model/details.ts";
 import {
   displayPath,
@@ -119,9 +119,9 @@ describe("prefs", () => {
 
 describe("branchSlug", () => {
   it("names a worktree branch from the first words of the message", () => {
-    expect(branchSlug("Fix the login redirect, please! It loops forever")).toBe("basis/fix-the-login-redirect-please");
-    expect(branchSlug("   ")).toBe("basis/task");
-    expect(branchSlug("é ✨")).toBe("basis/task");
+    expect(branchSlug("Fix the login redirect, please! It loops forever")).toBe("lemma/fix-the-login-redirect-please");
+    expect(branchSlug("   ")).toBe("lemma/task");
+    expect(branchSlug("é ✨")).toBe("lemma/task");
   });
 });
 

@@ -1,5 +1,5 @@
 {
-  "name": "@basis/core",
+  "name": "@lemma/core",
   "version": "0.1.0",
   "private": true,
   "description": "Typed plugin composition, scoped lifecycles, hooks, events, and supervised reloads",

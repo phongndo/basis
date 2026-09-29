@@ -101,7 +101,7 @@ export function SettingsView() {
   let search!: HTMLInputElement;
   const previous = document.activeElement as HTMLElement | null;
   onMount(() => {
-    // Every known model, usable or not, as `basis models --all` lists them.
+    // Every known model, usable or not, as `lemma models --all` lists them.
     if (allModels() === undefined) void loadAllModels();
     queueMicrotask(() => search.focus());
   });
@@ -244,7 +244,7 @@ export function SettingsView() {
       intro: () => <HostFacts />,
       actions: () => (
         <>
-          <button class="button small" onClick={() => openDialog("events")} data-tip="Everything the host publishes, as `basis events` shows it">
+          <button class="button small" onClick={() => openDialog("events")} data-tip="Everything the host publishes, as `lemma events` shows it">
             Event log
           </button>
           <button

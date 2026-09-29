@@ -12,7 +12,7 @@ export interface WatchOptions {
 /**
  * Emits the path of a config file after it changes, is created, or is removed.
  * Watches the containing directories rather than the files, because editors
- * replace files by rename and a project `.basis` directory may not exist yet;
+ * replace files by rename and a project `.lemma` directory may not exist yet;
  * a directory that does not exist when the stream starts is not watched.
  */
 export function watchConfig(paths: PathsService, options: WatchOptions = {}): Stream.Stream<string> {

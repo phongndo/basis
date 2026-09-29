@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
-import { CredentialError, Credentials, Paths } from "@basis/contracts";
-import type { Credential } from "@basis/contracts";
-import { definePlugin } from "@basis/core";
+import { CredentialError, Credentials, Paths } from "@lemma/contracts";
+import type { Credential } from "@lemma/contracts";
+import { definePlugin } from "@lemma/core";
 import { decodeEntry, readStore, withFileLock, writeStore } from "./store.ts";
 
 export { decodeEntry, readStore, withFileLock, writeStore } from "./store.ts";

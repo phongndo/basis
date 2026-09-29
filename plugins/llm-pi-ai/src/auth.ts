@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Runtime } from "effect";
 import type * as Pi from "@earendil-works/pi-ai";
-import type { Credential, Credentials, Interaction, NoticePayload } from "@basis/contracts";
+import type { Credential, Credentials, Interaction, NoticePayload } from "@lemma/contracts";
 
 type CredentialsService = typeof Credentials.Service;
 type InteractionService = typeof Interaction.Service;

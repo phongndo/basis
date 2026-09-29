@@ -9,7 +9,7 @@ import type { HttpApp, HttpServer, HttpServerError } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import { RpcSerialization, RpcServer } from "@effect/rpc";
 import type { Rpc, RpcGroup } from "@effect/rpc";
-import { HostRpcs } from "@basis/contracts";
+import { HostRpcs } from "@lemma/contracts";
 
 export type HostHandlers = Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<typeof HostRpcs>>>;
 

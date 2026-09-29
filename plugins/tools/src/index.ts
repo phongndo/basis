@@ -1,6 +1,6 @@
 import { Layer, Schema } from "effect";
-import { definePlugin } from "@basis/core";
-import { Tools } from "@basis/contracts";
+import { definePlugin } from "@lemma/core";
+import { Tools } from "@lemma/contracts";
 import { makeRegistry } from "./registry.ts";
 
 export const ToolsConfig = Schema.Struct({

@@ -1,8 +1,8 @@
 // Runs in a separate Node process: increments a counter credential `count` times through the plugin.
 import { dirname } from "node:path";
 import { Effect, Layer } from "effect";
-import { Credentials, Paths } from "@basis/contracts";
-import { definePlugin, makeCore } from "@basis/core";
+import { Credentials, Paths } from "@lemma/contracts";
+import { definePlugin, makeCore } from "@lemma/core";
 import credentials from "../../src/index.ts";
 
 const [auth, provider, count] = process.argv.slice(2) as [string, string, string];

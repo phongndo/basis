@@ -1,5 +1,5 @@
-import { emptyUsage } from "@basis/contracts";
-import type { AssistantMessage, EventData, SessionEvent, Usage } from "@basis/contracts";
+import { emptyUsage } from "@lemma/contracts";
+import type { AssistantMessage, EventData, SessionEvent, Usage } from "@lemma/contracts";
 
 /** Builds a linear branch: each event's parent is the previous one. */
 export const branch = (...data: EventData[]): SessionEvent[] =>

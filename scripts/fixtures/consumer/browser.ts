@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Schema, Scope } from "effect";
-import { definePlugin, Event, Events, Hook, Hooks, makeLoader, PluginContext } from "@basis/core";
-import type { Plugin } from "@basis/core";
+import { definePlugin, Event, Events, Hook, Hooks, makeLoader, PluginContext } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
 
 class Label extends Context.Tag("ui/Label")<Label, string>() {}
 const Format = Hook.make<string, string>("ui/format");

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { CompositionInfo } from "@basis/contracts";
-import type { Composition, PluginIdentity } from "@basis/core";
+import type { CompositionInfo } from "@lemma/contracts";
+import type { Composition, PluginIdentity } from "@lemma/core";
 
 /**
  * Identifies a running plugin set. `id` is a sha256 over the sorted plugin ids,

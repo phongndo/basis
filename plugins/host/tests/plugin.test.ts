@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { Deferred, Duration, Effect, Fiber, Layer, Schedule, Stream } from "effect";
-import { HostControl, Notice, Paths, PluginsChanged } from "@basis/contracts";
-import { definePlugin, Diagnostic, Events, makeLoader, PluginContext } from "@basis/core";
-import type { Loader, Plugin, PluginSource } from "@basis/core";
+import { HostControl, Notice, Paths, PluginsChanged } from "@lemma/contracts";
+import { definePlugin, Diagnostic, Events, makeLoader, PluginContext } from "@lemma/core";
+import type { Loader, Plugin, PluginSource } from "@lemma/core";
 import { compositionInfo, hostPlugin, resolvePaths } from "../src/index.ts";
 import type { HostControlService } from "../src/index.ts";
 
@@ -14,7 +14,7 @@ const flaky = definePlugin({
   layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) => owner.background("work", Effect.fail("boom"), { required: true }))),
 });
 
-/** Mirrors apps/host: the plugin activates inside makeLoader, so the handle binds to the loader through a Deferred. */
+/** Mirrors packages/host: the plugin activates inside makeLoader, so the handle binds to the loader through a Deferred. */
 const start = Effect.gen(function* () {
   const ready = yield* Deferred.make<Loader>();
   const handle: HostControlService = {

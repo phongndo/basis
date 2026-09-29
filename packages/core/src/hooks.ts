@@ -2,7 +2,7 @@ import { Context, Effect } from "effect";
 import type { CoreClosed, EventError, HookError } from "./errors.ts";
 import type { Event, Observer, ObserveOptions } from "./events.ts";
 
-const HookTypeId: unique symbol = Symbol("@basis/core/Hook");
+const HookTypeId: unique symbol = Symbol("@lemma/core/Hook");
 
 /**
  * An interception point: around middleware on an operation's critical path.
@@ -49,7 +49,7 @@ export interface PluginIdentity {
 }
 
 /** Present during activation and in the environment captured by registered handlers. */
-export class PluginContext extends Context.Tag("@basis/core/PluginContext")<
+export class PluginContext extends Context.Tag("@lemma/core/PluginContext")<
   PluginContext,
   PluginIdentity & {
     /** Captures dependencies now; removes the handler when the plugin's scope closes. */
@@ -68,7 +68,7 @@ export class PluginContext extends Context.Tag("@basis/core/PluginContext")<
 >() {}
 
 /** Plugins define the hook tokens and terminal behavior; the core only dispatches. */
-export class Hooks extends Context.Tag("@basis/core/Hooks")<
+export class Hooks extends Context.Tag("@lemma/core/Hooks")<
   Hooks,
   {
     readonly invoke: <I, O, E, R>(

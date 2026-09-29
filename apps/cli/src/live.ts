@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { Deferred, Duration, Effect, Fiber, Stream } from "effect";
-import { branchOf, contentText, ThinkingLevel, trajectory } from "@basis/contracts";
+import { branchOf, contentText, ThinkingLevel, trajectory } from "@lemma/contracts";
 import type {
   HostEvent,
   ImageContent,
@@ -11,8 +12,8 @@ import type {
   TextContent,
   ThinkingLevel as Thinking,
   TurnOptions,
-} from "@basis/contracts";
-import type { HostRpcClient } from "@basis/client";
+} from "@lemma/contracts";
+import type { HostRpcClient } from "@lemma/client";
 import { CliError, ExitCode, usage } from "./command.ts";
 import type { Command, Connection, Io, Options, Output } from "./command.ts";
 import { formatCommands, formatModels, formatProviders, formatQuestions, formatTurnResult } from "./format.ts";
@@ -64,24 +65,26 @@ const promptText = (request: InteractionRequest): string => {
 /**
  * Handles a question per the policy: the next `--answer`, then the terminal
  * (`ask`), `dismiss`, or `ignore` (leave it to another client, such as an
- * open web app, and say how to answer it from the CLI).
+ * open web app, and say how to answer it from the CLI). Only questions from
+ * `origin` are handled, so answers never reach another session's or client's
+ * question; `undefined` handles every question (`events --answer`).
  */
-const questionHandler = (rpc: HostRpcClient, io: Io, options: Options) => {
+const questionHandler = (rpc: HostRpcClient, io: Io, options: Options, origin: string | undefined) => {
   const answers = [...options.answers];
   const seen = new Set<string>();
   return (request: InteractionRequest) =>
     Effect.gen(function* () {
-      if (seen.has(request.id)) return;
+      if (seen.has(request.id) || (origin !== undefined && request.origin !== origin)) return;
       seen.add(request.id);
       const policy = policyOf(io, options);
       const next = answers.shift();
       if (next === undefined && policy === "dismiss") {
         yield* rpc.Interaction.Dismiss({ id: request.id }).pipe(Effect.ignore);
-        io.err(`basis: dismissed question "${request.title}"`);
+        io.err(`lemma: dismissed question "${request.title}"`);
         return;
       }
       if (next === undefined && (policy === "ignore" || io.ask === undefined)) {
-        io.err(`basis: the host asks "${request.title}" (${request.type}); answer with \`basis answer ${request.id} <value>\` or in the web app`);
+        io.err(`lemma: the host asks "${request.title}" (${request.type}); answer with \`lemma answer ${request.id} <value>\` or in the web app`);
         return;
       }
       let raw = next;
@@ -93,7 +96,7 @@ const questionHandler = (rpc: HostRpcClient, io: Io, options: Options) => {
           yield* rpc.Interaction.Answer({ id: request.id, answer }).pipe(Effect.ignore);
           return;
         }
-        io.err(`basis: ${answer}`);
+        io.err(`lemma: ${answer}`);
         if (io.ask === undefined) return;
         raw = undefined;
       }
@@ -167,7 +170,7 @@ const lastTurn = (rpc: HostRpcClient, sessionId: string) =>
   });
 export type TurnResult = Effect.Effect.Success<ReturnType<typeof lastTurn>>;
 
-/** `basis run <session|new> <prompt…>`: send a prompt and wait for the turn; `--follow` streams it. */
+/** `lemma run <session|new> <prompt…>`: send a prompt and wait for the turn; `--follow` streams it. */
 export const runCommand =
   (target: string, words: readonly string[]): Command =>
   (connection, io, options) =>
@@ -180,7 +183,7 @@ export const runCommand =
       const content: PromptContent = [...(text === "" ? [] : [{ type: "text", text } satisfies TextContent]), ...images];
 
       const sessionId = target === "new" ? (yield* connection.rpc.Session.Create({ cwd: resolve(io.cwd, options.cwd ?? ".") })).id : target;
-      if (target === "new" && !options.json) io.err(`basis: session ${sessionId}`);
+      if (target === "new" && !options.json) io.err(`lemma: session ${sessionId}`);
       const payload = { sessionId, content, ...(Object.keys(turn).length ? { options: turn } : {}) };
 
       if (!options.follow) {
@@ -198,7 +201,7 @@ export const runCommand =
         io.out(text);
       };
       const rpc = yield* connection.live;
-      const answer = questionHandler(rpc, io, options);
+      const answer = questionHandler(rpc, io, options, `session:${sessionId}`);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
           if (event.type === "interaction") return yield* answer(event.request);
@@ -243,11 +246,11 @@ export const cancelCommand =
 
 // ------------------------------------------------------------------ events / questions
 
-/** `basis events`: follow everything the host publishes (optionally one session's), as the web app sees it. */
+/** `lemma events`: follow everything the host publishes (optionally one session's), as the web app sees it. */
 export const eventsCommand: Command = (connection, io, options) =>
   Effect.gen(function* () {
     const rpc = yield* connection.live;
-    const answer = questionHandler(rpc, io, options);
+    const answer = questionHandler(rpc, io, options, options.session === undefined ? undefined : `session:${options.session}`);
     const fiber = yield* subscribe(rpc, (event) =>
       Effect.gen(function* () {
         if (options.session !== undefined && "sessionId" in event && event.sessionId !== options.session) return;
@@ -329,7 +332,7 @@ export const modelsCommand: Command = ({ rpc }, _io, options) =>
 
 export const providersCommand: Command = ({ rpc }) => Effect.map(rpc.Llm.Providers(), (providers) => ({ json: providers, text: formatProviders(providers) }));
 
-/** `basis login <provider>`: runs the provider's login, answering its questions per the policy and printing its notices. */
+/** `lemma login <provider>`: runs the provider's login, answering its questions per the policy and printing its notices. */
 export const loginCommand =
   (provider: string): Command =>
   (connection, io, options) =>
@@ -342,7 +345,7 @@ export const loginCommand =
       if (!info.auth.some((auth) => auth.type === method))
         return yield* usage(`${provider} does not offer ${method}; it offers ${info.auth.map((auth) => auth.type).join(", ")}`);
       const rpc = yield* connection.live;
-      const answer = questionHandler(rpc, io, options);
+      const answer = questionHandler(rpc, io, options, `login:${provider}`);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
           if (event.type === "notice") io.err(noticeLine(event));
@@ -358,7 +361,7 @@ export const logoutCommand =
   ({ rpc }) =>
     Effect.as(rpc.Llm.Logout({ provider }), { json: { loggedOut: provider }, text: `logged out of ${provider}` });
 
-/** `basis do`: lists the commands plugins registered; `basis do <id>` runs one, answering its questions per the policy. */
+/** `lemma do`: lists the commands plugins registered; `lemma do <id>` runs one, answering its questions per the policy. */
 export const listCommandsCommand: Command = ({ rpc }) => Effect.map(rpc.Command.List(), (commands) => ({ json: commands, text: formatCommands(commands) }));
 
 export const doCommand =
@@ -366,7 +369,8 @@ export const doCommand =
   (connection, io, options) =>
     Effect.gen(function* () {
       const rpc = yield* connection.live;
-      const answer = questionHandler(rpc, io, options);
+      const origin = `command:${randomUUID()}`;
+      const answer = questionHandler(rpc, io, options, origin);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
           if (event.type === "notice") io.err(noticeLine(event));
@@ -374,6 +378,6 @@ export const doCommand =
         }),
       );
       const cwd = resolve(io.cwd, options.cwd ?? ".");
-      const result = yield* rpc.Command.Run({ id, cwd, ...(options.session === undefined ? {} : { sessionId: options.session }) });
+      const result = yield* rpc.Command.Run({ id, cwd, origin, ...(options.session === undefined ? {} : { sessionId: options.session }) });
       return { json: { command: id, ...result }, text: result.message ?? `${id}: done` };
     });

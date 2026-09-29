@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import type { GitBranch, WorkspaceStatus } from "@basis/contracts";
+import type { GitBranch, WorkspaceStatus } from "@lemma/contracts";
 import { knownProjects } from "../model/prefs.ts";
 import {
   commandsRun,
@@ -156,7 +156,7 @@ function ModePicker(props: { git: NonNullable<WorkspaceStatus["git"]> }) {
               </span>
               <span class="menu-stack">
                 <span class="menu-label">New worktree</span>
-                <span class="menu-desc">A separate checkout on a new branch in ~/.basis/worktrees, so this chat's changes stay apart</span>
+                <span class="menu-desc">A separate checkout on a new branch in ~/.lemma/worktrees, so this chat's changes stay apart</span>
               </span>
             </button>
           </>

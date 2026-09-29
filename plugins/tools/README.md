@@ -1,6 +1,6 @@
-# @basis/plugin-tools
+# @lemma/plugin-tools
 
-Provides `Tools` (`@basis/contracts`): the registry the agent lists and executes
+Provides `Tools` (`@lemma/contracts`): the registry the agent lists and executes
 tools through. Tool plugins require `Tools` and register during activation.
 
 ```ts

@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
-import { definePlugin } from "@basis/core";
-import { Tools } from "@basis/contracts";
-import type { Tool } from "@basis/contracts";
+import { definePlugin } from "@lemma/core";
+import { Tools } from "@lemma/contracts";
+import type { Tool } from "@lemma/contracts";
 import { bashTool } from "./bash.ts";
 import { editTool } from "./edit.ts";
 import { readTool } from "./read.ts";

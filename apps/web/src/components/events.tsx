@@ -1,9 +1,9 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import type { HostEvent } from "@basis/contracts";
+import type { HostEvent } from "@lemma/contracts";
 import { clearEventLog, eventLog, openDialog } from "../store.ts";
 import { Dialog } from "./dialog.tsx";
 
-/** One line per event, as `basis events` prints them. */
+/** One line per event, as `lemma events` prints them. */
 const describe = (event: HostEvent): string => {
   switch (event.type) {
     case "notice":
@@ -31,7 +31,7 @@ const describe = (event: HostEvent): string => {
 
 const clock = (at: number) => new Date(at).toTimeString().slice(0, 8);
 
-/** The web counterpart of `basis events`: the last few hundred host events this page received, filterable. */
+/** The web counterpart of `lemma events`: the last few hundred host events this page received, filterable. */
 export function EventsDialog() {
   const [query, setQuery] = createSignal("");
   const [deltas, setDeltas] = createSignal(false);

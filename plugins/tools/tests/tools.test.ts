@@ -1,9 +1,9 @@
 import { Chunk, Effect, Fiber, Layer, Schema, Scope, Stream } from "effect";
 import { describe, expect, it } from "vitest";
-import { definePlugin, Events, makeCore, PluginContext } from "@basis/core";
-import type { Plugin } from "@basis/core";
-import { ToolExecuted, ToolExecuteHook, ToolInvocation, ToolResult, Tools } from "@basis/contracts";
-import type { Guard, Tool } from "@basis/contracts";
+import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
+import { ToolExecuted, ToolExecuteHook, ToolInvocation, ToolResult, Tools } from "@lemma/contracts";
+import type { Guard, Tool } from "@lemma/contracts";
 import tools, { toolParameters } from "../src/index.ts";
 
 const ok = (text: string) => new ToolResult({ content: [{ type: "text", text }] });

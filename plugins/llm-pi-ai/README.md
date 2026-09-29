@@ -1,4 +1,4 @@
-# @basis/plugin-llm-pi-ai
+# @lemma/plugin-llm-pi-ai
 
 Provides `Llm` (plugin id `llm`) by wrapping [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi). Requires `Credentials` and `Interaction`.
 

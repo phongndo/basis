@@ -3,14 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Chunk, Effect, Fiber, Layer, Stream } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { definePlugin, Events, makeCore } from "@basis/core";
-import { Notice, Paths, SessionAppended, SessionChanged, Sessions } from "@basis/contracts";
-import type { EventData } from "@basis/contracts";
+import { definePlugin, Events, makeCore } from "@lemma/core";
+import { Notice, Paths, SessionAppended, SessionChanged, Sessions } from "@lemma/contracts";
+import type { EventData } from "@lemma/contracts";
 import sessions, { encodeCwd } from "../src/index.ts";
 
 let dir: string;
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "basis-sessions-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "lemma-sessions-"));
 });
 afterEach(async () => {
   vi.restoreAllMocks();

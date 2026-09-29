@@ -1,8 +1,8 @@
 import { constants } from "node:fs";
 import { access, open, readFile, stat } from "node:fs/promises";
 import { Schema } from "effect";
-import { ToolResult } from "@basis/contracts";
-import type { Tool } from "@basis/contracts";
+import { ToolResult } from "@lemma/contracts";
+import type { Tool } from "@lemma/contracts";
 import { fsMessage, resolveReadPath, text, throwIfAborted } from "./files.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "./truncate.ts";
 import type { Truncation } from "./truncate.ts";

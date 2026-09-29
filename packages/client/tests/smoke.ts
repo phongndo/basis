@@ -1,6 +1,6 @@
 // Manual smoke: drives a running host through the real client. Usage: node e2e-smoke.ts <url> <token>
-import { connect } from "@basis/client";
-import { branchOf, rebuildRequest } from "@basis/contracts";
+import { connect } from "@lemma/client";
+import { branchOf, rebuildRequest } from "@lemma/contracts";
 const [url, token] = process.argv.slice(2);
 const host = await connect({ url: url!, token });
 const seen: string[] = [];

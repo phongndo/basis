@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@basis/contracts";
+import type { SessionEvent } from "@lemma/contracts";
 
 /**
  * Merges `incoming` into `events` (both in any order), dropping duplicate

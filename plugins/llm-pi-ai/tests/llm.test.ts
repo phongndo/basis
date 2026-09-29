@@ -4,9 +4,9 @@ import { createProvider, fauxAssistantMessage, fauxProvider, fauxText, fauxThink
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import type { Provider, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
-import { PluginContext, definePlugin } from "@basis/core";
-import { InteractionError, Llm, LlmError, LlmRequest, LlmRequestHook, StreamEvent } from "@basis/contracts";
-import type { Credential } from "@basis/contracts";
+import { PluginContext, definePlugin } from "@lemma/core";
+import { InteractionError, Llm, LlmError, LlmRequest, LlmRequestHook, StreamEvent } from "@lemma/contracts";
+import type { Credential } from "@lemma/contracts";
 import { credentialStore, makeEventMapper, makeLlmPlugin, runner } from "../src/index.ts";
 import { envContext, fakeCredentials, fakeInteraction, noticeRecorder, runWith } from "./helpers.ts";
 

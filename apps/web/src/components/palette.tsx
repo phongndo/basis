@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { CommandInfo, InteractionRequest } from "@basis/contracts";
+import type { CommandInfo, InteractionRequest } from "@lemma/contracts";
 import { shortcut } from "../lib/keys.ts";
 import { load, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
@@ -78,7 +78,7 @@ interface Asking {
   readonly dismiss: () => void;
 }
 
-const RECENT_KEY = "basis.palette.recent";
+const RECENT_KEY = "lemma.palette.recent";
 const SESSIONS_BROWSED = 8;
 const RESULTS = 60;
 
@@ -313,7 +313,7 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
           kind: "command",
           category: "Chat",
           title: "Copy session ID",
-          keywords: ["cli", "basis"],
+          keywords: ["cli", "lemma"],
           icon: CopyIcon,
           run: () =>
             void navigator.clipboard.writeText(session.id).then(

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
-import { Interaction, InteractionError, InteractionHook } from "@basis/contracts";
-import type { InteractionAnswer, InteractionRequest } from "@basis/contracts";
-import { definePlugin, makeCore, PluginContext } from "@basis/core";
+import { Interaction, InteractionError, InteractionHook, InteractionOrigin } from "@lemma/contracts";
+import type { InteractionAnswer, InteractionRequest } from "@lemma/contracts";
+import { definePlugin, makeCore, PluginContext } from "@lemma/core";
 import interaction from "../src/index.ts";
 
 /** A UI stand-in: answers every request with the scripted function, recording what it saw. */
@@ -58,6 +58,20 @@ describe("interaction", () => {
     expect(ui.seen[0]).toEqual({ type: "confirm", id: ui.seen[0]!.id, title: "Delete?", detail: "Everything" });
     expect(ui.seen[1]).toMatchObject({ title: "Key", secret: true });
     expect(ui.seen[2]).toEqual({ type: "ask", id: ui.seen[2]!.id, title: "Name", placeholder: "you" });
+  });
+
+  test("marks each question with the asking fiber's origin", async () => {
+    const ui = answerer(scripted);
+    await run(
+      [interaction, ui.plugin],
+      Effect.gen(function* () {
+        const ask = yield* Interaction;
+        yield* ask.confirm("Unattributed?");
+        yield* Effect.locally(ask.confirm("From the turn?"), InteractionOrigin, "session:s1");
+      }),
+    );
+    expect(ui.seen[0]).not.toHaveProperty("origin");
+    expect(ui.seen[1]).toMatchObject({ title: "From the turn?", origin: "session:s1" });
   });
 
   test("fails Unavailable with no answerer", async () => {

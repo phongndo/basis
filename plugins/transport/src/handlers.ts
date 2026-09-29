@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { Context } from "effect";
-import { HostRpcs } from "@basis/contracts";
-import type { Agent, Commands, HostControl, Llm, Paths, Sessions, Workspace } from "@basis/contracts";
+import { HostRpcs, InteractionOrigin } from "@lemma/contracts";
+import type { Agent, Commands, HostControl, Llm, Paths, Sessions, Workspace } from "@lemma/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
 import type { Interactions } from "./interactions.ts";
@@ -59,8 +59,10 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
       workspace.checkout(path, branch, create === undefined ? undefined : { create }).pipe(Effect.mapError(toHostError)),
 
     "Command.List": () => commands.list,
-    "Command.Run": ({ id, cwd, sessionId }) =>
-      commands.run(id, { cwd: cwd ?? paths.cwd, ...(sessionId === undefined ? {} : { sessionId }) }).pipe(Effect.mapError(toHostError)),
+    "Command.Run": ({ id, cwd, sessionId, origin }) =>
+      commands
+        .run(id, { cwd: cwd ?? paths.cwd, ...(sessionId === undefined ? {} : { sessionId }) })
+        .pipe((run) => (origin === undefined ? run : Effect.locally(run, InteractionOrigin, origin)), Effect.mapError(toHostError)),
 
     "Host.Info": () => Effect.map(control.composition, (composition) => ({ version, cwd: paths.cwd, home: paths.home, composition })),
     "Host.Events": () => hub.events,

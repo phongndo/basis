@@ -1,5 +1,5 @@
 import { Cause, Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
-import { HostError } from "@basis/contracts";
+import { HostError } from "@lemma/contracts";
 import type {
   AuthType,
   CommandInfo,
@@ -17,7 +17,7 @@ import type {
   SessionInfo,
   TurnOptions,
   WorkspaceStatus,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import { makeHostRpc, rpcUrl } from "./rpc.ts";
 import type { HostRpcClient } from "./rpc.ts";
 

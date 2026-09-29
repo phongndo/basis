@@ -98,7 +98,7 @@ export class PluginFault extends Data.TaggedError("PluginFault")<{
 export type ReportedFault = PluginFault & { readonly sequence: number };
 
 /** A serializable, actionable message about a composition. Errors block; warnings do not. */
-export class Diagnostic extends Schema.Class<Diagnostic>("@basis/core/Diagnostic")({
+export class Diagnostic extends Schema.Class<Diagnostic>("@lemma/core/Diagnostic")({
   severity: Schema.Literal("error", "warning"),
   pluginId: Schema.optional(Schema.String),
   /** Location inside the plugin's config, when the problem is a config value. */

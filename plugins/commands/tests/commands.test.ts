@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { Effect, Exit, Fiber, Layer, Stream } from "effect";
-import { Commands, CommandsChanged, InteractionError } from "@basis/contracts";
-import type { Command } from "@basis/contracts";
-import { definePlugin, Events, makeCore, makeLoader } from "@basis/core";
+import { Commands, CommandsChanged, InteractionError } from "@lemma/contracts";
+import type { Command } from "@lemma/contracts";
+import { definePlugin, Events, makeCore, makeLoader } from "@lemma/core";
 import commands from "../src/index.ts";
 
 const contributor = (id: string, contributed: readonly Command[]) =>

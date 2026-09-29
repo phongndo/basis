@@ -1,21 +1,21 @@
-# @basis/plugin-host
+# @lemma/plugin-host
 
-Provides `Paths` and `HostControl`, publishes `PluginsChanged`, and exports the functions `apps/host` runs before any plugin exists: resolving paths, reading and merging `config.jsonc` files into a `Composition`, watching them, and describing the running composition.
+Provides `Paths` and `HostControl`, publishes `PluginsChanged`, and exports the functions `packages/host` runs before any plugin exists: resolving paths, reading and merging `config.jsonc` files into a `Composition`, watching them, and describing the running composition.
 
 ## Use
 
 ```ts
-import { compositionInfo, hostPlugin, loadComposition, resolvePaths, watchConfig } from "@basis/plugin-host";
+import { compositionInfo, hostPlugin, loadComposition, resolvePaths, watchConfig } from "@lemma/plugin-host";
 
 const paths = resolvePaths({ env: process.env, cwd: process.cwd() });
 const { composition, diagnostics, files } = await Effect.runPromise(loadComposition(paths));
 ```
 
-- `resolvePaths` — `home` is `$BASIS_HOME` or `~/.basis`; `userConfig` is `<home>/config.jsonc`, `projectConfig` is `<cwd>/.basis/config.jsonc`, `auth` is `<home>/auth.json`, `sessions` is `<home>/sessions`.
+- `resolvePaths` — `home` is `$LEMMA_HOME` or `~/.lemma`; `userConfig` is `<home>/config.jsonc`, `projectConfig` is `<cwd>/.lemma/config.jsonc`, `auth` is `<home>/auth.json`, `sessions` is `<home>/sessions`.
 - `loadComposition(paths)` never fails. Each file is JSONC (comments and trailing commas), validated against `ConfigFile` from the contracts. Unreadable or invalid files become `Diagnostic`s naming the file (and the config path where relevant) and are skipped; a missing file is normal and `files` says which ones were found. The result always contains the `host` row with `config: paths`, so an empty setup runs the host plugin alone; a `host` row written in a file is ignored with a warning.
 - Trust: the project file is read only when `isTrusted(paths.cwd, trustedProjects)` holds for the user file's `trustedProjects` (absolute directories; a subdirectory of an entry is covered). Otherwise `trusted` is false and, if the project has a config file or a `projectPluginsDir(paths)`, a warning names the entry to add. `trustedProjects` in a project file is ignored with a warning. The app loads project plugins only when `trusted`.
 - Merge rule: project rows override user rows by plugin id. `enabled` and `config` are each taken from the project row when present; a project `config` replaces the user's whole object (no deep merge), so a project file can disable a plugin without repeating its config.
-- `watchConfig(paths, { debounceMs? })` — a `Stream<string>` of the changed file's path. It watches the containing directories (editors replace files by rename; the project `.basis` directory may not exist yet), and a directory absent at start is not watched until the next start.
+- `watchConfig(paths, { debounceMs? })` — a `Stream<string>` of the changed file's path. It watches the containing directories (editors replace files by rename; the project `.lemma` directory may not exist yet), and a directory absent at start is not watched until the next start.
 - `compositionInfo(composition, plugins)` — the `CompositionInfo` for `HostControl.composition`: running plugin ids and versions (pass `core.inspect` snapshots) plus `id`, a sha256 over the sorted ids, versions, and each member's config as canonical JSON (sorted keys). Session `request` events record this id, so it must not depend on config key order or process.
 - `hostPlugin({ control, faults? })` builds the plugin: `id: "host"`, config schema `PathsSchema`, provides `Paths` (from config) and `HostControl` (from the app's handle). With `faults` (the core's fault stream) it publishes an error `Notice` and `PluginsChanged` for every fault; it also publishes `PluginsChanged` after `reload` and `restart` through the handle.
 

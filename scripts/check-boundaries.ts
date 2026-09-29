@@ -24,7 +24,7 @@ for (const file of walk(core).filter((path) => /\.(ts|tsx|mts)$/.test(path))) {
   for (const match of text.matchAll(importPattern)) {
     const specifier = match[1]!;
     const escapes = specifier.startsWith(".") && !resolve(dirname(file), specifier).startsWith(core);
-    if ((specifier.startsWith("@basis/") && specifier !== "@basis/core") || escapes) {
+    if ((specifier.startsWith("@lemma/") && specifier !== "@lemma/core") || escapes) {
       problems.push(`${relative(root, file)}: imports "${specifier}"`);
     }
   }

@@ -1,0 +1,37 @@
+{
+  "name": "@lemma/host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "node --conditions=source src/main.ts",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@lemma/contracts": "workspace:*",
+    "@lemma/core": "workspace:*",
+    "@lemma/plugin-agent": "workspace:*",
+    "@lemma/plugin-commands": "workspace:*",
+    "@lemma/plugin-commands-builtin": "workspace:*",
+    "@lemma/plugin-credentials": "workspace:*",
+    "@lemma/plugin-host": "workspace:*",
+    "@lemma/plugin-interaction": "workspace:*",
+    "@lemma/plugin-llm-pi-ai": "workspace:*",
+    "@lemma/plugin-project-context": "workspace:*",
+    "@lemma/plugin-sessions": "workspace:*",
+    "@lemma/plugin-tools": "workspace:*",
+    "@lemma/plugin-tools-builtin": "workspace:*",
+    "@lemma/plugin-transport": "workspace:*",
+    "@lemma/plugin-workspace": "workspace:*",
+    "effect": "3.22.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

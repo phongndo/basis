@@ -1,4 +1,4 @@
-# @basis/plugin-commands-builtin
+# @lemma/plugin-commands-builtin
 
 The host's own commands, as three plugins so a composition missing one
 capability still gets the others. Each requires `Commands` and `Interaction`,

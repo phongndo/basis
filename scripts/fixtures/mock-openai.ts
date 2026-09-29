@@ -45,7 +45,11 @@ createServer((request, response) => {
       send(chunk({ content: "Let me check with bash." }));
       await pause();
       send(chunk({ tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: "" } }] }));
-      send(chunk({ tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ command: "echo hello from basis && uname -s" }) } }] }));
+      send(
+        chunk({
+          tool_calls: [{ index: 0, function: { arguments: JSON.stringify({ command: "echo hello from lemma, INIT_CWD=${INIT_CWD:-unset} && uname -s" }) } }],
+        }),
+      );
       send(chunk({}, "tool_calls"));
     }
     send(

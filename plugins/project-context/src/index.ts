@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { Effect, Layer } from "effect";
-import { definePlugin, PluginContext } from "@basis/core";
-import { AgentRequestHook, Paths } from "@basis/contracts";
-import type { SystemSection } from "@basis/contracts";
+import { definePlugin, PluginContext } from "@lemma/core";
+import { AgentRequestHook, Paths } from "@lemma/contracts";
+import type { SystemSection } from "@lemma/contracts";
 
 /** Per directory, the first of these that is a file wins (pi's order: AGENTS first, CLAUDE as the fallback). */
 export const CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"] as const;

@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import type { SessionInfo } from "@basis/contracts";
+import type { SessionInfo } from "@lemma/contracts";
 import { shortcut } from "../lib/keys.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { groupSessions, sessionTitle } from "../model/sessions.ts";

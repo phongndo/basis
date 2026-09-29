@@ -124,19 +124,19 @@ importers:
 
   apps/cli:
     dependencies:
-      '@basis/client':
+      '@lemma/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/host':
+      '@lemma/host':
         specifier: workspace:*
-        version: link:../host
-      '@basis/plugin-host':
+        version: link:../../packages/host
+      '@lemma/plugin-host':
         specifier: workspace:*
         version: link:../../plugins/host
-      '@basis/plugin-transport':
+      '@lemma/plugin-transport':
         specifier: workspace:*
         version: link:../../plugins/transport
       '@effect/rpc':
@@ -156,51 +156,51 @@ importers:
         specifier: 5.0.2
         version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0)(esbuild@0.28.2))
 
-  apps/host:
+  packages/host:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@basis/plugin-agent':
+      '@lemma/plugin-agent':
         specifier: workspace:*
         version: link:../../plugins/agent
-      '@basis/plugin-commands':
+      '@lemma/plugin-commands':
         specifier: workspace:*
         version: link:../../plugins/commands
-      '@basis/plugin-commands-builtin':
+      '@lemma/plugin-commands-builtin':
         specifier: workspace:*
         version: link:../../plugins/commands-builtin
-      '@basis/plugin-credentials':
+      '@lemma/plugin-credentials':
         specifier: workspace:*
         version: link:../../plugins/credentials
-      '@basis/plugin-host':
+      '@lemma/plugin-host':
         specifier: workspace:*
         version: link:../../plugins/host
-      '@basis/plugin-interaction':
+      '@lemma/plugin-interaction':
         specifier: workspace:*
         version: link:../../plugins/interaction
-      '@basis/plugin-llm-pi-ai':
+      '@lemma/plugin-llm-pi-ai':
         specifier: workspace:*
         version: link:../../plugins/llm-pi-ai
-      '@basis/plugin-project-context':
+      '@lemma/plugin-project-context':
         specifier: workspace:*
         version: link:../../plugins/project-context
-      '@basis/plugin-sessions':
+      '@lemma/plugin-sessions':
         specifier: workspace:*
         version: link:../../plugins/sessions
-      '@basis/plugin-tools':
+      '@lemma/plugin-tools':
         specifier: workspace:*
         version: link:../../plugins/tools
-      '@basis/plugin-tools-builtin':
+      '@lemma/plugin-tools-builtin':
         specifier: workspace:*
         version: link:../../plugins/tools-builtin
-      '@basis/plugin-transport':
+      '@lemma/plugin-transport':
         specifier: workspace:*
         version: link:../../plugins/transport
-      '@basis/plugin-workspace':
+      '@lemma/plugin-workspace':
         specifier: workspace:*
         version: link:../../plugins/workspace
       effect:
@@ -219,10 +219,10 @@ importers:
 
   apps/web:
     dependencies:
-      '@basis/client':
+      '@lemma/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       dompurify:
@@ -256,7 +256,7 @@ importers:
 
   packages/client:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../contracts
       '@effect/platform':
@@ -281,7 +281,7 @@ importers:
 
   packages/contracts:
     dependencies:
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../core
       '@effect/platform':
@@ -322,10 +322,10 @@ importers:
 
   plugins/agent:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -344,10 +344,10 @@ importers:
 
   plugins/commands:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -366,10 +366,10 @@ importers:
 
   plugins/commands-builtin:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -388,10 +388,10 @@ importers:
 
   plugins/credentials:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -410,10 +410,10 @@ importers:
 
   plugins/host:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -435,10 +435,10 @@ importers:
 
   plugins/interaction:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -457,10 +457,10 @@ importers:
 
   plugins/llm-pi-ai:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@earendil-works/pi-ai':
@@ -482,10 +482,10 @@ importers:
 
   plugins/project-context:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -504,10 +504,10 @@ importers:
 
   plugins/sessions:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -526,10 +526,10 @@ importers:
 
   plugins/tools:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -548,10 +548,10 @@ importers:
 
   plugins/tools-builtin:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:
@@ -570,10 +570,10 @@ importers:
 
   plugins/transport:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@effect/platform':
@@ -589,7 +589,7 @@ importers:
         specifier: 3.22.2
         version: 3.22.2
     devDependencies:
-      '@basis/plugin-commands':
+      '@lemma/plugin-commands':
         specifier: workspace:*
         version: link:../commands
       '@types/node':
@@ -604,10 +604,10 @@ importers:
 
   plugins/workspace:
     dependencies:
-      '@basis/contracts':
+      '@lemma/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@basis/core':
+      '@lemma/core':
         specifier: workspace:*
         version: link:../../packages/core
       effect:

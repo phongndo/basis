@@ -1,8 +1,8 @@
 import { Cause, Effect, Layer } from "effect";
 import type { Context } from "effect";
-import { definePlugin, Events, PluginContext } from "@basis/core";
-import { CommandError, Commands, CommandsChanged, InteractionError } from "@basis/contracts";
-import type { Command, CommandInfo } from "@basis/contracts";
+import { definePlugin, Events, PluginContext } from "@lemma/core";
+import { CommandError, Commands, CommandsChanged, InteractionError } from "@lemma/contracts";
+import type { Command, CommandInfo } from "@lemma/contracts";
 
 type Service = Context.Tag.Service<typeof Commands>;
 

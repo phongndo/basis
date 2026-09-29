@@ -1,6 +1,13 @@
-import { Context, Data, Schema } from "effect";
+import { Context, Data, FiberRef, Schema } from "effect";
 import type { Effect } from "effect";
-import { Hook } from "@basis/core";
+import { Hook } from "@lemma/core";
+
+/**
+ * Who is asking, so a client answers only the questions it caused: `session:<id>`
+ * inside a turn, `login:<provider>` during a login, or the `origin` a client
+ * passed with `Command.Run`. `Interaction` copies it onto each request.
+ */
+export const InteractionOrigin: FiberRef.FiberRef<string | undefined> = FiberRef.unsafeMake<string | undefined>(undefined);
 
 /**
  * Questions for the human, answered by whichever client is attached. The
@@ -9,10 +16,17 @@ import { Hook } from "@basis/core";
  * question (a login callback that arrives first cancels a paste-the-code prompt).
  */
 export const InteractionRequest = Schema.Union(
-  Schema.Struct({ type: Schema.Literal("confirm"), id: Schema.String, title: Schema.String, detail: Schema.optional(Schema.String) }),
+  Schema.Struct({
+    type: Schema.Literal("confirm"),
+    id: Schema.String,
+    origin: Schema.optional(Schema.String),
+    title: Schema.String,
+    detail: Schema.optional(Schema.String),
+  }),
   Schema.Struct({
     type: Schema.Literal("ask"),
     id: Schema.String,
+    origin: Schema.optional(Schema.String),
     title: Schema.String,
     placeholder: Schema.optional(Schema.String),
     secret: Schema.optional(Schema.Boolean),
@@ -20,6 +34,7 @@ export const InteractionRequest = Schema.Union(
   Schema.Struct({
     type: Schema.Literal("select"),
     id: Schema.String,
+    origin: Schema.optional(Schema.String),
     title: Schema.String,
     options: Schema.Array(Schema.Struct({ value: Schema.String, label: Schema.String, description: Schema.optional(Schema.String) })),
   }),
@@ -38,9 +53,9 @@ export class InteractionError extends Data.TaggedError("InteractionError")<{
   readonly message: string;
 }> {}
 
-export const InteractionHook = Hook.make<InteractionRequest, InteractionAnswer, InteractionError>("basis/interaction.request");
+export const InteractionHook = Hook.make<InteractionRequest, InteractionAnswer, InteractionError>("lemma/interaction.request");
 
-export class Interaction extends Context.Tag("basis/Interaction")<
+export class Interaction extends Context.Tag("lemma/Interaction")<
   Interaction,
   {
     readonly confirm: (title: string, detail?: string) => Effect.Effect<boolean, InteractionError>;

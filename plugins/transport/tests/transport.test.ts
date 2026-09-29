@@ -10,11 +10,11 @@ import type { Mailbox } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
-import { CommandsChanged, HostError, HostRpcs, Interaction, InteractionError, Notice } from "@basis/contracts";
-import type { HostEvent } from "@basis/contracts";
-import { Events, makeCore } from "@basis/core";
-import type { Core } from "@basis/core";
-import commands from "@basis/plugin-commands";
+import { CommandsChanged, HostError, HostRpcs, Interaction, InteractionError, Notice } from "@lemma/contracts";
+import type { HostEvent } from "@lemma/contracts";
+import { Events, makeCore } from "@lemma/core";
+import type { Core } from "@lemma/core";
+import commands from "@lemma/plugin-commands";
 import transport, { readDiscovery } from "../src/index.ts";
 import { fakeAgent, fakeGreeter, fakeHostControl, fakeInteraction, fakeLlm, fakePaths, fakeSessions, fakeWorkspace } from "./fakes.ts";
 import type { ControlHolder } from "./fakes.ts";
@@ -68,7 +68,7 @@ const withHost = <A, E>(
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const home = owned ?? (yield* Effect.promise(() => mkdtemp(join(tmpdir(), "basis-transport-"))));
+        const home = owned ?? (yield* Effect.promise(() => mkdtemp(join(tmpdir(), "lemma-transport-"))));
         if (owned === undefined) yield* Effect.addFinalizer(() => Effect.promise(() => rm(home, { recursive: true, force: true })));
         const holder: ControlHolder = { restarted: [] };
         const core = yield* makeCore(
@@ -462,12 +462,12 @@ describe("transport", () => {
   );
 
   test("serves a static web app with SPA fallback and no token", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "basis-web-"));
+    const dir = await mkdtemp(join(tmpdir(), "lemma-web-"));
     try {
       await mkdir(join(dir, "assets"));
-      await writeFile(join(dir, "index.html"), "<!doctype html><title>basis</title>");
+      await writeFile(join(dir, "index.html"), "<!doctype html><title>lemma</title>");
       await writeFile(join(dir, "assets", "app.js"), "console.log(1)");
-      await writeFile(join(tmpdir(), "basis-secret.txt"), "secret");
+      await writeFile(join(tmpdir(), "lemma-secret.txt"), "secret");
       await withHost(
         (host) =>
           Effect.gen(function* () {
@@ -476,24 +476,24 @@ describe("transport", () => {
                 const response = await fetch(`${host.url}${path}`);
                 return { status: response.status, type: response.headers.get("content-type"), body: await response.text() };
               });
-            expect(yield* get("/")).toMatchObject({ status: 200, body: "<!doctype html><title>basis</title>" });
+            expect(yield* get("/")).toMatchObject({ status: 200, body: "<!doctype html><title>lemma</title>" });
             expect(yield* get("/assets/app.js")).toMatchObject({ status: 200, body: "console.log(1)" });
             expect((yield* get("/assets/app.js")).type).toContain("javascript");
-            expect(yield* get("/sessions/s1")).toMatchObject({ status: 200, body: "<!doctype html><title>basis</title>" });
+            expect(yield* get("/sessions/s1")).toMatchObject({ status: 200, body: "<!doctype html><title>lemma</title>" });
             expect((yield* get("/assets/missing.js")).status).toBe(404);
-            expect((yield* get("/%2e%2e/basis-secret.txt")).status).toBe(404);
-            expect((yield* get("/..%2fbasis-secret.txt")).status).toBe(404);
+            expect((yield* get("/%2e%2e/lemma-secret.txt")).status).toBe(404);
+            expect((yield* get("/..%2flemma-secret.txt")).status).toBe(404);
           }),
         { staticDir: dir },
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
-      await rm(join(tmpdir(), "basis-secret.txt"), { force: true });
+      await rm(join(tmpdir(), "lemma-secret.txt"), { force: true });
     }
   });
 
   test("removes the discovery file and releases the port on shutdown, even with a client attached", async () => {
-    const home = await mkdtemp(join(tmpdir(), "basis-transport-"));
+    const home = await mkdtemp(join(tmpdir(), "lemma-transport-"));
     try {
       const started = Date.now();
       const url = await withHost(

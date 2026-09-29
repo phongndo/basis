@@ -100,9 +100,12 @@ export class HostRpcs extends RpcGroup.make(
   }),
 
   Rpc.make("Command.List", { success: Schema.Array(CommandInfo) }),
-  /** Returns when the command ends; its questions arrive as `interaction` events. `cwd` defaults to the host's. */
+  /**
+   * Returns when the command ends; its questions arrive as `interaction` events
+   * carrying `origin`, when given. `cwd` defaults to the host's.
+   */
   Rpc.make("Command.Run", {
-    payload: { id: Schema.String, cwd: Schema.optional(Schema.String), sessionId: Schema.optional(Schema.String) },
+    payload: { id: Schema.String, cwd: Schema.optional(Schema.String), sessionId: Schema.optional(Schema.String), origin: Schema.optional(Schema.String) },
     success: CommandResult,
     error: HostError,
   }),

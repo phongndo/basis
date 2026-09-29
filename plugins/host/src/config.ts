@@ -3,9 +3,9 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Effect, Either, ParseResult, Schema } from "effect";
 import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import type { ParseError } from "jsonc-parser";
-import { ConfigFile } from "@basis/contracts";
-import { Diagnostic } from "@basis/core";
-import type { Composition, PluginEntry } from "@basis/core";
+import { ConfigFile } from "@lemma/contracts";
+import { Diagnostic } from "@lemma/core";
+import type { Composition, PluginEntry } from "@lemma/core";
 import type { PathsService } from "./paths.ts";
 
 export const HOST_PLUGIN_ID = "host";
@@ -21,7 +21,7 @@ export interface LoadedComposition {
   readonly trusted: boolean;
 }
 
-/** `<cwd>/.basis/plugins`: plugin files that load only in a trusted project. */
+/** `<cwd>/.lemma/plugins`: plugin files that load only in a trusted project. */
 export const projectPluginsDir = (paths: PathsService): string => join(dirname(paths.projectConfig), "plugins");
 
 /** A directory is trusted when it is, or is inside, an absolute entry of `trustedProjects`. */

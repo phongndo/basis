@@ -40,7 +40,7 @@ export class CredentialError extends Data.TaggedError("CredentialError")<{
  * refresh and a concurrent login cannot overwrite each other. Returning
  * `undefined` leaves the entry unchanged.
  */
-export class Credentials extends Context.Tag("basis/Credentials")<
+export class Credentials extends Context.Tag("lemma/Credentials")<
   Credentials,
   {
     readonly read: (provider: string) => Effect.Effect<Credential | undefined, CredentialError>;

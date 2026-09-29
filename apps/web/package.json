@@ -1,5 +1,5 @@
 {
-  "name": "@basis/web",
+  "name": "@lemma/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@basis/client": "workspace:*",
-    "@basis/contracts": "workspace:*",
+    "@lemma/client": "workspace:*",
+    "@lemma/contracts": "workspace:*",
     "dompurify": "3.4.16",
     "effect": "3.22.2",
     "marked": "18.0.14",

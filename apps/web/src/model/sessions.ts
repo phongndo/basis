@@ -1,5 +1,5 @@
-import { branchOf } from "@basis/contracts";
-import type { SessionEvent, SessionInfo } from "@basis/contracts";
+import { branchOf } from "@lemma/contracts";
+import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 
 export interface SessionGroup {
   readonly cwd: string;

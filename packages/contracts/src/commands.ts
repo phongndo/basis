@@ -1,7 +1,7 @@
 import { Context, Data, Schema } from "effect";
 import type { Effect, Scope } from "effect";
-import { Event } from "@basis/core";
-import type { PluginContext } from "@basis/core";
+import { Event } from "@lemma/core";
+import type { PluginContext } from "@lemma/core";
 
 /** Where a command runs: the client's working directory and, when it has one open, its session. */
 export const CommandContext = Schema.Struct({
@@ -44,7 +44,7 @@ export class CommandError extends Data.TaggedError("CommandError")<{
 }> {}
 
 /**
- * An action a person can run from any client: the web app's palette, `basis do`.
+ * An action a person can run from any client: the web app's palette, `lemma do`.
  * A command that needs input asks for it with `Interaction`, so every client
  * that can answer questions can run it.
  */
@@ -53,9 +53,9 @@ export interface Command extends Omit<CommandInfo, "source"> {
 }
 
 /** Published whenever a command is registered or removed. */
-export const CommandsChanged = Event.make<{ readonly commands: readonly CommandInfo[] }>("basis/commands.changed");
+export const CommandsChanged = Event.make<{ readonly commands: readonly CommandInfo[] }>("lemma/commands.changed");
 
-export class Commands extends Context.Tag("basis/Commands")<
+export class Commands extends Context.Tag("lemma/Commands")<
   Commands,
   {
     /**

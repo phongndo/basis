@@ -1,4 +1,4 @@
-const KEY = "basis.token";
+const KEY = "lemma.token";
 
 /**
  * The host hands the token over as `?token=` in the page URL. Keep it for this

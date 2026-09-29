@@ -7,11 +7,11 @@ import { resolvePaths, watchConfig } from "../src/index.ts";
 
 describe("watchConfig", () => {
   test("emits the changed file after a quiet period, for creation and later edits", async () => {
-    const root = await mkdtemp(join(tmpdir(), "basis-watch-"));
+    const root = await mkdtemp(join(tmpdir(), "lemma-watch-"));
     try {
-      const paths = resolvePaths({ env: { BASIS_HOME: join(root, "home") }, cwd: join(root, "project") });
+      const paths = resolvePaths({ env: { LEMMA_HOME: join(root, "home") }, cwd: join(root, "project") });
       await mkdir(paths.home, { recursive: true });
-      await mkdir(join(paths.cwd, ".basis"), { recursive: true });
+      await mkdir(join(paths.cwd, ".lemma"), { recursive: true });
       await writeFile(paths.userConfig, "{}");
       await Effect.runPromise(
         Effect.scoped(

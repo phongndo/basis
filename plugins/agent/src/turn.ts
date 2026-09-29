@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Cause, Effect, Exit, Stream } from "effect";
 import type { Context } from "effect";
-import type { Events, Hooks } from "@basis/core";
+import type { Events, Hooks } from "@lemma/core";
 import {
   addUsage,
   AgentContinueHook,
@@ -15,7 +15,7 @@ import {
   ToolInvocation,
   TurnEnded,
   TurnStarted,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import type {
   AssistantMessage,
   Contribution,
@@ -37,7 +37,7 @@ import type {
   Tools,
   ToolSpec,
   Usage,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import { baseSection, environmentSection, titleFrom } from "./prompt.ts";
 
 export interface TurnServices {
@@ -53,7 +53,7 @@ export interface TurnServices {
 
 export interface TurnSettings {
   readonly systemPrompt?: string;
-  /** Shell command for the `basis` CLI, named in the environment section. */
+  /** Shell command for the `lemma` CLI, named in the environment section. */
   readonly cli?: string;
   readonly maxSteps: number;
 }

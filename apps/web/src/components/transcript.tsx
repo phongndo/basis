@@ -1,6 +1,6 @@
 import { For, Index, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
-import type { ImageContent, TextContent } from "@basis/contracts";
+import type { ImageContent, TextContent } from "@lemma/contracts";
 import { diffStats, parseDiff, readDetails } from "../model/details.ts";
 import { formatDuration, formatTokens, summarizeToolArgs, summarizePartialArgs, summarizeUsage, truncateLines } from "../model/format.ts";
 import { parseDraftArgs } from "../model/live.ts";

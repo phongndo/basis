@@ -1,4 +1,4 @@
-# @basis/plugin-project-context
+# @lemma/plugin-project-context
 
 Adds project instructions to every model request by handling
 `AgentRequestHook`. Requires `Paths`. No config.

@@ -55,11 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      BASIS_SEQUENCE_RUNS: "1000"
-      BASIS_SEQUENCE_SEED: ${{ github.run_number }}
-      BASIS_BENCH_OUTPUT_DIR: /tmp/basis-performance
+      LEMMA_SEQUENCE_RUNS: "1000"
+      LEMMA_SEQUENCE_SEED: ${{ github.run_number }}
+      LEMMA_BENCH_OUTPUT_DIR: /tmp/lemma-performance
       # Shared runner timings are advisory; correctness/resource assertions fail.
-      BASIS_PERF_ENFORCE: "0"
+      LEMMA_PERF_ENFORCE: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -70,5 +70,5 @@ jobs:
         if: always()
         with:
           name: performance
-          path: /tmp/basis-performance
+          path: /tmp/lemma-performance
           if-no-files-found: warn

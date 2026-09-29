@@ -71,7 +71,7 @@ describe("parseQuery", () => {
   it("reads a leading prefix as a mode", () => {
     expect(parseQuery(">reload")).toEqual({ mode: "commands", text: "reload" });
     expect(parseQuery("@fix")).toEqual({ mode: "sessions", text: "fix" });
-    expect(parseQuery("#basis")).toEqual({ mode: "projects", text: "basis" });
+    expect(parseQuery("#lemma")).toEqual({ mode: "projects", text: "lemma" });
     expect(parseQuery("reload >")).toEqual({ mode: "all", text: "reload >" });
   });
 });

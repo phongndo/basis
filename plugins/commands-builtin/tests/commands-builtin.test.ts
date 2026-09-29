@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Effect } from "effect";
 import type { Context } from "effect";
-import type { Command, HostControl, Interaction, Llm, Workspace } from "@basis/contracts";
+import type { Command, HostControl, Interaction, Llm, Workspace } from "@lemma/contracts";
 import { hostCommands, llmCommands, workspaceCommands } from "../src/index.ts";
 
 type Ask = Context.Tag.Service<typeof Interaction>;

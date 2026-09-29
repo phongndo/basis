@@ -1,7 +1,7 @@
 import { Cause } from "effect";
-import { HostError } from "@basis/contracts";
-import type { PluginStatus } from "@basis/contracts";
-import type { Diagnostic, PluginSnapshot } from "@basis/core";
+import { HostError } from "@lemma/contracts";
+import type { PluginStatus } from "@lemma/contracts";
+import type { Diagnostic, PluginSnapshot } from "@lemma/core";
 
 interface Tagged {
   readonly _tag: string;

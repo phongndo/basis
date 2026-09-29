@@ -1,6 +1,6 @@
 import { render } from "solid-js/web";
-import { connect, describeError } from "@basis/client";
-import type { Host } from "@basis/client";
+import { connect, describeError } from "@lemma/client";
+import type { Host } from "@lemma/client";
 import { App } from "./app.tsx";
 import { installCodeCopy } from "./components/markdown.tsx";
 import { takeToken } from "./lib/token.ts";

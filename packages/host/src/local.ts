@@ -3,16 +3,16 @@ import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Effect } from "effect";
-import { Diagnostic } from "@basis/core";
-import type { Plugin } from "@basis/core";
+import { Diagnostic } from "@lemma/core";
+import type { Plugin } from "@lemma/core";
 
 /**
  * Local plugins are `.ts` or `.js` files in `<home>/plugins` and, for a
- * trusted project, `<cwd>/.basis/plugins`, whose default export is a plugin or
+ * trusted project, `<cwd>/.lemma/plugins`, whose default export is a plugin or
  * an array of plugins. They run with the host's permissions, like every plugin.
  *
  * Bare imports that the file's own location cannot resolve (`effect`,
- * `@basis/core`, `@basis/contracts`) fall back to the host's packages, so a
+ * `@lemma/core`, `@lemma/contracts`) fall back to the host's packages, so a
  * plugin file needs no install step and shares the host's module instances.
  */
 let hooked = false;

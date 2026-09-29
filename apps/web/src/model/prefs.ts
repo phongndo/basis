@@ -1,4 +1,4 @@
-import type { ModelInfo, ThinkingLevel } from "@basis/contracts";
+import type { ModelInfo, ThinkingLevel } from "@lemma/contracts";
 
 export interface ModelGroup {
   readonly provider: string;

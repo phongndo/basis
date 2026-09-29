@@ -1,4 +1,4 @@
-import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@basis/contracts";
+import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@lemma/contracts";
 import type {
   CommandInfo,
   DirectoryListing,
@@ -17,9 +17,9 @@ import type {
   TrajectoryTurn,
   Usage,
   WorkspaceStatus,
-} from "@basis/contracts";
+} from "@lemma/contracts";
 import type { TurnResult } from "./live.ts";
-import type { Discovery } from "@basis/plugin-transport";
+import type { Discovery } from "@lemma/plugin-transport";
 
 /** Human-readable output. `--json` bypasses all of this and prints the contract shapes. */
 
@@ -345,7 +345,7 @@ export const formatDiff = (diff: readonly SectionDiff[], first: boolean): string
 
 export const formatModels = (models: readonly ModelInfo[]): string =>
   models.length === 0
-    ? "No models. Log in to a provider (basis providers, basis login <provider>), or use --all."
+    ? "No models. Log in to a provider (lemma providers, lemma login <provider>), or use --all."
     : pad([
         ["model", "name", "context", "thinking", "input", "$/M in/out"],
         ...models.map((model) => [

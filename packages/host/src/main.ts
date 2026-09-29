@@ -2,29 +2,31 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { Cause, Deferred, Effect, Exit, Option, Stream } from "effect";
-import { HostControl } from "@basis/contracts";
-import { Diagnostic, makeLoader, ReloadError } from "@basis/core";
-import type { Loader, Plugin, PluginSource, ReloadReport } from "@basis/core";
-import { compositionInfo, hostPlugin, loadComposition, projectPluginsDir, resolvePaths, watchConfig } from "@basis/plugin-host";
-import type { HostControlService } from "@basis/plugin-host";
-import { readDiscovery } from "@basis/plugin-transport";
+import { HostControl } from "@lemma/contracts";
+import { Diagnostic, makeLoader, ReloadError } from "@lemma/core";
+import type { Loader, Plugin, PluginSource, ReloadReport } from "@lemma/core";
+import { compositionInfo, hostPlugin, loadComposition, projectPluginsDir, resolvePaths, watchConfig } from "@lemma/plugin-host";
+import type { HostControlService } from "@lemma/plugin-host";
+import { readDiscovery } from "@lemma/plugin-transport";
 import { bundled, withDefaults } from "./bundled.ts";
 import { loadLocalPlugins } from "./local.ts";
 
 const args = new Set(process.argv.slice(2));
-// `pnpm start` runs from apps/host; INIT_CWD is where the user invoked it.
+// `pnpm start` runs from packages/host; INIT_CWD is where the user invoked it.
 const paths = resolvePaths({ env: process.env, cwd: process.env.INIT_CWD ?? process.cwd() });
+// Consumed here: tools inherit this environment, and a CLI the agent runs must use its own directory, not ours.
+delete process.env.INIT_CWD;
 const userPluginsDir = join(paths.home, "plugins");
 
 const log = (message: string) =>
   Effect.sync(() => {
-    console.log(`basis: ${message}`);
+    console.log(`lemma: ${message}`);
   });
 const printDiagnostics = (diagnostics: readonly Diagnostic[]) =>
   Effect.sync(() => {
     for (const diagnostic of diagnostics) {
       const where = diagnostic.pluginId === undefined ? "" : ` [${diagnostic.pluginId}]`;
-      console.error(`basis: ${diagnostic.severity}${where}: ${diagnostic.message}${diagnostic.suggestion === undefined ? "" : `\n  ${diagnostic.suggestion}`}`);
+      console.error(`lemma: ${diagnostic.severity}${where}: ${diagnostic.message}${diagnostic.suggestion === undefined ? "" : `\n  ${diagnostic.suggestion}`}`);
     }
   });
 
@@ -123,7 +125,7 @@ const program = Effect.gen(function* () {
   yield* Effect.forkScoped(
     Stream.runForEach(loader.core.faults, (fault) =>
       Effect.sync(() => {
-        console.error(`basis: ${fault.message}\n${Cause.pretty(fault.cause)}`);
+        console.error(`lemma: ${fault.message}\n${Cause.pretty(fault.cause)}`);
       }),
     ),
   );
@@ -155,7 +157,7 @@ if (Exit.isFailure(exit)) {
   const failure = Cause.failureOption(exit.cause);
   if (Option.isSome(failure) && failure.value instanceof ReloadError) {
     await Effect.runPromise(printDiagnostics(failure.value.diagnostics));
-    console.error("basis: cannot start with this composition");
+    console.error("lemma: cannot start with this composition");
   } else if (!Cause.isInterruptedOnly(exit.cause)) {
     console.error(Cause.pretty(exit.cause));
   }

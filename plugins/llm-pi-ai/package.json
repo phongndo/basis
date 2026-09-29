@@ -1,5 +1,5 @@
 {
-  "name": "@basis/plugin-llm-pi-ai",
+  "name": "@lemma/plugin-llm-pi-ai",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@basis/contracts": "workspace:*",
-    "@basis/core": "workspace:*",
     "@earendil-works/pi-ai": "0.87.1",
+    "@lemma/contracts": "workspace:*",
+    "@lemma/core": "workspace:*",
     "effect": "3.22.2"
   },
   "devDependencies": {

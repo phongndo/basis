@@ -1,4 +1,4 @@
-import type { PromptContent, TurnOptions } from "@basis/contracts";
+import type { PromptContent, TurnOptions } from "@lemma/contracts";
 import type { Host } from "./host.ts";
 
 export interface StartedPrompt {

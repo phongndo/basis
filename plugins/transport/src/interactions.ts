@@ -1,7 +1,7 @@
 import { Deferred, Duration, Effect } from "effect";
-import { HostError, InteractionError } from "@basis/contracts";
-import type { InteractionAnswer, InteractionRequest } from "@basis/contracts";
-import type { Handler } from "@basis/core";
+import { HostError, InteractionError } from "@lemma/contracts";
+import type { InteractionAnswer, InteractionRequest } from "@lemma/contracts";
+import type { Handler } from "@lemma/core";
 import type { Hub } from "./hub.ts";
 
 interface Pending {

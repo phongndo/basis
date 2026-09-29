@@ -1,5 +1,5 @@
 {
-  "name": "@basis/plugin-transport",
+  "name": "@lemma/plugin-transport",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,15 +11,15 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@basis/contracts": "workspace:*",
-    "@basis/core": "workspace:*",
     "@effect/platform": "0.97.2",
     "@effect/platform-node": "0.108.2",
     "@effect/rpc": "0.76.2",
+    "@lemma/contracts": "workspace:*",
+    "@lemma/core": "workspace:*",
     "effect": "3.22.2"
   },
   "devDependencies": {
-    "@basis/plugin-commands": "workspace:*",
+    "@lemma/plugin-commands": "workspace:*",
     "@types/node": "24.19.0",
     "typescript": "7.0.2",
     "vitest": "5.0.2"

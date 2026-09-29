@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SessionEvent } from "@basis/contracts";
+import type { SessionEvent } from "@lemma/contracts";
 import { SessionLog, mergeEvents, rpcUrl, splitContiguous } from "../src/index.ts";
 
 const ev = (seq: number): SessionEvent => ({

@@ -1,4 +1,4 @@
-import { ToolResult } from "@basis/contracts";
+import { ToolResult } from "@lemma/contracts";
 
 /**
  * Bounds the text a result carries into the context window. Text parts are

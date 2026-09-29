@@ -1,6 +1,6 @@
 # Kernel design
 
-Basis (`packages/core`) is a domain-neutral TypeScript library for composing plugins.
+The core (`packages/core`) is a domain-neutral TypeScript library for composing plugins.
 It supplies capabilities, hooks, events, lifetimes, and configuration. The embedding
 application chooses its domain contracts, plugin sources, and composition.
 
@@ -99,7 +99,7 @@ configuration-file formats, and process bootstrap belong to consumers or their
 plugins. An agent harness may supply agents, models, tools, and MCP; another
 application may supply an entirely different domain. Neither defines the framework.
 
-Basis does not require a daemon, a filesystem layout, a central contract catalog,
+The core does not require a daemon, a filesystem layout, a central contract catalog,
 or an application registry. A `PluginSource` maps identifiers to definitions using
 the embedding application's choices. Remote proxies and untrusted-code isolation
 would need explicit designs and are outside the current library's guarantees.

@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
-import { definePlugin, Hook, Hooks, makeCore, PluginContext } from "@basis/core";
-import type { CoreClosed, HookError } from "@basis/core";
+import { definePlugin, Hook, Hooks, makeCore, PluginContext } from "@lemma/core";
+import type { CoreClosed, HookError } from "@lemma/core";
 
 // These contracts belong to plugins, not to the core.
 const Greeting = Hook.make<string, string>("example/greeting");
