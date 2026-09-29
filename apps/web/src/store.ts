@@ -1,6 +1,6 @@
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { SessionLog, describeError } from "@basis/client";
+import { SessionLog, describeError, startPrompt } from "@basis/client";
 import type { ConnectionStatus, Host } from "@basis/client";
 import { branchOf } from "@basis/contracts";
 import type {
@@ -396,15 +396,19 @@ export const send = async (content: PromptContent): Promise<boolean> => {
   }
   const id = sessionId;
   if (!state.running.includes(id)) setState("running", (running) => [...running, id]);
-  const options = turnOptions();
-  h.agent.prompt(id, content, options)
-    .catch((error) => reportError(error))
-    .finally(() => {
-      // turn-ended normally clears this; the prompt settling is the fallback when the event was lost.
-      setState("running", (running) => running.filter((running) => running !== id));
-      void log?.sync().catch(() => {});
-    });
-  return true;
+  const prompt = startPrompt(h, id, content, turnOptions());
+  void prompt.done.catch(() => {}).finally(() => {
+    // turn-ended normally clears this; the prompt settling is the fallback when the event was lost.
+    setState("running", (running) => running.filter((running) => running !== id));
+    void log?.sync().catch(() => {});
+  });
+  // A refused prompt returns false so the composer keeps the text; failures after that are only reported.
+  const accepted = await prompt.accepted.then(() => true, (error: unknown) => {
+    reportError(error, "Prompt was not sent");
+    return false;
+  });
+  if (accepted) void prompt.done.catch((error) => reportError(error));
+  return accepted;
 };
 
 export const cancel = (): void => {

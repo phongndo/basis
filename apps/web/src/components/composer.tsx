@@ -71,15 +71,21 @@ export function Composer() {
     ];
     // Sending a new chat creates a session and switches to it, so remember which draft this was.
     const key = draftKey();
+    const sent = { text: text(), images: images() };
     setSending(true);
     const ok = await send(content);
     setSending(false);
+    drafts.delete(key);
     if (ok) {
-      drafts.delete(key);
       setText("");
       setImages([]);
-      queueMicrotask(resize);
+    } else {
+      // Refused: the prompt returns to the composer, which may now show the session `send` created.
+      drafts.set(draftKey(), sent.text);
+      setText(sent.text);
+      setImages(sent.images);
     }
+    queueMicrotask(resize);
   };
 
   const addFiles = async (files: Iterable<File>) => {
