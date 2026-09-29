@@ -916,26 +916,35 @@ textarea:focus-visible {
   overflow-y: auto;
 }
 
+/* A tool call is one quiet line, like a thought; opening it shows the call's output indented under a rule. */
 .tool {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  overflow: hidden;
+  font-size: 13px;
 }
 .tool-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  min-height: 32px;
-  padding: 5px 10px;
+  min-height: 26px;
+  padding: 2px 6px;
+  margin-left: -6px;
   border: 0;
+  border-radius: var(--radius-sm);
   background: none;
   text-align: left;
-  font-size: 12.5px;
+  color: var(--text-3);
+  font-size: 13px;
 }
 .tool-head:hover {
   background: var(--bg-hover);
+  color: var(--text-2);
+}
+.tool-head .chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--text-3);
+  opacity: 0.7;
 }
 .tool-status {
   display: grid;
@@ -944,10 +953,15 @@ textarea:focus-visible {
   color: var(--text-3);
   flex: none;
 }
+.tool-status .icon {
+  width: 13px;
+  height: 13px;
+}
 .tool-ok .tool-status {
   color: var(--ok);
 }
-.tool-error .tool-status {
+.tool-error .tool-status,
+.tool-error .tool-name {
   color: var(--err);
 }
 .tool-running .tool-status {
@@ -955,21 +969,31 @@ textarea:focus-visible {
 }
 .tool-name {
   font-family: var(--font-mono);
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--text-2);
   flex: none;
 }
 .tool-primary {
   font-family: var(--font-mono);
-  color: var(--text-2);
+  font-size: 12.5px;
+  color: var(--text-3);
   min-width: 0;
   flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Consecutive calls read as one list rather than separate blocks. */
+.tool + .tool {
+  margin-top: -6px;
+}
+.tool-head:hover .tool-primary {
+  color: var(--text-2);
+}
 .tool-primary.shell::before {
   content: "$ ";
-  color: var(--text-3);
+  opacity: 0.7;
 }
 .tool-secondary {
   color: var(--text-3);
@@ -984,6 +1008,7 @@ textarea:focus-visible {
   gap: 8px;
   flex: none;
   font-size: 11.5px;
+  color: var(--text-3);
 }
 .diffstat {
   font-family: var(--font-mono);
@@ -1002,34 +1027,35 @@ textarea:focus-visible {
   opacity: 0.6;
 }
 .tool-body {
-  border-top: 1px solid var(--border);
-  background: var(--bg-sunk);
+  margin: 2px 0 6px 12px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-strong);
 }
 .tool-body > p {
   margin: 0;
-  padding: 6px 12px;
+  padding: 4px 0;
 }
 .tool-args,
 .output pre,
 .diff {
   margin: 0;
-  padding: 8px 12px;
+  padding: 4px 0;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 480px;
+  max-height: 420px;
   overflow-y: auto;
+  color: var(--text-2);
 }
 .tool-args {
-  color: var(--text-2);
-  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
 }
 .output.error pre {
   color: var(--err);
 }
 .output .link-button {
-  margin: 0 12px 8px;
+  margin: 2px 0 4px;
 }
 .diff {
   white-space: pre;
@@ -1038,8 +1064,8 @@ textarea:focus-visible {
 }
 .diff span {
   display: block;
-  padding: 0 12px;
-  margin: 0 -12px;
+  padding: 0 8px;
+  margin: 0 -8px;
   min-height: 1.5em;
 }
 .diff-add {
@@ -1058,7 +1084,7 @@ textarea:focus-visible {
   color: var(--text-3);
 }
 .tool-body .images {
-  padding: 0 12px 8px;
+  padding: 4px 0;
 }
 
 .attempt {

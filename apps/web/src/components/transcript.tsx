@@ -130,8 +130,8 @@ function ToolCard(props: {
     const d = diff();
     return d === undefined ? undefined : diffStats(parseDiff(d));
   });
-  // Show what matters by default: edits, commands, and failures. Reads and searches stay folded.
-  const defaultOpen = () => props.state === "error" || diff() !== undefined || props.name === "bash";
+  // Every call starts as one quiet line; its status, diffstat, and timing say enough until it is opened.
+  const defaultOpen = () => false;
   const open = () => isOpen(props.id, defaultOpen());
   const argsShown = () => summary().primary === undefined && props.args !== undefined && Object.keys(props.args).length > 0;
   const duration = () => {
@@ -141,6 +141,7 @@ function ToolCard(props: {
   return (
     <div class={`tool tool-${props.state}`} classList={{ open: open() }}>
       <button class="tool-head" aria-expanded={open()} onClick={() => toggle(props.id, defaultOpen())}>
+        <ChevronIcon class="chevron" />
         <span class="tool-status">
           <Switch>
             <Match when={props.state === "running"}>
