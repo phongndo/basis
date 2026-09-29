@@ -76,6 +76,7 @@ const openBrowser = (url: string) => Effect.sync(() => {
 const program = Effect.gen(function* () {
   // The host plugin activates inside makeLoader, so its handle binds to the loader once it exists.
   const ready = yield* Deferred.make<Loader>();
+  const reloading = yield* Effect.makeSemaphore(1);
   const withLoader = <A, E>(f: (loader: Loader) => Effect.Effect<A, E>) => Effect.flatMap(Deferred.await(ready), f);
   let host: Plugin;
   const handle: HostControlService = {
@@ -86,7 +87,9 @@ const program = Effect.gen(function* () {
       return compositionInfo(composition, plugins);
     })),
     restart: (pluginId) => withLoader((loader) => loader.core.restart(pluginId)),
-    reload: withLoader((loader) => Effect.flatMap(load(host), (next) => loader.apply(next))),
+    // One reload at a time, reading and applying together: the watcher and `Host.Reload` can race, and a
+    // reload that read the files earlier must not apply after one that read them later.
+    reload: withLoader((loader) => reloading.withPermits(1)(Effect.flatMap(load(host), (next) => loader.apply(next)))),
   };
   host = hostPlugin({ control: handle, faults: Stream.unwrap(withLoader((loader) => Effect.succeed(loader.core.faults))) });
 
