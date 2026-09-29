@@ -1,0 +1,2 @@
+# Checkouts use LF everywhere, including Windows CI, so formatting checks agree across platforms.
+* text=auto eol=lf
