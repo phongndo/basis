@@ -18,7 +18,17 @@ import type { UiPlan } from "./plan.ts";
 import type { SlotsService } from "./slots.ts";
 
 const APP_ID = "app";
-const PINNED: Readonly<Record<string, string>> = { [APP_ID]: "Runs the web app's plugins; with it off, nothing could turn them back on" };
+/**
+ * Always on, with everything they need ("Needed by …"): the switches that turn
+ * plugins back on, and the frame they are shown in. Without these a switch on
+ * the Plugins page could take the page itself away; `?safe` is the way back
+ * from a UI file that breaks them.
+ */
+const PINNED: Readonly<Record<string, string>> = {
+  [APP_ID]: "Runs the web app's plugins; with it off, nothing could turn them back on",
+  "plugins-page": "Where plugins are turned back on; replace it with a UI file instead of turning it off",
+  shell: "Draws the frame every other view shows in, settings included; replace it with a UI file instead of turning it off",
+};
 const EMPTY: UiComposition = { plugins: {}, enabledIn: {}, configIn: {}, files: [] };
 /** How long the first paint waits for the host's `ui` rows before starting with the defaults. */
 const FIRST_ROWS_MS = 3_000;
