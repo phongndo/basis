@@ -18,11 +18,12 @@ const WIDTH_KEY = "lemma.sidebar.width";
 const COLLAPSED_KEY = "lemma.sidebar.collapsed";
 const DEFAULT_WIDTH = 264;
 const MIN_WIDTH = 208;
+const MAX_WIDTH = 400;
 /** The conversation keeps at least this much room. */
 const MIN_MAIN = 560;
 const NARROW = "(max-width: 820px)";
 
-const clampWidth = (width: number) => Math.round(Math.max(MIN_WIDTH, Math.min(width, Math.max(MIN_WIDTH, window.innerWidth - MIN_MAIN))));
+const clampWidth = (width: number) => Math.round(Math.max(MIN_WIDTH, Math.min(width, MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - MIN_MAIN))));
 
 const typing = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
