@@ -234,6 +234,34 @@ describe("patchConfig", () => {
     expect(patchConfig(start, { tools: { values: { maxResultChars: null } } })).toBe(start);
   });
 
+  test("add and remove edit a list by its items' ids, leaving the rest as written", () => {
+    const start = `{
+  "plugins": {
+    "llm": {
+      "config": {
+        "providers": [
+          // the office proxy
+          { "id": "gateway", "api": "openai-responses", "apiKey": { "value": "secret" } },
+        ],
+      },
+    },
+  },
+}`;
+    const added = patchConfig(start, { llm: { add: { providers: [{ id: "ollama", api: "openai-completions" }] } } });
+    expect(added).toContain("// the office proxy");
+    expect(parseJsonc(added, [], { allowTrailingComma: true }).plugins.llm.config.providers.map((p: { id: string }) => p.id)).toEqual(["gateway", "ollama"]);
+    // An item with an id already there replaces it in place.
+    const replaced = patchConfig(added, { llm: { add: { providers: [{ id: "gateway", api: "openai-completions" }] } } });
+    expect(parseJsonc(replaced, [], { allowTrailingComma: true }).plugins.llm.config.providers).toEqual([
+      { id: "gateway", api: "openai-completions" },
+      { id: "ollama", api: "openai-completions" },
+    ]);
+    const removed = patchConfig(added, { llm: { remove: { providers: ["gateway", "missing"] } } });
+    expect(parseJsonc(removed, [], { allowTrailingComma: true }).plugins.llm.config.providers).toEqual([{ id: "ollama", api: "openai-completions" }]);
+    // A list that does not exist yet is created.
+    expect(parseJsonc(patchConfig("", { llm: { add: { providers: [{ id: "a" }] } } }))).toEqual({ plugins: { llm: { config: { providers: [{ id: "a" }] } } } });
+  });
+
   test("the ui section takes the same rows, apart from the host's", () => {
     const patched = patchConfig(
       `{ "plugins": { "bash": { "enabled": false } } }`,

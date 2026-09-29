@@ -34,11 +34,17 @@ export type PluginRow = typeof PluginRow.Type;
  * A change to one plugin's row. `config` replaces the row's whole config;
  * `values` sets single config keys and keeps the others (`null` removes a key),
  * which is how a settings form edits one field without restating the rest.
+ * `add` and `remove` edit list keys whose items have an `id` (the llm plugin's
+ * `providers`) without reading the list, which may hold secrets: `add` puts
+ * each item at the end, or in place of the item with its id; `remove` drops
+ * the items with those ids.
  */
 export const PluginChange = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
   config: Schema.optional(Schema.Unknown),
   values: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  add: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })) })),
+  remove: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Array(Schema.String) })),
 });
 export type PluginChange = typeof PluginChange.Type;
 

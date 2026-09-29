@@ -147,8 +147,9 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
  * removed. In the user file `enabled: true` is the default, so it removes the
  * key; in the project file it is written out, because only an explicit `true`
  * overrides a user row that says `false`. `values` edits single keys of the
- * row's `config` (null removes one), dropping a `config` left empty. The text
- * must be valid JSONC (or empty); check with `parseConfig` first.
+ * row's `config` (null removes one), dropping a `config` left empty. `add`
+ * and `remove` edit list keys by their items' `id`. The text must be valid
+ * JSONC (or empty); check with `parseConfig` first.
  */
 export function patchConfig(
   text: string,
@@ -179,6 +180,29 @@ export function patchConfig(
       }
       const config = rowOf(id).config;
       if (isObject(config) && Object.keys(config).length === 0) next = applyEdits(next, modify(next, [section, id, "config"], undefined, FORMAT));
+    }
+    const list = (key: string): unknown[] => {
+      const config = rowOf(id).config;
+      const value = isObject(config) ? config[key] : undefined;
+      return Array.isArray(value) ? value : [];
+    };
+    const indexOf = (key: string, itemId: unknown) => list(key).findIndex((item) => isObject(item) && item.id === itemId);
+    for (const [key, items] of Object.entries(row.add ?? {})) {
+      if (!isObject(rowOf(id).config)) next = applyEdits(next, modify(next, [section, id, "config"], {}, FORMAT));
+      if (!Array.isArray((rowOf(id).config as Record<string, unknown>)[key])) next = applyEdits(next, modify(next, [section, id, "config", key], [], FORMAT));
+      for (const item of items) {
+        const at = indexOf(key, item.id);
+        next =
+          at === -1
+            ? applyEdits(next, modify(next, [section, id, "config", key, list(key).length], item, { ...FORMAT, isArrayInsertion: true }))
+            : applyEdits(next, modify(next, [section, id, "config", key, at], item, FORMAT));
+      }
+    }
+    for (const [key, ids] of Object.entries(row.remove ?? {})) {
+      for (const itemId of ids) {
+        const at = indexOf(key, itemId);
+        if (at !== -1) next = applyEdits(next, modify(next, [section, id, "config", key, at], undefined, FORMAT));
+      }
     }
     const rows: unknown = parseJsonc(next, [], { allowTrailingComma: true })?.[section];
     if (isObject(rows) && isObject(rows[id]) && Object.keys(rows[id]).length === 0) next = applyEdits(next, modify(next, [section, id], undefined, FORMAT));
