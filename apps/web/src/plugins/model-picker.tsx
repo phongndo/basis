@@ -3,6 +3,7 @@ import type { ModelInfo, ThinkingLevel } from "@lemma/contracts";
 import { contextSize } from "../model/format.ts";
 import { DEFAULT_THINKING, filterModels, thinkingLevels } from "../model/prefs.ts";
 import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, SearchIcon, StarIcon } from "../components/icons.tsx";
+import { ProviderLogo } from "../components/provider-logo.tsx";
 import { Popover } from "../components/popover.tsx";
 import type { Placement } from "../components/popover.tsx";
 import { SettingRow } from "../components/setting-row.tsx";
@@ -150,12 +151,14 @@ function ModelPicker(props: {
                   class="rail-item"
                   classList={{ active: query() === "" && rail() === "favorites" }}
                   tabindex="-1"
+                  aria-label="Favorites"
+                  data-tip="Favorites"
                   onClick={() => {
                     setQuery("");
                     setRail("favorites");
                   }}
                 >
-                  <StarIcon filled /> Favorites
+                  <StarIcon filled />
                 </button>
               </Show>
               <button
@@ -163,12 +166,14 @@ function ModelPicker(props: {
                 class="rail-item"
                 classList={{ active: query() !== "" || rail() === "all" }}
                 tabindex="-1"
+                aria-label="All models"
+                data-tip="All models"
                 onClick={() => {
                   setQuery("");
                   setRail("all");
                 }}
               >
-                All models
+                <span class="rail-all">All</span>
               </button>
               <div class="rail-sep" />
               <For each={providers()}>
@@ -178,12 +183,14 @@ function ModelPicker(props: {
                     class="rail-item"
                     classList={{ active: query() === "" && rail() === provider }}
                     tabindex="-1"
+                    aria-label={providerName(provider)}
+                    data-tip={providerName(provider)}
                     onClick={() => {
                       setQuery("");
                       setRail(provider);
                     }}
                   >
-                    <span class="rail-name">{providerName(provider)}</span>
+                    <ProviderLogo id={provider} name={providerName(provider)} />
                   </button>
                 )}
               </For>
