@@ -359,3 +359,40 @@ export const pendingToolCalls = (transcript: Transcript): Set<string> => {
   }
   return pending;
 };
+
+export interface PromptMark {
+  /** The turn's key. */
+  readonly key: string;
+  /** The prompt's text, whitespace collapsed; a stand-in when it is only images. */
+  readonly prompt: string;
+  /** The start of the reply's first text, whitespace collapsed; empty until there is one. */
+  readonly reply: string;
+}
+
+const flatten = (text: string, max: number) => {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+};
+
+/** One mark per turn that starts with a prompt: what the chat's prompt rail shows and jumps to. */
+export const promptMarks = (turns: readonly TurnView[]): PromptMark[] =>
+  turns.flatMap((turn) => {
+    const user = turn.items.find((item): item is UserItem => item.kind === "user");
+    if (user === undefined) return [];
+    const text = user.content
+      .filter((part): part is TextContent => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
+    const images = user.content.filter((part) => part.type === "image").length;
+    const prompt = flatten(text, 200) || (images === 1 ? "Image" : `${images} images`);
+    let reply = "";
+    for (const item of turn.items) {
+      if (item.kind !== "assistant") continue;
+      const block = item.blocks.find((candidate) => candidate.kind === "text" && candidate.text.trim() !== "");
+      if (block?.kind === "text") {
+        reply = flatten(block.text, 300);
+        break;
+      }
+    }
+    return [{ key: turn.key, prompt, reply }];
+  });

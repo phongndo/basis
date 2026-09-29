@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProjector, pendingToolCalls, projectTranscript } from "../src/model/transcript.ts";
+import { createProjector, pendingToolCalls, projectTranscript, promptMarks } from "../src/model/transcript.ts";
 import type { AssistantItem } from "../src/model/transcript.ts";
 import { assistant, branch, toolResult, usage, user } from "./fixtures.ts";
 
@@ -117,5 +117,26 @@ describe("createProjector", () => {
     // Stable again once nothing changes.
     const again = project([...events, { seq: 8, id: "e8", parent: "e7", at: 9000, data: toolResult("c2", "out") }]);
     expect(again.turns[1]).toBe(b);
+  });
+});
+
+describe("promptMarks", () => {
+  it("marks each turn that starts with a prompt, with the start of its reply", () => {
+    const t = projectTranscript(
+      branch(
+        { type: "turn-start", turnId: "t1" },
+        user("fix   the\nbuild", "t1"),
+        { type: "message", turnId: "t1", stepId: "s1", message: assistant([{ type: "thinking", thinking: "hmm" }, { type: "text", text: " " }, call("c1")]) },
+        toolResult("c1", "ok"),
+        { type: "message", turnId: "t1", stepId: "s2", message: assistant([{ type: "text", text: "Fixed it.\n\nThe cause was…" }]) },
+        { type: "turn-end", turnId: "t1", reason: "done" },
+        { type: "turn-start", turnId: "t2" },
+        { type: "message", turnId: "t2", message: { role: "user", content: [{ type: "image", data: "", mimeType: "image/png" }], timestamp: 0 } },
+      ),
+    );
+    expect(promptMarks(t.turns)).toEqual([
+      { key: "t1", prompt: "fix the build", reply: "Fixed it. The cause was…" },
+      { key: "t2", prompt: "Image", reply: "" },
+    ]);
   });
 });

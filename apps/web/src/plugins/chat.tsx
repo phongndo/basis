@@ -7,8 +7,8 @@ import { diffStats, parseDiff, readDetails } from "../model/details.ts";
 import { formatDuration, formatTokens, summarizeToolArgs, summarizePartialArgs, summarizeUsage, truncateLines } from "../model/format.ts";
 import { parseDraftArgs } from "../model/live.ts";
 import type { DraftBlock, StepDraft } from "../model/live.ts";
-import { createProjector, pendingToolCalls } from "../model/transcript.ts";
-import type { AssistantItem, AttemptItem, Block, Item, ToolResultView, TurnView } from "../model/transcript.ts";
+import { createProjector, pendingToolCalls, promptMarks } from "../model/transcript.ts";
+import type { AssistantItem, AttemptItem, Block, Item, PromptMark, ToolResultView, TurnView } from "../model/transcript.ts";
 import { AlertIcon, ChatIcon, CheckIcon, ChevronDownIcon, ChevronIcon, Spinner, XIcon } from "../components/icons.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { Client, Sessions, Slots, ToolViews, Views } from "../ui/contracts.ts";
@@ -20,6 +20,10 @@ export const ChatConfig = Schema.Struct({
   expandTools: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     title: "Open tool calls",
     description: "Show every tool call's arguments and output instead of one quiet line.",
+  }),
+  promptRail: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
+    title: "Prompt rail",
+    description: "Mark each of your prompts along the chat's edge: hover one to preview it, click to go to it.",
   }),
 });
 
@@ -414,7 +418,7 @@ function TurnFooter(props: { turn: TurnView }) {
 function Turn(props: { chat: Chat; turn: TurnView }) {
   const ended = () => props.turn.end !== undefined;
   return (
-    <section class="turn">
+    <section class="turn" data-turn={props.turn.key}>
       <For each={props.turn.items}>{(item) => <ItemView chat={props.chat} item={item} turnEnded={ended()} />}</For>
       <Show when={props.turn.end?.reason === "error" && props.turn.end.error}>
         <div class="callout callout-error">
@@ -487,21 +491,122 @@ function Transcript(props: { chat: Chat; turns: readonly TurnView[] }) {
   );
 }
 
+/** A tick per prompt along the chat's left edge; hovering one previews it and its reply, clicking goes to it. */
+function PromptRail(props: { marks: readonly PromptMark[]; current: string | undefined; onJump: (key: string) => void }) {
+  let rail!: HTMLElement;
+  const [hovered, setHovered] = createSignal<{ index: number; top: number }>();
+  const mark = () => {
+    const h = hovered();
+    return h === undefined ? undefined : props.marks[h.index];
+  };
+  /** How close a tick is to the hovered one, 0–1: neighbours grow a little, like a magnifier. */
+  const near = (index: number) => {
+    const h = hovered();
+    return h === undefined ? 0 : Math.max(0, 1 - Math.abs(h.index - index) / 4);
+  };
+  const show = (index: number, tick: HTMLElement) => {
+    const frame = rail.parentElement!.getBoundingClientRect();
+    const box = tick.getBoundingClientRect();
+    // The card starts level with the tick, kept inside the view.
+    setHovered({ index, top: Math.max(8, Math.min(box.top - frame.top - 14, frame.height - 150)) });
+  };
+  // Keep the current prompt's tick in sight when the ticks outgrow the rail.
+  createEffect(
+    on(
+      () => props.current,
+      (key) => {
+        const index = props.marks.findIndex((candidate) => candidate.key === key);
+        (rail.children[index] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
+      },
+    ),
+  );
+  return (
+    <>
+      <nav class="prompt-rail" aria-label="Prompts" ref={rail} onMouseLeave={() => setHovered(undefined)} onScroll={() => setHovered(undefined)}>
+        <Index each={props.marks}>
+          {(item, index) => (
+            <button
+              class="prompt-tick"
+              classList={{ current: item().key === props.current, hovered: hovered()?.index === index }}
+              style={{ "--near": near(index) }}
+              aria-label={`Prompt ${index + 1}: ${item().prompt}`}
+              aria-current={item().key === props.current ? "location" : undefined}
+              onMouseEnter={(event) => show(index, event.currentTarget)}
+              onFocus={(event) => show(index, event.currentTarget)}
+              onBlur={() => setHovered(undefined)}
+              onClick={() => props.onJump(item().key)}
+            >
+              <span />
+            </button>
+          )}
+        </Index>
+      </nav>
+      <Show when={mark()}>
+        {(m) => (
+          <div class="prompt-card" style={{ top: `${hovered()!.top}px` }} aria-hidden="true">
+            <div class="prompt-card-prompt">{m().prompt}</div>
+            <Show when={m().reply}>
+              <div class="prompt-card-reply">{m().reply}</div>
+            </Show>
+          </div>
+        )}
+      </Show>
+    </>
+  );
+}
+
 function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
   const sessions = props.chat.sessions;
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   const [stuck, setStuck] = createSignal(true);
+  const marks = createMemo(() => promptMarks(props.turns()));
+  const [current, setCurrent] = createSignal<string>();
+  const turnElement = (key: string) => content.querySelector<HTMLElement>(`[data-turn="${CSS.escape(key)}"]`);
+  /** The prompt being read: the last whose turn starts above the top third of the view, or the last one at the bottom. */
+  const locate = () => {
+    // At the bottom the last prompt is the one being read, however short its turn.
+    if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 2) return setCurrent(marks().at(-1)?.key);
+    const line = scroller.scrollTop + scroller.clientHeight / 3;
+    let found = marks()[0]?.key;
+    for (const mark of marks()) {
+      const element = turnElement(mark.key);
+      if (element === null || element.offsetTop > line) break;
+      found = mark.key;
+    }
+    setCurrent(found);
+  };
+  let locating = 0;
+  const locateSoon = () => {
+    cancelAnimationFrame(locating);
+    locating = requestAnimationFrame(locate);
+  };
+  const jump = (key: string) => {
+    const element = turnElement(key);
+    if (element !== null) scroller.scrollTo({ top: element.offsetTop - 8, behavior: "smooth" });
+  };
   const toBottom = (smooth = false) => scroller.scrollTo({ top: scroller.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-  const onScroll = () => setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80);
+  let lastTop = 0;
+  const onScroll = () => {
+    // Stop following only when the reader scrolls up: output that grows faster than it is followed moves the bottom away too.
+    const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+    if (nearBottom) setStuck(true);
+    else if (scroller.scrollTop < lastTop) setStuck(false);
+    lastTop = scroller.scrollTop;
+    locateSoon();
+  };
 
   onMount(() => {
     // Follow new output while the reader is at the bottom; leave them alone once they scroll up.
     const observer = new ResizeObserver(() => {
       if (stuck()) toBottom();
+      locateSoon();
     });
     observer.observe(content);
-    onCleanup(() => observer.disconnect());
+    onCleanup(() => {
+      observer.disconnect();
+      cancelAnimationFrame(locating);
+    });
   });
   createEffect(
     on(sessions.activeId, () => {
@@ -512,37 +617,42 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
 
   const empty = () => props.turns().length === 0;
   return (
-    <div class="scroller" ref={scroller} onScroll={onScroll}>
-      <div class="content" ref={content}>
-        <Switch>
-          <Match when={sessions.activeId() !== undefined && !sessions.log().loaded}>
-            <div class="loading">
-              <Spinner /> Loading session…
-            </div>
-          </Match>
-          <Match when={empty() && !sessions.busy()}>
-            <div class="empty-state">
-              <h2>{sessions.activeId() === undefined ? "What are we working on?" : "This session is empty"}</h2>
-              <p class="muted">The agent can read, edit, and run commands in the project below.</p>
-            </div>
-          </Match>
-        </Switch>
-        <Transcript chat={props.chat} turns={props.turns()} />
-        <Show when={sessions.log().error}>
-          <div class="callout callout-error">Could not load the full session: {sessions.log().error}</div>
+    <div class="chat-view">
+      <div class="scroller" ref={scroller} onScroll={onScroll}>
+        <div class="content" ref={content}>
+          <Switch>
+            <Match when={sessions.activeId() !== undefined && !sessions.log().loaded}>
+              <div class="loading">
+                <Spinner /> Loading session…
+              </div>
+            </Match>
+            <Match when={empty() && !sessions.busy()}>
+              <div class="empty-state">
+                <h2>{sessions.activeId() === undefined ? "What are we working on?" : "This session is empty"}</h2>
+                <p class="muted">The agent can read, edit, and run commands in the project below.</p>
+              </div>
+            </Match>
+          </Switch>
+          <Transcript chat={props.chat} turns={props.turns()} />
+          <Show when={sessions.log().error}>
+            <div class="callout callout-error">Could not load the full session: {sessions.log().error}</div>
+          </Show>
+        </div>
+        <Show when={!stuck()}>
+          <button
+            class="jump"
+            aria-label="Jump to latest"
+            onClick={() => {
+              setStuck(true);
+              toBottom(true);
+            }}
+          >
+            <ChevronDownIcon />
+          </button>
         </Show>
       </div>
-      <Show when={!stuck()}>
-        <button
-          class="jump"
-          aria-label="Jump to latest"
-          onClick={() => {
-            setStuck(true);
-            toBottom(true);
-          }}
-        >
-          <ChevronDownIcon />
-        </button>
+      <Show when={props.chat.config.promptRail && marks().length > 1}>
+        <PromptRail marks={marks()} current={current()} onJump={jump} />
       </Show>
     </div>
   );

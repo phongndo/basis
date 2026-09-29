@@ -708,6 +708,84 @@ textarea:focus-visible {
   box-shadow: var(--shadow);
 }
 
+.chat-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.prompt-rail {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+.prompt-tick {
+  flex: none;
+  display: flex;
+  align-items: center;
+  width: 34px;
+  height: 12px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+}
+.prompt-tick span {
+  width: calc(12px + var(--near, 0) * 8px);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-3);
+  opacity: calc(0.6 + var(--near, 0) * 0.4);
+  transition:
+    width 0.12s ease-out,
+    opacity 0.12s ease-out;
+}
+.prompt-tick.current span {
+  width: max(20px, calc(12px + var(--near, 0) * 8px));
+  opacity: 1;
+  background: var(--text);
+}
+.prompt-tick.hovered span,
+.prompt-tick:focus-visible span {
+  width: 24px;
+  opacity: 1;
+  background: var(--text);
+}
+.prompt-card {
+  position: absolute;
+  left: 44px;
+  z-index: 5;
+  width: min(340px, calc(100% - 56px));
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.prompt-card-prompt {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prompt-card-reply {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ---------------------------------------------------------------- transcript */
 .transcript {
   display: flex;
@@ -3160,6 +3238,12 @@ button.strip-chip:hover:not(:disabled),
   }
   .content {
     padding: 16px 14px 24px;
+  }
+  .prompt-rail {
+    left: 0;
+  }
+  .prompt-tick {
+    width: 20px;
   }
   .composer-wrap {
     padding: 0 10px 10px;
