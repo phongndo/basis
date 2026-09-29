@@ -54,8 +54,7 @@ function diffLines(a: readonly string[], b: readonly string[]): Op[] {
   return ops;
 }
 
-const render = (prefix: string, line: string) =>
-  line.endsWith("\n") ? `${prefix}${line}` : `${prefix}${line}\n\\ No newline at end of file\n`;
+const render = (prefix: string, line: string) => (line.endsWith("\n") ? `${prefix}${line}` : `${prefix}${line}\n\\ No newline at end of file\n`);
 
 export interface Patch {
   /** Standard unified diff (`---`/`+++` headers, `@@` hunks). Empty when nothing changed. */

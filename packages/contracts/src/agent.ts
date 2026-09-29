@@ -79,15 +79,18 @@ export const AssistantDelta = Event.make<{
   readonly event: StreamEvent;
 }>("basis/agent.delta");
 
-export class Agent extends Context.Tag("basis/Agent")<Agent, {
-  /**
-   * Appends the user message and runs steps (model, then tools) until the model
-   * stops. One turn per session at a time; another prompt fails with `Busy`.
-   * Resolves when the turn has ended; progress arrives through events and the log.
-   */
-  readonly prompt: (sessionId: string, content: PromptContent, options?: TurnOptions) => Effect.Effect<void, AgentError>;
-  readonly cancel: (sessionId: string) => Effect.Effect<void>;
-  readonly busy: (sessionId: string) => Effect.Effect<boolean>;
-  /** Sessions with a running turn. */
-  readonly running: Effect.Effect<readonly string[]>;
-}>() {}
+export class Agent extends Context.Tag("basis/Agent")<
+  Agent,
+  {
+    /**
+     * Appends the user message and runs steps (model, then tools) until the model
+     * stops. One turn per session at a time; another prompt fails with `Busy`.
+     * Resolves when the turn has ended; progress arrives through events and the log.
+     */
+    readonly prompt: (sessionId: string, content: PromptContent, options?: TurnOptions) => Effect.Effect<void, AgentError>;
+    readonly cancel: (sessionId: string) => Effect.Effect<void>;
+    readonly busy: (sessionId: string) => Effect.Effect<boolean>;
+    /** Sessions with a running turn. */
+    readonly running: Effect.Effect<readonly string[]>;
+  }
+>() {}

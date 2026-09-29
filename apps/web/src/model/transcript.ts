@@ -1,7 +1,5 @@
 import { addUsage, emptyUsage } from "@basis/contracts";
-import type {
-  AssistantMessage, ImageContent, SessionEvent, TextContent, Timing, ToolCall, ToolResultMessage, Usage,
-} from "@basis/contracts";
+import type { AssistantMessage, ImageContent, SessionEvent, TextContent, Timing, ToolCall, ToolResultMessage, Usage } from "@basis/contracts";
 
 /**
  * Projection of a session branch into what the chat transcript renders.
@@ -109,7 +107,10 @@ const makeCache = (): Cache => {
       next.set(key, entry);
       return entry.value as T;
     },
-    sweep: () => { current = next; next = new Map(); },
+    sweep: () => {
+      current = next;
+      next = new Map();
+    },
   };
 };
 
@@ -118,7 +119,7 @@ let nextIdentity = 0;
 /** A number unique to `value` for as long as it lives; lets signatures compare identities. */
 const identity = (value: object): number => {
   let id = identities.get(value);
-  if (id === undefined) identities.set(value, id = ++nextIdentity);
+  if (id === undefined) identities.set(value, (id = ++nextIdentity));
   return id;
 };
 
@@ -140,26 +141,33 @@ interface MutableTurn {
 }
 
 const newTurn = (key: string, at: number, turnId?: string): MutableTurn => ({
-  key, turnId, items: [], startedAt: at, endedAt: undefined, end: undefined, usage: emptyUsage, models: [], steps: 0,
-  firstTokenMs: undefined, hasUser: false, hasOutput: false,
+  key,
+  turnId,
+  items: [],
+  startedAt: at,
+  endedAt: undefined,
+  end: undefined,
+  usage: emptyUsage,
+  models: [],
+  steps: 0,
+  firstTokenMs: undefined,
+  hasUser: false,
+  hasOutput: false,
 });
 
-const blocksOf = (
-  cache: Cache,
-  eventId: string,
-  message: AssistantMessage,
-  results: ReadonlyMap<string, ToolResultView>,
-): Block[] =>
+const blocksOf = (cache: Cache, eventId: string, message: AssistantMessage, results: ReadonlyMap<string, ToolResultView>): Block[] =>
   message.content.map((part, index): Block => {
     const key = `${eventId}:${index}`;
     switch (part.type) {
-      case "text": return cache.get(key, "", () => ({ kind: "text", key, text: part.text }));
-      case "thinking": return cache.get(key, "", () => ({ kind: "thinking", key, text: part.thinking, redacted: part.redacted === true }));
+      case "text":
+        return cache.get(key, "", () => ({ kind: "text", key, text: part.text }));
+      case "thinking":
+        return cache.get(key, "", () => ({ kind: "thinking", key, text: part.thinking, redacted: part.redacted === true }));
       case "toolCall": {
         const result = results.get(part.id);
-        return cache.get(key, result?.eventId ?? "", () => (result === undefined
-          ? { kind: "tool", key, call: part }
-          : { kind: "tool", key, call: part, result }));
+        return cache.get(key, result?.eventId ?? "", () =>
+          result === undefined ? { kind: "tool", key, call: part } : { kind: "tool", key, call: part, result },
+        );
       }
     }
   });
@@ -175,13 +183,16 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
   for (const event of branch) {
     const data = event.data;
     if (data.type === "message" && data.message.role === "toolResult") {
-      results.set(data.message.toolCallId, cache.get(`result:${event.id}`, "", () => ({
-        eventId: event.id,
-        content: (data.message as ToolResultMessage).content,
-        isError: (data.message as ToolResultMessage).isError,
-        ...(data.details === undefined ? {} : { details: data.details }),
-        ...(data.timing === undefined ? {} : { timing: data.timing }),
-      })));
+      results.set(
+        data.message.toolCallId,
+        cache.get(`result:${event.id}`, "", () => ({
+          eventId: event.id,
+          content: (data.message as ToolResultMessage).content,
+          isError: (data.message as ToolResultMessage).isError,
+          ...(data.details === undefined ? {} : { details: data.details }),
+          ...(data.timing === undefined ? {} : { timing: data.timing }),
+        })),
+      );
     }
     if (data.type === "message" && data.message.role === "assistant") {
       for (const part of data.message.content) if (part.type === "toolCall") callIds.add(part.id);
@@ -236,20 +247,29 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
       case "message": {
         const message = data.message;
         if (message.role === "user") {
-          const turn = current !== undefined && !current.hasUser && !current.hasOutput && (current.turnId === undefined || current.turnId === data.turnId || data.turnId === undefined)
-            ? current
-            : start(event, data.turnId);
+          const turn =
+            current !== undefined &&
+            !current.hasUser &&
+            !current.hasOutput &&
+            (current.turnId === undefined || current.turnId === data.turnId || data.turnId === undefined)
+              ? current
+              : start(event, data.turnId);
           turn.hasUser = true;
           turn.items.push(cache.get(event.id, "", (): UserItem => ({ kind: "user", id: event.id, at: event.at, content: message.content })));
         } else if (message.role === "assistant") {
           const turn = ensure(event);
-          const resultIds = message.content.map((part) => part.type === "toolCall" ? results.get(part.id)?.eventId ?? "" : "").join(",");
-          turn.items.push(cache.get(event.id, resultIds, (): AssistantItem => ({
-            kind: "assistant", id: event.id, at: event.at, message,
-            blocks: blocksOf(cache, event.id, message, results),
-            ...(data.stepId === undefined ? {} : { stepId: data.stepId }),
-            ...(data.timing === undefined ? {} : { timing: data.timing }),
-          })));
+          const resultIds = message.content.map((part) => (part.type === "toolCall" ? (results.get(part.id)?.eventId ?? "") : "")).join(",");
+          turn.items.push(
+            cache.get(event.id, resultIds, (): AssistantItem => ({
+              kind: "assistant",
+              id: event.id,
+              at: event.at,
+              message,
+              blocks: blocksOf(cache, event.id, message, results),
+              ...(data.stepId === undefined ? {} : { stepId: data.stepId }),
+              ...(data.timing === undefined ? {} : { timing: data.timing }),
+            })),
+          );
           recordCall(turn, message, data.timing);
         } else if (!callIds.has(message.toolCallId)) {
           ensure(event).items.push(cache.get(event.id, "", (): OrphanResultItem => ({ kind: "orphan-result", id: event.id, at: event.at, message })));
@@ -258,18 +278,31 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
       }
       case "attempt": {
         const turn = ensure(event);
-        turn.items.push(cache.get(event.id, "", (): AttemptItem => ({
-          kind: "attempt", id: event.id, at: event.at, stepId: data.stepId, message: data.message,
-          blocks: blocksOf(cache, event.id, data.message, new Map()), timing: data.timing,
-        })));
+        turn.items.push(
+          cache.get(event.id, "", (): AttemptItem => ({
+            kind: "attempt",
+            id: event.id,
+            at: event.at,
+            stepId: data.stepId,
+            message: data.message,
+            blocks: blocksOf(cache, event.id, data.message, new Map()),
+            timing: data.timing,
+          })),
+        );
         recordCall(turn, data.message, data.timing);
         turn.steps--; // A retried call is not a step of its own.
         break;
       }
       case "compaction":
-        ensure(event).items.push(cache.get(event.id, "", (): CompactionItem => ({
-          kind: "compaction", id: event.id, at: event.at, summary: data.summary, tokensBefore: data.tokensBefore,
-        })));
+        ensure(event).items.push(
+          cache.get(event.id, "", (): CompactionItem => ({
+            kind: "compaction",
+            id: event.id,
+            at: event.at,
+            summary: data.summary,
+            tokensBefore: data.tokensBefore,
+          })),
+        );
         break;
       case "title":
         title = data.title;
@@ -281,7 +314,12 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
 
   const views = turns.map((turn): TurnView => {
     const signature = [
-      turn.key, turn.turnId ?? "", turn.endedAt ?? "", turn.end?.reason ?? "", turn.end?.error ?? "", turn.steps,
+      turn.key,
+      turn.turnId ?? "",
+      turn.endedAt ?? "",
+      turn.end?.reason ?? "",
+      turn.end?.error ?? "",
+      turn.steps,
       ...turn.items.map(identity),
     ].join("|");
     return cache.get(`turn:${turn.key}`, signature, () => ({

@@ -32,13 +32,16 @@ export const readDetails = (details: unknown): ToolDetails => {
 export type DiffLine = { readonly kind: "add" | "del" | "ctx" | "hunk" | "meta"; readonly text: string };
 
 export const parseDiff = (diff: string): DiffLine[] =>
-  diff.replace(/\n$/, "").split("\n").map((text): DiffLine => {
-    if (text.startsWith("+++") || text.startsWith("---") || text.startsWith("diff ") || text.startsWith("index ")) return { kind: "meta", text };
-    if (text.startsWith("@@")) return { kind: "hunk", text };
-    if (text.startsWith("+")) return { kind: "add", text };
-    if (text.startsWith("-")) return { kind: "del", text };
-    return { kind: "ctx", text };
-  });
+  diff
+    .replace(/\n$/, "")
+    .split("\n")
+    .map((text): DiffLine => {
+      if (text.startsWith("+++") || text.startsWith("---") || text.startsWith("diff ") || text.startsWith("index ")) return { kind: "meta", text };
+      if (text.startsWith("@@")) return { kind: "hunk", text };
+      if (text.startsWith("+")) return { kind: "add", text };
+      if (text.startsWith("-")) return { kind: "del", text };
+      return { kind: "ctx", text };
+    });
 
 export const diffStats = (lines: readonly DiffLine[]): { readonly added: number; readonly removed: number } => ({
   added: lines.filter((line) => line.kind === "add").length,

@@ -20,25 +20,35 @@ const invoke = async (argv: readonly string[], home: string, cwd = "/") => {
   let out = "";
   const err: string[] = [];
   const code = await run(argv, {
-    env: { BASIS_HOME: home }, cwd,
-    out: (text) => { out += `${text}\n`; }, write: (text) => { out += text; }, err: (text) => err.push(text),
+    env: { BASIS_HOME: home },
+    cwd,
+    out: (text) => {
+      out += `${text}\n`;
+    },
+    write: (text) => {
+      out += text;
+    },
+    err: (text) => err.push(text),
   });
   return { code, out: out.replace(/\n$/, ""), err: err.join("\n") };
 };
 
 const mockProvider = fileURLToPath(new URL("../../../scripts/fixtures/mock-openai.ts", import.meta.url));
 
-const freePort = () => new Promise<number>((resolve) => {
-  const server = createServer();
-  server.listen(0, "127.0.0.1", () => {
-    const { port } = server.address() as AddressInfo;
-    server.close(() => resolve(port));
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
   });
-});
 
 describe("without a host", () => {
   let home: string;
-  beforeAll(async () => { home = await mkdtemp(join(tmpdir(), "basis-cli-")); });
+  beforeAll(async () => {
+    home = await mkdtemp(join(tmpdir(), "basis-cli-"));
+  });
   afterAll(() => rm(home, { recursive: true, force: true }));
 
   test("reports a missing host as unavailable", async () => {
@@ -49,11 +59,30 @@ describe("without a host", () => {
 
   test("rejects bad usage before connecting", async () => {
     for (const argv of [
-      [], ["bogus"], ["status", "extra"], ["session", "show"], ["session", "list", "--all", "--cwd", "/x"], ["--nope"],
-      ["inspect", "s", "--system"], ["inspect", "s", "--request", "1", "--system", "--diff"], ["inspect", "s", "--request", "1", "--records"],
-      ["inspect", "s", "--request", "1", "--step", "2"], ["inspect", "s", "--sort", "bogus"], ["inspect", "s", "--range", "5"],
-      ["run"], ["run", "s"], ["run", "s", "hi", "--thinking", "huge"], ["answer", "q"], ["login"], ["logout"], ["cancel"],
-      ["workspace", "checkout"], ["workspace", "nope"], ["session", "title", "s"], ["session", "checkout", "s"], ["events", "x"],
+      [],
+      ["bogus"],
+      ["status", "extra"],
+      ["session", "show"],
+      ["session", "list", "--all", "--cwd", "/x"],
+      ["--nope"],
+      ["inspect", "s", "--system"],
+      ["inspect", "s", "--request", "1", "--system", "--diff"],
+      ["inspect", "s", "--request", "1", "--records"],
+      ["inspect", "s", "--request", "1", "--step", "2"],
+      ["inspect", "s", "--sort", "bogus"],
+      ["inspect", "s", "--range", "5"],
+      ["run"],
+      ["run", "s"],
+      ["run", "s", "hi", "--thinking", "huge"],
+      ["answer", "q"],
+      ["login"],
+      ["logout"],
+      ["cancel"],
+      ["workspace", "checkout"],
+      ["workspace", "nope"],
+      ["session", "title", "s"],
+      ["session", "checkout", "s"],
+      ["events", "x"],
       ["events", "--questions", "maybe"],
     ]) {
       expect((await invoke(argv, home)).code, argv.join(" ")).toBe(ExitCode.usage);
@@ -78,14 +107,18 @@ describe("against a running host", () => {
     const port = await freePort();
     mock = spawn(process.execPath, [mockProvider], { env: { ...process.env, PORT: String(port) }, stdio: ["ignore", "pipe", "ignore"] });
     await new Promise<void>((resolve) => mock.stdout!.once("data", () => resolve()));
-    await writeFile(join(home, "config.jsonc"), JSON.stringify({
-      plugins: {
-        transport: { config: { port: 0 } },
-        llm: { config: { providers: [{ id: "mock", api: "openai-completions", baseUrl: `http://127.0.0.1:${port}/v1`, models: [{ id: "scripted" }] }] } },
-      },
-    }));
+    await writeFile(
+      join(home, "config.jsonc"),
+      JSON.stringify({
+        plugins: {
+          transport: { config: { port: 0 } },
+          llm: { config: { providers: [{ id: "mock", api: "openai-completions", baseUrl: `http://127.0.0.1:${port}/v1`, models: [{ id: "scripted" }] }] } },
+        },
+      }),
+    );
     host = spawn(process.execPath, ["--conditions=source", hostMain, "--no-open"], {
-      env: { ...process.env, BASIS_HOME: home, INIT_CWD: home }, stdio: "ignore",
+      env: { ...process.env, BASIS_HOME: home, INIT_CWD: home },
+      stdio: "ignore",
     });
     const deadline = Date.now() + 20_000;
     while (!existsSync(join(home, "transport.json"))) {
@@ -130,7 +163,10 @@ describe("against a running host", () => {
     expect(lines.at(-1)).toMatchObject({ type: "result", session, reason: "done", steps: 2, toolCalls: 1 });
 
     const tools = JSON.parse((await invoke(["inspect", session, "--filter", "kind:tool", "--json"], home)).out);
-    expect(tools.map((record: { tool: string; status: string }) => [record.tool, record.status])).toEqual([["bash", "ok"], ["bash", "ok"]]);
+    expect(tools.map((record: { tool: string; status: string }) => [record.tool, record.status])).toEqual([
+      ["bash", "ok"],
+      ["bash", "ok"],
+    ]);
     expect(JSON.parse((await invoke(["inspect", session, "--records", "--sort", "duration", "--desc", "--json"], home)).out)[0].kind).toBe("assistant");
     expect((await invoke(["cancel", session], home)).code).toBe(ExitCode.ok);
   }, 30_000);
@@ -189,59 +225,114 @@ describe("formatSession", () => {
       event(3, {
         type: "message",
         message: {
-          role: "assistant", api: "x", provider: "p", model: "m", usage, stopReason: "toolUse", timestamp: 0,
-          content: [{ type: "thinking", thinking: "hidden" }, { type: "text", text: "Looking." }, { type: "toolCall", id: "c", name: "bash", arguments: { command: "ls" } }],
+          role: "assistant",
+          api: "x",
+          provider: "p",
+          model: "m",
+          usage,
+          stopReason: "toolUse",
+          timestamp: 0,
+          content: [
+            { type: "thinking", thinking: "hidden" },
+            { type: "text", text: "Looking." },
+            { type: "toolCall", id: "c", name: "bash", arguments: { command: "ls" } },
+          ],
         },
       }),
       event(4, {
         type: "message",
-        message: { role: "toolResult", toolCallId: "c", toolName: "bash", isError: true, timestamp: 0, content: [{ type: "text", text: Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n") }] },
+        message: {
+          role: "toolResult",
+          toolCallId: "c",
+          toolName: "bash",
+          isError: true,
+          timestamp: 0,
+          content: [{ type: "text", text: Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n") }],
+        },
       }),
       event(5, { type: "turn-end", turnId: "t", reason: "cancelled" }),
       event(6, { type: "title", title: "Fix it" }),
     ]);
     const body = output.slice(output.indexOf("\n\n") + 2);
-    expect(body).toBe([
-      "── user", "Fix it",
-      "── assistant (p/m)", "Looking.", '→ bash {"command":"ls"}',
-      "── bash (error)", ...Array.from({ length: 12 }, (_, i) => `line ${i}`), "… 8 more lines",
-      "── turn ended: cancelled",
-    ].join("\n"));
+    expect(body).toBe(
+      [
+        "── user",
+        "Fix it",
+        "── assistant (p/m)",
+        "Looking.",
+        '→ bash {"command":"ls"}',
+        "── bash (error)",
+        ...Array.from({ length: 12 }, (_, i) => `line ${i}`),
+        "… 8 more lines",
+        "── turn ended: cancelled",
+      ].join("\n"),
+    );
     expect(output).toContain("events   6 (6 on the current branch)");
   });
 });
 
 describe("inspect formatting", () => {
-  const usage = { input: 1200, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: 1240, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const usage = {
+    input: 1200,
+    output: 40,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 1240,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
   const spec = { name: "bash", description: "Run", parameters: {} };
-  const events: SessionEvent[] = ([
-    { type: "turn-start", turnId: "t" },
-    { type: "message", turnId: "t", message: { role: "user", content: [{ type: "text", text: "Run ls" }], timestamp: 0 } },
-    { type: "step-start", turnId: "t", stepId: "s1" },
-    {
-      type: "request", turnId: "t", stepId: "s1", model: "p/m", composition: "abc", system: "BASE\n\nCTX", tools: [spec],
-      contributions: [
-        { source: "agent", kind: "system", label: "base", chars: 4 },
-        { source: "project-context", kind: "system", label: "project-context", chars: 3 },
-        { source: "bash", kind: "tool", label: "bash", chars: JSON.stringify(spec).length },
-      ],
-    },
-    {
-      type: "message", turnId: "t", stepId: "s1", timing: { startedAt: 0, firstTokenAt: 500, endedAt: 2000 },
-      message: { role: "assistant", api: "x", provider: "p", model: "m", usage, stopReason: "toolUse", timestamp: 0, content: [{ type: "toolCall", id: "c", name: "bash", arguments: { command: "ls" } }] },
-    },
-    { type: "message", turnId: "t", stepId: "s1", timing: { startedAt: 2000, endedAt: 2300 }, message: { role: "toolResult", toolCallId: "c", toolName: "bash", content: [], isError: false, timestamp: 0 } },
-    { type: "step-end", turnId: "t", stepId: "s1" },
-    { type: "turn-end", turnId: "t", reason: "done" },
-  ] satisfies SessionEvent["data"][]).map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: i * 1000, data }));
+  const events: SessionEvent[] = (
+    [
+      { type: "turn-start", turnId: "t" },
+      { type: "message", turnId: "t", message: { role: "user", content: [{ type: "text", text: "Run ls" }], timestamp: 0 } },
+      { type: "step-start", turnId: "t", stepId: "s1" },
+      {
+        type: "request",
+        turnId: "t",
+        stepId: "s1",
+        model: "p/m",
+        composition: "abc",
+        system: "BASE\n\nCTX",
+        tools: [spec],
+        contributions: [
+          { source: "agent", kind: "system", label: "base", chars: 4 },
+          { source: "project-context", kind: "system", label: "project-context", chars: 3 },
+          { source: "bash", kind: "tool", label: "bash", chars: JSON.stringify(spec).length },
+        ],
+      },
+      {
+        type: "message",
+        turnId: "t",
+        stepId: "s1",
+        timing: { startedAt: 0, firstTokenAt: 500, endedAt: 2000 },
+        message: {
+          role: "assistant",
+          api: "x",
+          provider: "p",
+          model: "m",
+          usage,
+          stopReason: "toolUse",
+          timestamp: 0,
+          content: [{ type: "toolCall", id: "c", name: "bash", arguments: { command: "ls" } }],
+        },
+      },
+      {
+        type: "message",
+        turnId: "t",
+        stepId: "s1",
+        timing: { startedAt: 2000, endedAt: 2300 },
+        message: { role: "toolResult", toolCallId: "c", toolName: "bash", content: [], isError: false, timestamp: 0 },
+      },
+      { type: "step-end", turnId: "t", stepId: "s1" },
+      { type: "turn-end", turnId: "t", reason: "done" },
+    ] satisfies SessionEvent["data"][]
+  ).map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: i * 1000, data }));
   const turns = trajectory(events);
 
   test("the overview has one line per step", () => {
-    expect(formatTrajectory(turns)).toBe([
-      "Turn 1 · done · 1 step · ↑1.2k ↓40 · 7.0s",
-      '  "Run ls"',
-      "  1  s1  m  1 msg  ↑1.2k ↓40  ttft 500ms  2.0s  → bash",
-    ].join("\n"));
+    expect(formatTrajectory(turns)).toBe(
+      ["Turn 1 · done · 1 step · ↑1.2k ↓40 · 7.0s", '  "Run ls"', "  1  s1  m  1 msg  ↑1.2k ↓40  ttft 500ms  2.0s  → bash"].join("\n"),
+    );
   });
 
   test("records list as a table with step, request, kind, status, time, tokens, and name", () => {
@@ -284,7 +375,15 @@ describe("argument parsing", () => {
   });
 
   test("answers are checked against the question", () => {
-    const select = { type: "select" as const, id: "q", title: "Pick", options: [{ value: "api_key", label: "API key" }, { value: "oauth", label: "Subscription" }] };
+    const select = {
+      type: "select" as const,
+      id: "q",
+      title: "Pick",
+      options: [
+        { value: "api_key", label: "API key" },
+        { value: "oauth", label: "Subscription" },
+      ],
+    };
     expect(toAnswer(select, "oauth")).toEqual({ type: "select", value: "oauth" });
     expect(toAnswer(select, "api key")).toEqual({ type: "select", value: "api_key" });
     expect(toAnswer(select, "2")).toEqual({ type: "select", value: "oauth" });

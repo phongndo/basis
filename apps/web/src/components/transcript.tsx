@@ -15,7 +15,10 @@ const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new M
 const isOpen = (key: string, fallback: boolean) => expanded().get(key) ?? fallback;
 const toggle = (key: string, fallback: boolean) => setExpanded((map) => new Map(map).set(key, !(map.get(key) ?? fallback)));
 
-const context = () => ({ ...(state.info?.cwd === undefined ? {} : { cwd: activeCwd() }), ...(state.info?.home === undefined ? {} : { home: state.info.home }) });
+const context = () => ({
+  ...(state.info?.cwd === undefined ? {} : { cwd: activeCwd() }),
+  ...(state.info?.home === undefined ? {} : { home: state.info.home }),
+});
 const activeCwd = () => state.sessions.find((session) => session.id === state.activeId)?.cwd ?? state.info?.cwd ?? "";
 
 const imageSrc = (image: ImageContent) => `data:${image.mimeType};base64,${image.data}`;
@@ -32,10 +35,16 @@ function Images(props: { content: readonly (TextContent | ImageContent)[] }) {
 }
 
 function UserView(props: { content: readonly (TextContent | ImageContent)[] }) {
-  const text = () => props.content.filter((part): part is TextContent => part.type === "text").map((part) => part.text).join("\n\n");
+  const text = () =>
+    props.content
+      .filter((part): part is TextContent => part.type === "text")
+      .map((part) => part.text)
+      .join("\n\n");
   return (
     <div class="user-message">
-      <Show when={text()}><div class="user-text">{text()}</div></Show>
+      <Show when={text()}>
+        <div class="user-text">{text()}</div>
+      </Show>
       <Images content={props.content} />
     </div>
   );
@@ -43,15 +52,24 @@ function UserView(props: { content: readonly (TextContent | ImageContent)[] }) {
 
 function Thinking(props: { id: string; text: string; redacted?: boolean; live?: boolean }) {
   const open = () => isOpen(props.id, false);
-  const preview = () => props.text.trim().split("\n").filter(Boolean).at(props.live ? -1 : 0) ?? "";
+  const preview = () =>
+    props.text
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .at(props.live ? -1 : 0) ?? "";
   return (
     <div class="thinking" classList={{ open: open(), live: props.live === true }}>
       <button class="thinking-head" aria-expanded={open()} onClick={() => toggle(props.id, false)}>
         <ChevronIcon class="chevron" />
         <span class="thinking-label">{props.live ? "Thinking" : props.redacted ? "Thinking (redacted)" : "Thought"}</span>
-        <Show when={!open() && preview()}><span class="thinking-preview">{preview()}</span></Show>
+        <Show when={!open() && preview()}>
+          <span class="thinking-preview">{preview()}</span>
+        </Show>
       </button>
-      <Show when={open()}><div class="thinking-body">{props.text}</div></Show>
+      <Show when={open()}>
+        <div class="thinking-body">{props.text}</div>
+      </Show>
     </div>
   );
 }
@@ -64,7 +82,9 @@ function Output(props: { id: string; text: string; error?: boolean; lines?: numb
     <div class="output" classList={{ error: props.error === true }}>
       <pre>{all() ? props.text.replace(/\n+$/, "") : cut().text}</pre>
       <Show when={cut().hidden > 0}>
-        <button class="link-button" onClick={() => setAll(!all())}>{all() ? "Show less" : `Show ${cut().hidden} more lines`}</button>
+        <button class="link-button" onClick={() => setAll(!all())}>
+          {all() ? "Show less" : `Show ${cut().hidden} more lines`}
+        </button>
       </Show>
     </div>
   );
@@ -74,7 +94,14 @@ function Diff(props: { diff: string }) {
   const lines = createMemo(() => parseDiff(props.diff));
   return (
     <pre class="diff">
-      <For each={lines()}>{(line) => <span class={`diff-${line.kind}`}>{line.text}{"\n"}</span>}</For>
+      <For each={lines()}>
+        {(line) => (
+          <span class={`diff-${line.kind}`}>
+            {line.text}
+            {"\n"}
+          </span>
+        )}
+      </For>
     </pre>
   );
 }
@@ -93,41 +120,79 @@ function ToolCard(props: {
   const details = createMemo(() => readDetails(props.result?.details));
   const summary = createMemo(() => summarizeToolArgs(props.name, props.args, context()));
   const primary = () => summary().primary ?? (props.partial === undefined ? undefined : summarizePartialArgs(props.name, props.partial));
-  const outputText = () => props.result?.content.filter((part): part is TextContent => part.type === "text").map((part) => part.text).join("\n") ?? "";
+  const outputText = () =>
+    props.result?.content
+      .filter((part): part is TextContent => part.type === "text")
+      .map((part) => part.text)
+      .join("\n") ?? "";
   const diff = () => details().diff;
-  const stats = createMemo(() => { const d = diff(); return d === undefined ? undefined : diffStats(parseDiff(d)); });
+  const stats = createMemo(() => {
+    const d = diff();
+    return d === undefined ? undefined : diffStats(parseDiff(d));
+  });
   // Show what matters by default: edits, commands, and failures. Reads and searches stay folded.
   const defaultOpen = () => props.state === "error" || diff() !== undefined || props.name === "bash";
   const open = () => isOpen(props.id, defaultOpen());
   const argsShown = () => summary().primary === undefined && props.args !== undefined && Object.keys(props.args).length > 0;
-  const duration = () => { const t = props.result?.timing; return t === undefined ? undefined : t.endedAt - t.startedAt; };
+  const duration = () => {
+    const t = props.result?.timing;
+    return t === undefined ? undefined : t.endedAt - t.startedAt;
+  };
   return (
     <div class={`tool tool-${props.state}`} classList={{ open: open() }}>
       <button class="tool-head" aria-expanded={open()} onClick={() => toggle(props.id, defaultOpen())}>
         <span class="tool-status">
           <Switch>
-            <Match when={props.state === "running"}><Spinner /></Match>
-            <Match when={props.state === "queued"}><span class="dot-muted" /></Match>
-            <Match when={props.state === "ok"}><CheckIcon /></Match>
-            <Match when={props.state === "error"}><XIcon /></Match>
-            <Match when={props.state === "interrupted"}><span class="dot-muted" /></Match>
+            <Match when={props.state === "running"}>
+              <Spinner />
+            </Match>
+            <Match when={props.state === "queued"}>
+              <span class="dot-muted" />
+            </Match>
+            <Match when={props.state === "ok"}>
+              <CheckIcon />
+            </Match>
+            <Match when={props.state === "error"}>
+              <XIcon />
+            </Match>
+            <Match when={props.state === "interrupted"}>
+              <span class="dot-muted" />
+            </Match>
           </Switch>
         </span>
         <span class="tool-name">{props.name || "tool"}</span>
         <Show when={primary()}>
-          <span class="tool-primary" classList={{ shell: summary().shell === true || props.name === "bash" }}>{primary()}</span>
+          <span class="tool-primary" classList={{ shell: summary().shell === true || props.name === "bash" }}>
+            {primary()}
+          </span>
         </Show>
-        <Show when={summary().secondary}><span class="tool-secondary">{summary().secondary}</span></Show>
+        <Show when={summary().secondary}>
+          <span class="tool-secondary">{summary().secondary}</span>
+        </Show>
         <span class="tool-meta">
-          <Show when={stats()}>{(s) => <span class="diffstat"><span class="add">+{s().added}</span> <span class="del">−{s().removed}</span></span>}</Show>
-          <Show when={details().exitCode !== undefined && details().exitCode !== 0}><span class="badge badge-error">exit {details().exitCode}</span></Show>
-          <Show when={props.state === "interrupted"}><span class="badge">no result</span></Show>
-          <Show when={duration() !== undefined && duration()! >= 1000}><span class="muted">{formatDuration(duration()!)}</span></Show>
+          <Show when={stats()}>
+            {(s) => (
+              <span class="diffstat">
+                <span class="add">+{s().added}</span> <span class="del">−{s().removed}</span>
+              </span>
+            )}
+          </Show>
+          <Show when={details().exitCode !== undefined && details().exitCode !== 0}>
+            <span class="badge badge-error">exit {details().exitCode}</span>
+          </Show>
+          <Show when={props.state === "interrupted"}>
+            <span class="badge">no result</span>
+          </Show>
+          <Show when={duration() !== undefined && duration()! >= 1000}>
+            <span class="muted">{formatDuration(duration()!)}</span>
+          </Show>
         </span>
       </button>
       <Show when={open()}>
         <div class="tool-body">
-          <Show when={argsShown()}><pre class="tool-args">{JSON.stringify(props.args, null, 2)}</pre></Show>
+          <Show when={argsShown()}>
+            <pre class="tool-args">{JSON.stringify(props.args, null, 2)}</pre>
+          </Show>
           <Show when={diff()}>{(d) => <Diff diff={d()} />}</Show>
           <Show when={outputText() && !(diff() !== undefined && props.state === "ok")}>
             <Output id={props.id} text={outputText()} error={props.state === "error"} />
@@ -152,7 +217,11 @@ function Blocks(props: { blocks: readonly Block[]; turnEnded: boolean }) {
         <Switch>
           <Match when={block.kind === "text" && block}>{(b) => <Markdown text={b().text} />}</Match>
           <Match when={block.kind === "thinking" && block}>
-            {(b) => <Show when={b().text.trim() || b().redacted}><Thinking id={b().key} text={b().text} redacted={b().redacted} /></Show>}
+            {(b) => (
+              <Show when={b().text.trim() || b().redacted}>
+                <Thinking id={b().key} text={b().text} redacted={b().redacted} />
+              </Show>
+            )}
           </Match>
           <Match when={block.kind === "tool" && block}>
             {(b) => {
@@ -174,10 +243,17 @@ function StopNote(props: { item: AssistantItem }) {
   return (
     <Switch>
       <Match when={props.item.message.stopReason === "error"}>
-        <div class="callout callout-error"><AlertIcon /><span>{props.item.message.errorMessage ?? "The model request failed."}</span></div>
+        <div class="callout callout-error">
+          <AlertIcon />
+          <span>{props.item.message.errorMessage ?? "The model request failed."}</span>
+        </div>
       </Match>
-      <Match when={props.item.message.stopReason === "aborted"}><p class="note">Stopped</p></Match>
-      <Match when={props.item.message.stopReason === "length"}><p class="note">Output hit the model's token limit</p></Match>
+      <Match when={props.item.message.stopReason === "aborted"}>
+        <p class="note">Stopped</p>
+      </Match>
+      <Match when={props.item.message.stopReason === "length"}>
+        <p class="note">Output hit the model's token limit</p>
+      </Match>
     </Switch>
   );
 }
@@ -185,7 +261,7 @@ function StopNote(props: { item: AssistantItem }) {
 function Attempt(props: { item: AttemptItem }) {
   const open = () => isOpen(props.item.id, false);
   const hasContent = () => props.item.blocks.some((block) => block.kind !== "text" || block.text.trim() !== "");
-  const label = () => props.item.message.stopReason === "aborted" ? "Attempt cancelled" : "Attempt failed";
+  const label = () => (props.item.message.stopReason === "aborted" ? "Attempt cancelled" : "Attempt failed");
   return (
     <div class="attempt" classList={{ open: open() }}>
       <button class="attempt-head" aria-expanded={open()} disabled={!hasContent()} onClick={() => toggle(props.item.id, false)}>
@@ -195,7 +271,9 @@ function Attempt(props: { item: AttemptItem }) {
         <span class="muted">{formatDuration(props.item.timing.endedAt - props.item.timing.startedAt)}</span>
       </button>
       <Show when={open() && hasContent()}>
-        <div class="attempt-body"><Blocks blocks={props.item.blocks} turnEnded={true} /></div>
+        <div class="attempt-body">
+          <Blocks blocks={props.item.blocks} turnEnded={true} />
+        </div>
       </Show>
     </div>
   );
@@ -238,21 +316,37 @@ function ItemView(props: { item: Item; turnEnded: boolean }): JSX.Element {
 
 function TurnFooter(props: { turn: TurnView }) {
   const usage = createMemo(() => summarizeUsage(props.turn.usage));
-  const duration = () => props.turn.endedAt === undefined ? undefined : props.turn.endedAt - props.turn.startedAt;
+  const duration = () => (props.turn.endedAt === undefined ? undefined : props.turn.endedAt - props.turn.startedAt);
   const model = () => props.turn.models.map((ref) => ref.slice(ref.indexOf("/") + 1)).join(", ");
   const reason = () => props.turn.end?.reason;
   return (
     <footer class="turn-footer" data-tip={usage().title}>
-      <Show when={reason() === "cancelled"}><span class="badge">cancelled</span></Show>
-      <Show when={reason() === "max-steps"}><span class="badge badge-warn">step limit</span></Show>
-      <Show when={reason() === "error"}><span class="badge badge-error">error</span></Show>
-      <Show when={model()}><span>{model()}</span></Show>
-      <Show when={props.turn.usage.totalTokens > 0}>
-        <span>↑{usage().input} ↓{usage().output}</span>
-        <Show when={usage().cache}><span>cache {usage().cache}</span></Show>
+      <Show when={reason() === "cancelled"}>
+        <span class="badge">cancelled</span>
       </Show>
-      <Show when={usage().cost}><span>{usage().cost}</span></Show>
-      <Show when={duration() !== undefined}><span>{formatDuration(duration()!)}</span></Show>
+      <Show when={reason() === "max-steps"}>
+        <span class="badge badge-warn">step limit</span>
+      </Show>
+      <Show when={reason() === "error"}>
+        <span class="badge badge-error">error</span>
+      </Show>
+      <Show when={model()}>
+        <span>{model()}</span>
+      </Show>
+      <Show when={props.turn.usage.totalTokens > 0}>
+        <span>
+          ↑{usage().input} ↓{usage().output}
+        </span>
+        <Show when={usage().cache}>
+          <span>cache {usage().cache}</span>
+        </Show>
+      </Show>
+      <Show when={usage().cost}>
+        <span>{usage().cost}</span>
+      </Show>
+      <Show when={duration() !== undefined}>
+        <span>{formatDuration(duration()!)}</span>
+      </Show>
     </footer>
   );
 }
@@ -263,9 +357,14 @@ function Turn(props: { turn: TurnView }) {
     <section class="turn">
       <For each={props.turn.items}>{(item) => <ItemView item={item} turnEnded={ended()} />}</For>
       <Show when={props.turn.end?.reason === "error" && props.turn.end.error}>
-        <div class="callout callout-error"><AlertIcon /><span>{props.turn.end!.error}</span></div>
+        <div class="callout callout-error">
+          <AlertIcon />
+          <span>{props.turn.end!.error}</span>
+        </div>
       </Show>
-      <Show when={ended()}><TurnFooter turn={props.turn} /></Show>
+      <Show when={ended()}>
+        <TurnFooter turn={props.turn} />
+      </Show>
     </section>
   );
 }
@@ -274,9 +373,7 @@ function DraftBlockView(props: { block: DraftBlock; stepId: string; index: numbe
   return (
     <Switch>
       <Match when={props.block.kind === "text" && props.block}>{(b) => <Markdown text={b().text} class="streaming" />}</Match>
-      <Match when={props.block.kind === "thinking" && props.block}>
-        {(b) => <Thinking id={`${props.stepId}:${props.index}`} text={b().text} live />}
-      </Match>
+      <Match when={props.block.kind === "thinking" && props.block}>{(b) => <Thinking id={`${props.stepId}:${props.index}`} text={b().text} live />}</Match>
       <Match when={props.block.kind === "tool" && props.block}>
         {(b) => <ToolCard id={b().id || `${props.stepId}:${props.index}`} name={b().name} args={parseDraftArgs(b())} partial={b().args} state="queued" />}
       </Match>
@@ -290,7 +387,12 @@ function Draft(props: { draft: StepDraft }) {
       <Index each={props.draft.blocks}>
         {(block, index) => <Show when={block()}>{(b) => <DraftBlockView block={b()} stepId={props.draft.stepId} index={index} />}</Show>}
       </Index>
-      <Show when={props.draft.error}><div class="callout callout-error"><AlertIcon /><span>{props.draft.error}</span></div></Show>
+      <Show when={props.draft.error}>
+        <div class="callout callout-error">
+          <AlertIcon />
+          <span>{props.draft.error}</span>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -303,7 +405,12 @@ export function Transcript(props: { turns: readonly TurnView[] }) {
     <div class="transcript">
       <Index each={props.turns}>{(turn) => <Turn turn={turn()} />}</Index>
       <Index each={drafts()}>{(draft) => <Draft draft={draft()} />}</Index>
-      <Show when={working()}><div class="working"><span class="pulse" />Working</div></Show>
+      <Show when={working()}>
+        <div class="working">
+          <span class="pulse" />
+          Working
+        </div>
+      </Show>
     </div>
   );
 }

@@ -45,8 +45,17 @@ export function formatSize(size: number): string {
 }
 
 const untouched = (content: string, totalLines: number, totalBytes: number, maxLines: number, maxBytes: number): Truncation => ({
-  content, truncated: false, truncatedBy: null, totalLines, totalBytes, outputLines: totalLines, outputBytes: totalBytes,
-  lastLinePartial: false, firstLineExceedsLimit: false, maxLines, maxBytes,
+  content,
+  truncated: false,
+  truncatedBy: null,
+  totalLines,
+  totalBytes,
+  outputLines: totalLines,
+  outputBytes: totalBytes,
+  lastLinePartial: false,
+  firstLineExceedsLimit: false,
+  maxLines,
+  maxBytes,
 });
 
 /** Keeps the first lines: for file reads. */
@@ -109,8 +118,17 @@ export function truncateTail(content: string, limits: Limits = {}): Truncation {
   if (kept.length >= maxLines && used <= maxBytes) truncatedBy = "lines";
   const output = kept.join("\n");
   return {
-    content: output, truncated: true, truncatedBy, totalLines, totalBytes, outputLines: kept.length, outputBytes: bytes(output),
-    lastLinePartial, firstLineExceedsLimit: false, maxLines, maxBytes,
+    content: output,
+    truncated: true,
+    truncatedBy,
+    totalLines,
+    totalBytes,
+    outputLines: kept.length,
+    outputBytes: bytes(output),
+    lastLinePartial,
+    firstLineExceedsLimit: false,
+    maxLines,
+    maxBytes,
   };
 }
 

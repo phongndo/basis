@@ -9,8 +9,12 @@ import type { RequestDraft, RequestPlan } from "@basis/contracts";
 import projectContext, { makeLoader } from "../src/index.ts";
 
 let dir: string;
-beforeEach(async () => { dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-context-"))); });
-afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => {
+  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-context-")));
+});
+afterEach(async () => {
+  await fs.rm(dir, { recursive: true, force: true });
+});
 
 const put = async (file: string, content: string) => {
   await fs.mkdir(path.dirname(path.join(dir, file)), { recursive: true });
@@ -58,16 +62,35 @@ describe("project context", () => {
       layer: Layer.succeed(Paths, { home: path.join(dir, "home"), userConfig: "", projectConfig: "", auth: "", sessions: "", cwd: dir }),
     });
     const draft: RequestDraft = {
-      sessionId: "s", turnId: "t", cwd: path.join(dir, "repo"), model: "p/m", tools: [], history: [],
-      sections: [{ id: "base", source: "agent", text: "Base." }, { id: "environment", source: "agent", text: "Env." }],
+      sessionId: "s",
+      turnId: "t",
+      cwd: path.join(dir, "repo"),
+      model: "p/m",
+      tools: [],
+      history: [],
+      sections: [
+        { id: "base", source: "agent", text: "Base." },
+        { id: "environment", source: "agent", text: "Env." },
+      ],
     };
-    const plan = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-      const core = yield* makeCore([paths, projectContext]);
-      return yield* core.run(Effect.flatMap(Hooks, (hooks) =>
-        hooks.invoke(AgentRequestHook, draft, (final) => Effect.succeed<RequestPlan>({ model: final.model, sections: final.sections, tools: final.tools }))));
-    })));
+    const plan = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const core = yield* makeCore([paths, projectContext]);
+          return yield* core.run(
+            Effect.flatMap(Hooks, (hooks) =>
+              hooks.invoke(AgentRequestHook, draft, (final) =>
+                Effect.succeed<RequestPlan>({ model: final.model, sections: final.sections, tools: final.tools }),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
     expect(plan.sections.map((section) => [section.id, section.source])).toEqual([
-      ["base", "agent"], ["project-context", "project-context"], ["environment", "agent"],
+      ["base", "agent"],
+      ["project-context", "project-context"],
+      ["environment", "agent"],
     ]);
     expect(plan.sections[1]!.text).toContain(`<project_instructions path="${path.join(dir, "repo/AGENTS.md")}">\nUse tabs.\n</project_instructions>`);
   });

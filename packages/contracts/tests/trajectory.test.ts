@@ -11,8 +11,16 @@ function log(...items: readonly EventData[]): SessionEvent[] {
 const section = (label: string, text: string, source = "agent"): Contribution => ({ source, kind: "system", label, chars: text.length });
 const tool = (spec: ToolSpec, source = spec.name): Contribution => ({ source, kind: "tool", label: spec.name, chars: JSON.stringify(spec).length });
 const usage = (input: number, output: number) => ({ ...emptyUsage, input, output, totalTokens: input + output });
-const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"], tokens = usage(10, 5)): AssistantMessage =>
-  ({ role: "assistant", content, api: "x", provider: "p", model: "m", usage: tokens, stopReason, timestamp: 0 });
+const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"], tokens = usage(10, 5)): AssistantMessage => ({
+  role: "assistant",
+  content,
+  api: "x",
+  provider: "p",
+  model: "m",
+  usage: tokens,
+  stopReason,
+  timestamp: 0,
+});
 
 const read: ToolSpec = { name: "read", description: "Read a file", parameters: {} };
 const bash: ToolSpec = { name: "bash", description: "Run a command", parameters: {} };
@@ -36,21 +44,40 @@ describe("trajectory", () => {
     { type: "title", title: "list files" },
     { type: "step-start", turnId: "t1", stepId: "s1" },
     {
-      type: "request", turnId: "t1", stepId: "s1", model: "p/m", composition: "c1",
-      system: "BASE\n\nENV 1", tools: [read, bash],
+      type: "request",
+      turnId: "t1",
+      stepId: "s1",
+      model: "p/m",
+      composition: "c1",
+      system: "BASE\n\nENV 1",
+      tools: [read, bash],
       contributions: [section("base", "BASE"), section("environment", "ENV 1"), tool(read), tool(bash)],
     },
     {
-      type: "message", turnId: "t1", stepId: "s1", timing: { startedAt: 1, firstTokenAt: 2, endedAt: 3 },
+      type: "message",
+      turnId: "t1",
+      stepId: "s1",
+      timing: { startedAt: 1, firstTokenAt: 2, endedAt: 3 },
       message: assistant([{ type: "toolCall", id: "call1", name: "bash", arguments: { command: "ls" } }], "toolUse"),
     },
     {
-      type: "message", turnId: "t1", stepId: "s1", timing: { startedAt: 4, endedAt: 9 }, details: { exitCode: 0 },
+      type: "message",
+      turnId: "t1",
+      stepId: "s1",
+      timing: { startedAt: 4, endedAt: 9 },
+      details: { exitCode: 0 },
       message: { role: "toolResult", toolCallId: "call1", toolName: "bash", content: [{ type: "text", text: "a b" }], isError: false, timestamp: 0 },
     },
     { type: "step-end", turnId: "t1", stepId: "s1" },
     { type: "step-start", turnId: "t1", stepId: "s2" },
-    { type: "request", turnId: "t1", stepId: "s2", model: "p/m", composition: "c1", contributions: [section("base", "BASE"), section("environment", "ENV 1"), tool(read), tool(bash)] },
+    {
+      type: "request",
+      turnId: "t1",
+      stepId: "s2",
+      model: "p/m",
+      composition: "c1",
+      contributions: [section("base", "BASE"), section("environment", "ENV 1"), tool(read), tool(bash)],
+    },
     { type: "message", turnId: "t1", stepId: "s2", message: assistant([{ type: "text", text: "a and b" }], "stop") },
     { type: "step-end", turnId: "t1", stepId: "s2" },
     { type: "turn-end", turnId: "t1", reason: "done" },
@@ -58,8 +85,14 @@ describe("trajectory", () => {
     { type: "message", turnId: "t2", message: { role: "user", content: [{ type: "text", text: "again" }], timestamp: 0 } },
     { type: "step-start", turnId: "t2", stepId: "s3" },
     {
-      type: "request", turnId: "t2", stepId: "s3", model: "p/m", thinking: "high", composition: "c2",
-      system: "BASE\n\nENV 2", tools: [read],
+      type: "request",
+      turnId: "t2",
+      stepId: "s3",
+      model: "p/m",
+      thinking: "high",
+      composition: "c2",
+      system: "BASE\n\nENV 2",
+      tools: [read],
       contributions: [section("base", "BASE"), section("environment", "ENV 2"), tool(read)],
     },
     { type: "attempt", turnId: "t2", stepId: "s3", message: assistant([], "error", usage(3, 0)), timing: { startedAt: 20, endedAt: 21 } },
@@ -69,16 +102,23 @@ describe("trajectory", () => {
   const turns = trajectory(events);
 
   it("groups steps under turns with their requests, responses, and tool runs", () => {
-    expect(turns.map((turn) => [turn.turnId, turn.index, turn.steps.map((step) => step.stepId)])).toEqual([["t1", 1, ["s1", "s2"]], ["t2", 2, ["s3"]]]);
+    expect(turns.map((turn) => [turn.turnId, turn.index, turn.steps.map((step) => step.stepId)])).toEqual([
+      ["t1", 1, ["s1", "s2"]],
+      ["t2", 2, ["s3"]],
+    ]);
     const [first, second] = turns[0]!.steps;
     expect(turns[0]!.prompt?.content).toEqual([{ type: "text", text: "list files" }]);
     expect(turns[0]!.end).toEqual({ reason: "done" });
     expect(first!.request).toMatchObject({ eventId: "e5", model: "p/m", composition: "c1", messages: 1 });
-    expect(first!.tools).toEqual([{
-      call: { type: "toolCall", id: "call1", name: "bash", arguments: { command: "ls" } },
-      result: expect.objectContaining({ toolCallId: "call1" }),
-      eventId: "e7", timing: { startedAt: 4, endedAt: 9 }, details: { exitCode: 0 },
-    }]);
+    expect(first!.tools).toEqual([
+      {
+        call: { type: "toolCall", id: "call1", name: "bash", arguments: { command: "ls" } },
+        result: expect.objectContaining({ toolCallId: "call1" }),
+        eventId: "e7",
+        timing: { startedAt: 4, endedAt: 9 },
+        details: { exitCode: 0 },
+      },
+    ]);
     expect(second!.request?.messages).toBe(3);
     expect(second!.response?.message.stopReason).toBe("stop");
     expect(turns[0]!.usage).toMatchObject({ input: 20, output: 10 });
@@ -87,14 +127,23 @@ describe("trajectory", () => {
   it("resolves the omitted header and marks what changed", () => {
     const unchanged = turns[0]!.steps[1]!.request!;
     expect(unchanged.system).toBe("BASE\n\nENV 1");
-    expect(unchanged.sections.map((s) => [s.id, s.text, s.changed])).toEqual([["base", "BASE", false], ["environment", "ENV 1", false]]);
-    expect(unchanged.tools.map((t) => [t.name, t.spec?.description, t.changed])).toEqual([["read", "Read a file", false], ["bash", "Run a command", false]]);
+    expect(unchanged.sections.map((s) => [s.id, s.text, s.changed])).toEqual([
+      ["base", "BASE", false],
+      ["environment", "ENV 1", false],
+    ]);
+    expect(unchanged.tools.map((t) => [t.name, t.spec?.description, t.changed])).toEqual([
+      ["read", "Read a file", false],
+      ["bash", "Run a command", false],
+    ]);
 
     const first = turns[0]!.steps[0]!.request!;
     expect(first.sections.every((s) => s.changed) && first.tools.every((t) => t.changed)).toBe(true);
 
     const next = turns[1]!.steps[0]!.request!;
-    expect(next.sections.map((s) => [s.id, s.changed])).toEqual([["base", false], ["environment", true]]);
+    expect(next.sections.map((s) => [s.id, s.changed])).toEqual([
+      ["base", false],
+      ["environment", true],
+    ]);
     expect(next.tools.map((t) => [t.name, t.changed])).toEqual([["read", false]]);
     expect(next.removed).toEqual(["bash"]);
     expect(next.thinking).toBe("high");

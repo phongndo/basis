@@ -38,7 +38,8 @@ export type Contribution = typeof Contribution.Type;
 export const EventData = Schema.Union(
   Schema.Struct({ type: Schema.Literal("turn-start"), turnId: Schema.String }),
   Schema.Struct({
-    type: Schema.Literal("turn-end"), turnId: Schema.String,
+    type: Schema.Literal("turn-end"),
+    turnId: Schema.String,
     reason: Schema.Literal("done", "cancelled", "error", "max-steps"),
     error: Schema.optional(Schema.String),
   }),
@@ -52,7 +53,9 @@ export const EventData = Schema.Union(
    * length, so `trajectory` can split it back into sections.
    */
   Schema.Struct({
-    type: Schema.Literal("request"), turnId: Schema.String, stepId: Schema.String,
+    type: Schema.Literal("request"),
+    turnId: Schema.String,
+    stepId: Schema.String,
     model: Schema.String,
     thinking: Schema.optional(ThinkingLevel),
     /** `CompositionInfo.id` of the plugin set that built this request. */
@@ -72,13 +75,19 @@ export const EventData = Schema.Union(
   }),
   /** A failed, cancelled, or retried model call. Kept for inspection; never model-visible. */
   Schema.Struct({
-    type: Schema.Literal("attempt"), turnId: Schema.String, stepId: Schema.String,
-    message: AssistantMessage, timing: Timing,
+    type: Schema.Literal("attempt"),
+    turnId: Schema.String,
+    stepId: Schema.String,
+    message: AssistantMessage,
+    timing: Timing,
   }),
   /** Replaces the history before `firstKeptId` with `summary` in the model's view; the originals stay in the log. */
   Schema.Struct({
-    type: Schema.Literal("compaction"), summary: Schema.String, firstKeptId: Schema.String,
-    tokensBefore: Schema.Number, source: Schema.String,
+    type: Schema.Literal("compaction"),
+    summary: Schema.String,
+    firstKeptId: Schema.String,
+    tokensBefore: Schema.Number,
+    source: Schema.String,
   }),
   Schema.Struct({ type: Schema.Literal("title"), title: Schema.String }),
   /** Plugin-owned data; `kind` is namespaced by the plugin id. Not model-visible. */
@@ -120,20 +129,23 @@ export class SessionError extends Data.TaggedError("SessionError")<{
 export const SessionAppended = Event.make<{ readonly sessionId: string; readonly event: SessionEvent }>("basis/session.appended");
 export const SessionChanged = Event.make<{ readonly info: SessionInfo }>("basis/session.changed");
 
-export class Sessions extends Context.Tag("basis/Sessions")<Sessions, {
-  readonly create: (options?: { readonly cwd?: string }) => Effect.Effect<SessionInfo, SessionError>;
-  /** Most recently updated first. */
-  readonly list: (options?: { readonly cwd?: string }) => Effect.Effect<readonly SessionInfo[], SessionError>;
-  readonly get: (sessionId: string) => Effect.Effect<SessionInfo, SessionError>;
-  /**
-   * Appends after the current leaf (or `parent`) and moves the leaf to the new
-   * event. Durable before it returns; appends to one session are serialized.
-   */
-  readonly append: (sessionId: string, data: EventData, options?: { readonly parent?: string }) => Effect.Effect<SessionEvent, SessionError>;
-  /** Every event in file order, optionally only those after `seq`. */
-  readonly events: (sessionId: string, options?: { readonly after?: number }) => Effect.Effect<readonly SessionEvent[], SessionError>;
-  /** Root-to-leaf events of the current branch, or of the branch ending at `leaf`. */
-  readonly branch: (sessionId: string, options?: { readonly leaf?: string }) => Effect.Effect<readonly SessionEvent[], SessionError>;
-  /** Point the leaf at an existing event; later appends branch from there. */
-  readonly checkout: (sessionId: string, eventId: string) => Effect.Effect<SessionInfo, SessionError>;
-}>() {}
+export class Sessions extends Context.Tag("basis/Sessions")<
+  Sessions,
+  {
+    readonly create: (options?: { readonly cwd?: string }) => Effect.Effect<SessionInfo, SessionError>;
+    /** Most recently updated first. */
+    readonly list: (options?: { readonly cwd?: string }) => Effect.Effect<readonly SessionInfo[], SessionError>;
+    readonly get: (sessionId: string) => Effect.Effect<SessionInfo, SessionError>;
+    /**
+     * Appends after the current leaf (or `parent`) and moves the leaf to the new
+     * event. Durable before it returns; appends to one session are serialized.
+     */
+    readonly append: (sessionId: string, data: EventData, options?: { readonly parent?: string }) => Effect.Effect<SessionEvent, SessionError>;
+    /** Every event in file order, optionally only those after `seq`. */
+    readonly events: (sessionId: string, options?: { readonly after?: number }) => Effect.Effect<readonly SessionEvent[], SessionError>;
+    /** Root-to-leaf events of the current branch, or of the branch ending at `leaf`. */
+    readonly branch: (sessionId: string, options?: { readonly leaf?: string }) => Effect.Effect<readonly SessionEvent[], SessionError>;
+    /** Point the leaf at an existing event; later appends branch from there. */
+    readonly checkout: (sessionId: string, eventId: string) => Effect.Effect<SessionInfo, SessionError>;
+  }
+>() {}

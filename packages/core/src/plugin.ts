@@ -30,11 +30,7 @@ export interface Plugin<Provides extends readonly Capability[] = readonly Capabi
   readonly layer: (config: unknown) => Layer.Layer<never, unknown, unknown>;
 }
 
-export type PluginLayer<
-  Provides extends readonly Capability[],
-  Requires extends readonly Capability[],
-  Error,
-> = Layer.Layer<
+export type PluginLayer<Provides extends readonly Capability[], Requires extends readonly Capability[], Error> = Layer.Layer<
   NoInfer<Identifiers<Provides>>,
   Error,
   NoInfer<Identifiers<Requires>> | PluginContext | Hooks | Events
@@ -59,9 +55,7 @@ export function definePlugin<
   readonly exclusive?: boolean;
   readonly restart?: Schedule.Schedule<unknown, PluginFault>;
   readonly deadlines?: Deadlines;
-  readonly layer:
-    | PluginLayer<Provides, Requires, Error>
-    | ((config: Config) => PluginLayer<Provides, Requires, Error>);
+  readonly layer: PluginLayer<Provides, Requires, Error> | ((config: Config) => PluginLayer<Provides, Requires, Error>);
 }): Plugin<NoInfer<Provides>> {
   const layer = definition.layer;
   return Object.freeze({

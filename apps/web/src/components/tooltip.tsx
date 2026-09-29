@@ -51,7 +51,10 @@ export function TooltipLayer() {
   const onOver = (event: PointerEvent) => {
     if (event.pointerType === "touch") return;
     const element = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
-    if (element === null) { if (target !== undefined) hide(); return; }
+    if (element === null) {
+      if (target !== undefined) hide();
+      return;
+    }
     schedule(element);
   };
   const onFocus = (event: FocusEvent) => {

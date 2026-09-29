@@ -1,8 +1,20 @@
 import { Cause, Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import { HostError } from "@basis/contracts";
 import type {
-  AuthType, DirectoryListing, GitBranch, HostEvent, HostInfo, InteractionAnswer, ModelInfo, PluginStatus, PromptContent, ProviderInfo, SessionEvent,
-  SessionInfo, TurnOptions, WorkspaceStatus,
+  AuthType,
+  DirectoryListing,
+  GitBranch,
+  HostEvent,
+  HostInfo,
+  InteractionAnswer,
+  ModelInfo,
+  PluginStatus,
+  PromptContent,
+  ProviderInfo,
+  SessionEvent,
+  SessionInfo,
+  TurnOptions,
+  WorkspaceStatus,
 } from "@basis/contracts";
 import { makeHostRpc, rpcUrl } from "./rpc.ts";
 import type { HostRpcClient } from "./rpc.ts";
@@ -92,7 +104,7 @@ export const defaultBackoff = (attempt: number): number => Math.min(5_000, 250 *
 
 /** Runs an effect to a promise that rejects with the squashed failure rather than a FiberFailure wrapper. */
 export const runPromise = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
-  Effect.runPromiseExit(effect).then((exit) => Exit.isSuccess(exit) ? exit.value : Promise.reject(toError(Cause.squash(exit.cause))));
+  Effect.runPromiseExit(effect).then((exit) => (Exit.isSuccess(exit) ? exit.value : Promise.reject(toError(Cause.squash(exit.cause)))));
 
 const toError = (error: unknown): unknown => {
   if (error instanceof HostError || error instanceof Error) return error;
@@ -126,13 +138,20 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
   };
   const emit = (event: HostEvent) => {
     for (const listener of eventListeners) {
-      try { listener(event); } catch (error) { console.error("Host event listener failed", error); }
+      try {
+        listener(event);
+      } catch (error) {
+        console.error("Host event listener failed", error);
+      }
     }
   };
 
   const attempt = Effect.gen(function* () {
     // Subscribe first so nothing published after the probe is missed.
-    const events = yield* rpc.Host.Events().pipe(Stream.runForEach((event) => Effect.sync(() => emit(event))), Effect.fork);
+    const events = yield* rpc.Host.Events().pipe(
+      Stream.runForEach((event) => Effect.sync(() => emit(event))),
+      Effect.fork,
+    );
     const probe = yield* rpc.Host.Info().pipe(Effect.timeoutFail({ duration: probeTimeout, onTimeout: () => new Error("Timed out") }), Effect.either);
     if (probe._tag === "Left") {
       yield* Fiber.interrupt(events);
@@ -150,7 +169,10 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       const delay = backoff(attempts);
       setStatus({
         state: status.generation === 0 ? "connecting" : "reconnecting",
-        generation: status.generation, attempts, retryAt: Date.now() + delay, error,
+        generation: status.generation,
+        attempts,
+        retryAt: Date.now() + delay,
+        error,
       });
       yield* Effect.sleep(Duration.millis(delay));
     }
@@ -189,7 +211,9 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       browse: (partialPath) => call(rpc.Workspace.Browse({ partialPath })),
       createDirectory: (path) => call(rpc.Workspace.CreateDirectory({ path })),
       createWorktree: (path, options) =>
-        call(rpc.Workspace.CreateWorktree(options.base === undefined ? { path, branch: options.branch } : { path, branch: options.branch, base: options.base })),
+        call(
+          rpc.Workspace.CreateWorktree(options.base === undefined ? { path, branch: options.branch } : { path, branch: options.branch, base: options.base }),
+        ),
       branches: (path) => call(rpc.Workspace.Branches({ path })),
       checkout: (path, branch, options) =>
         call(rpc.Workspace.Checkout(options?.create === undefined ? { path, branch } : { path, branch, create: options.create })),
@@ -204,11 +228,15 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
     onStatus: (listener) => {
       statusListeners.add(listener);
       listener(status);
-      return () => { statusListeners.delete(listener); };
+      return () => {
+        statusListeners.delete(listener);
+      };
     },
     onEvent: (listener) => {
       eventListeners.add(listener);
-      return () => { eventListeners.delete(listener); };
+      return () => {
+        eventListeners.delete(listener);
+      };
     },
     close: async () => {
       await runPromise(Fiber.interrupt(fiber));

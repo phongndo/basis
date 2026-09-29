@@ -31,8 +31,7 @@ const appConfig: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   agent: { cli: cliCommand },
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * The default composition is every bundled and local plugin, enabled with its

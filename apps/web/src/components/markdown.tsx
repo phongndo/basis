@@ -50,7 +50,9 @@ export const installCodeCopy = (): void => {
     const code = button.parentElement?.querySelector("code")?.textContent ?? "";
     void copyText(code).then((ok) => {
       button.textContent = ok ? "Copied" : "Failed";
-      setTimeout(() => { button.textContent = "Copy"; }, 1200);
+      setTimeout(() => {
+        button.textContent = "Copy";
+      }, 1200);
     });
   });
 };

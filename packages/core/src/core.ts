@@ -54,9 +54,7 @@ export interface Core<Capabilities = never> {
    * Work is interrupted and awaited before plugins are disposed. Caller interruption
    * also interrupts this work. No additional Effect runtime is created.
    */
-  readonly run: <A, E, R>(
-    effect: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks | Events>>;
+  readonly run: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks | Events>>;
   readonly inspect: Effect.Effect<CoreSnapshot>;
   /** Ordered live faults; retains 256 entries, dropping oldest without blocking. Sequence gaps reveal loss. */
   readonly faults: Stream.Stream<ReportedFault>;
@@ -80,7 +78,7 @@ export function makeCore<const Plugins extends readonly Plugin[]>(
       return { plugin, ...(config === undefined ? {} : { config }) };
     });
     yield* runtime.apply(members).pipe(
-      Effect.mapError((error) => error._tag === "PlanError" ? error.errors[0] : error),
+      Effect.mapError((error) => (error._tag === "PlanError" ? error.errors[0] : error)),
       // A composition that never activated leaves nothing behind in the caller's scope.
       Effect.onError(() => runtime.shutdown),
     );

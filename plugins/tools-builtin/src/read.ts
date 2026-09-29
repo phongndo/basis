@@ -66,11 +66,17 @@ export const readTool: Tool<ReadInput> = {
     if (mimeType !== undefined) {
       const { size } = await stat(absolute);
       if (size > MAX_IMAGE_BYTES) {
-        return text(`Read image file [${mimeType}]\nImage is ${formatSize(size)}, over the ${formatSize(MAX_IMAGE_BYTES)} limit for attachments; it was not attached.`, { path: absolute });
+        return text(
+          `Read image file [${mimeType}]\nImage is ${formatSize(size)}, over the ${formatSize(MAX_IMAGE_BYTES)} limit for attachments; it was not attached.`,
+          { path: absolute },
+        );
       }
       const data = (await readFile(absolute)).toString("base64");
       return new ToolResult({
-        content: [{ type: "text", text: `Read image file [${mimeType}]` }, { type: "image", data, mimeType }],
+        content: [
+          { type: "text", text: `Read image file [${mimeType}]` },
+          { type: "image", data, mimeType },
+        ],
         details: { path: absolute } satisfies ReadDetails,
       });
     }

@@ -30,23 +30,41 @@ const methodLabel = (method: Method) => (method.type === "oauth" ? method.name :
 export function ProvidersDialog() {
   const [query, setQuery] = createSignal("");
   // Every known model, usable or not, as `basis models --all` lists them.
-  onMount(() => { if (allModels() === undefined) void loadAllModels(); });
+  onMount(() => {
+    if (allModels() === undefined) void loadAllModels();
+  });
   const matching = createMemo(() => {
     const q = query().trim().toLowerCase();
     return state.providers.filter((provider) => q === "" || provider.name.toLowerCase().includes(q) || provider.id.includes(q));
   });
-  const sections = createMemo(() => [
-    { title: "Connected", providers: matching().filter((p) => p.configured).sort(byName) },
-    { title: "Subscriptions", providers: matching().filter((p) => !p.configured && hasOAuth(p)).sort(byName) },
-    { title: "API keys", providers: matching().filter((p) => !p.configured && !hasOAuth(p)).sort(byName) },
-  ].filter((section) => section.providers.length > 0));
+  const sections = createMemo(() =>
+    [
+      {
+        title: "Connected",
+        providers: matching()
+          .filter((p) => p.configured)
+          .sort(byName),
+      },
+      {
+        title: "Subscriptions",
+        providers: matching()
+          .filter((p) => !p.configured && hasOAuth(p))
+          .sort(byName),
+      },
+      {
+        title: "API keys",
+        providers: matching()
+          .filter((p) => !p.configured && !hasOAuth(p))
+          .sort(byName),
+      },
+    ].filter((section) => section.providers.length > 0),
+  );
 
   return (
     <Dialog title={state.welcome ? "Welcome to basis" : "Providers"} onClose={() => openDialog(undefined)} class="providers-dialog">
       <Show when={state.welcome}>
         <p class="welcome">
-          Connect a model provider to start. Sign in with a subscription you already have, or add an API key.
-          Credentials stay on the machine running the host.
+          Connect a model provider to start. Sign in with a subscription you already have, or add an API key. Credentials stay on the machine running the host.
         </p>
       </Show>
       <label class="dialog-search">
@@ -62,7 +80,11 @@ export function ProvidersDialog() {
         />
       </label>
       <div class="provider-scroll">
-        <Show when={!state.providersLoaded}><p class="provider-empty"><Spinner /> Loading providers…</p></Show>
+        <Show when={!state.providersLoaded}>
+          <p class="provider-empty">
+            <Spinner /> Loading providers…
+          </p>
+        </Show>
         <Show when={state.providersLoaded && state.providers.length === 0}>
           <p class="provider-empty">No provider plugins are loaded. Check Plugins in the settings menu.</p>
         </Show>
@@ -72,7 +94,10 @@ export function ProvidersDialog() {
         <For each={sections()}>
           {(section) => (
             <section class="provider-section">
-              <h3 class="provider-section-title">{section.title}<span class="provider-count">{section.providers.length}</span></h3>
+              <h3 class="provider-section-title">
+                {section.title}
+                <span class="provider-count">{section.providers.length}</span>
+              </h3>
               <ul class="provider-list">
                 <For each={section.providers}>{(provider) => <ProviderRow provider={provider} />}</For>
               </ul>
@@ -94,7 +119,9 @@ function ProviderRow(props: { provider: ProviderInfo }) {
     <li class="provider" classList={{ configured: props.provider.configured }}>
       <span class="provider-mark" aria-hidden="true">
         {props.provider.name.slice(0, 1).toUpperCase()}
-        <Show when={props.provider.configured}><span class="provider-dot" /></Show>
+        <Show when={props.provider.configured}>
+          <span class="provider-dot" />
+        </Show>
       </span>
       <span class="provider-info">
         <span class="provider-name">{props.provider.name}</span>
@@ -114,8 +141,17 @@ function ProviderRow(props: { provider: ProviderInfo }) {
           <Show
             when={methods().length > 1}
             fallback={
-              <button class="button small provider-connect" disabled={locked()} onClick={() => { const method = methods()[0]; if (method) void login(props.provider, method.type); }}>
-                <Show when={busy()} fallback="Connect"><Spinner /></Show>
+              <button
+                class="button small provider-connect"
+                disabled={locked()}
+                onClick={() => {
+                  const method = methods()[0];
+                  if (method) void login(props.provider, method.type);
+                }}
+              >
+                <Show when={busy()} fallback="Connect">
+                  <Spinner />
+                </Show>
               </button>
             }
           >
@@ -125,12 +161,31 @@ function ProviderRow(props: { provider: ProviderInfo }) {
               disabled={locked()}
               triggerClass="button small provider-connect"
               placement="bottom-end"
-              trigger={<Show when={busy()} fallback={<>Connect<ChevronDownIcon /></>}><Spinner /></Show>}
+              trigger={
+                <Show
+                  when={busy()}
+                  fallback={
+                    <>
+                      Connect
+                      <ChevronDownIcon />
+                    </>
+                  }
+                >
+                  <Spinner />
+                </Show>
+              }
             >
               {(close) => (
                 <For each={methods()}>
                   {(method) => (
-                    <button class="menu-item" role="menuitem" onClick={() => { close(); void login(props.provider, method.type); }}>
+                    <button
+                      class="menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        close();
+                        void login(props.provider, method.type);
+                      }}
+                    >
                       <span class="menu-label">{methodLabel(method)}</span>
                     </button>
                   )}
@@ -140,7 +195,9 @@ function ProviderRow(props: { provider: ProviderInfo }) {
           </Show>
         }
       >
-        <Show when={busy()}><Spinner /></Show>
+        <Show when={busy()}>
+          <Spinner />
+        </Show>
         <Popover
           label={`${props.provider.name} options`}
           tip="Options"
@@ -153,14 +210,28 @@ function ProviderRow(props: { provider: ProviderInfo }) {
             <>
               <For each={methods()}>
                 {(method) => (
-                  <button class="menu-item" role="menuitem" onClick={() => { close(); void login(props.provider, method.type); }}>
+                  <button
+                    class="menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      void login(props.provider, method.type);
+                    }}
+                  >
                     <span class="menu-label">{method.type === "oauth" ? "Sign in again" : "Replace API key"}</span>
                   </button>
                 )}
               </For>
               <Show when={!fromEnv(props.provider.source)}>
                 <div class="menu-sep" />
-                <button class="menu-item menu-danger" role="menuitem" onClick={() => { close(); void logout(props.provider); }}>
+                <button
+                  class="menu-item menu-danger"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    void logout(props.provider);
+                  }}
+                >
                   <span class="menu-label">Log out</span>
                 </button>
               </Show>
@@ -174,8 +245,15 @@ function ProviderRow(props: { provider: ProviderInfo }) {
             {(model) => (
               <li>
                 <span class="provider-model-ref">{model.ref}</span>
-                <span class="muted">{Math.round(model.contextWindow / 1000)}k ctx{model.reasoning ? " · thinking" : ""}{model.input.includes("image") ? " · images" : ""}</span>
-                <Show when={model.cost.input > 0 || model.cost.output > 0}><span class="muted">${model.cost.input}/${model.cost.output} per M</span></Show>
+                <span class="muted">
+                  {Math.round(model.contextWindow / 1000)}k ctx{model.reasoning ? " · thinking" : ""}
+                  {model.input.includes("image") ? " · images" : ""}
+                </span>
+                <Show when={model.cost.input > 0 || model.cost.output > 0}>
+                  <span class="muted">
+                    ${model.cost.input}/${model.cost.output} per M
+                  </span>
+                </Show>
               </li>
             )}
           </For>

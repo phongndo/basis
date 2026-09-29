@@ -76,21 +76,24 @@ export class WorkspaceError extends Data.TaggedError("WorkspaceError")<{
  * change the repository (no index refresh, no fetch); `checkout` is the only
  * write and does what `git switch` would, refusing rather than discarding work.
  */
-export class Workspace extends Context.Tag("basis/Workspace")<Workspace, {
-  readonly status: (path: string) => Effect.Effect<WorkspaceStatus>;
-  /** Never fails: an unreadable or missing parent lists nothing. */
-  readonly browse: (partialPath: string) => Effect.Effect<DirectoryListing>;
-  /** Create the directory (and missing parents) unless something already exists there. */
-  readonly createDirectory: (path: string) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
-  /** Local branches first by recency, then remote-tracking ones without a local counterpart. */
-  readonly branches: (path: string) => Effect.Effect<readonly GitBranch[], WorkspaceError>;
-  /**
-   * Create a linked worktree of the repository at `path` on a new branch
-   * `branch` (made unique with a numeric suffix if taken), started from `base`
-   * (default HEAD). Worktrees live under the host's worktree directory, one
-   * folder per repository. Returns the new worktree's status.
-   */
-  readonly createWorktree: (path: string, options: { readonly branch: string; readonly base?: string }) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
-  /** Switch to `branch`, creating it from HEAD when `create` is set. Returns the new status. */
-  readonly checkout: (path: string, branch: string, options?: { readonly create?: boolean }) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
-}>() {}
+export class Workspace extends Context.Tag("basis/Workspace")<
+  Workspace,
+  {
+    readonly status: (path: string) => Effect.Effect<WorkspaceStatus>;
+    /** Never fails: an unreadable or missing parent lists nothing. */
+    readonly browse: (partialPath: string) => Effect.Effect<DirectoryListing>;
+    /** Create the directory (and missing parents) unless something already exists there. */
+    readonly createDirectory: (path: string) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
+    /** Local branches first by recency, then remote-tracking ones without a local counterpart. */
+    readonly branches: (path: string) => Effect.Effect<readonly GitBranch[], WorkspaceError>;
+    /**
+     * Create a linked worktree of the repository at `path` on a new branch
+     * `branch` (made unique with a numeric suffix if taken), started from `base`
+     * (default HEAD). Worktrees live under the host's worktree directory, one
+     * folder per repository. Returns the new worktree's status.
+     */
+    readonly createWorktree: (path: string, options: { readonly branch: string; readonly base?: string }) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
+    /** Switch to `branch`, creating it from HEAD when `create` is set. Returns the new status. */
+    readonly checkout: (path: string, branch: string, options?: { readonly create?: boolean }) => Effect.Effect<WorkspaceStatus, WorkspaceError>;
+  }
+>() {}

@@ -33,9 +33,7 @@ export interface ObserveOptions {
 }
 
 /** An observer failure becomes a `PluginFault` (phase "observe") for its owner and affects nothing else. */
-export type Observer<Payload, Requirements = never> = (
-  payload: Payload,
-) => Effect.Effect<void, unknown, Requirements>;
+export type Observer<Payload, Requirements = never> = (payload: Payload) => Effect.Effect<void, unknown, Requirements>;
 
 export class Events extends Context.Tag("@basis/core/Events")<
   Events,

@@ -17,28 +17,35 @@ interface Running {
  */
 export const makeLogins = (llm: Context.Tag.Service<Llm>, scope: Scope.Scope) => {
   const running = new Map<string, Running>();
-  return (provider: string, type: AuthType): Effect.Effect<void, HostError | LlmError> => Effect.gen(function* () {
-    // Admission and fork cannot be split by the caller's interruption, or the provider would stay busy forever.
-    const fiber = yield* Effect.uninterruptible(Effect.gen(function* () {
-      const current = running.get(provider);
-      if (current !== undefined) {
-        if (current.type !== type) {
-          return yield* new HostError({ code: "Busy", message: `A ${current.type} login to "${provider}" is in progress`, subject: provider });
-        }
-        return current.fiber;
-      }
-      const entry: Running = { type, fiber: yield* Deferred.make<Fiber.RuntimeFiber<void, LlmError>>() };
-      running.set(provider, entry);
-      const forked = yield* Effect.forkIn(
-        Effect.interruptible(llm.login(provider, type)).pipe(
-          Effect.ensuring(Effect.sync(() => { if (running.get(provider) === entry) running.delete(provider); })),
-        ),
-        scope,
+  return (provider: string, type: AuthType): Effect.Effect<void, HostError | LlmError> =>
+    Effect.gen(function* () {
+      // Admission and fork cannot be split by the caller's interruption, or the provider would stay busy forever.
+      const fiber = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const current = running.get(provider);
+          if (current !== undefined) {
+            if (current.type !== type) {
+              return yield* new HostError({ code: "Busy", message: `A ${current.type} login to "${provider}" is in progress`, subject: provider });
+            }
+            return current.fiber;
+          }
+          const entry: Running = { type, fiber: yield* Deferred.make<Fiber.RuntimeFiber<void, LlmError>>() };
+          running.set(provider, entry);
+          const forked = yield* Effect.forkIn(
+            Effect.interruptible(llm.login(provider, type)).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (running.get(provider) === entry) running.delete(provider);
+                }),
+              ),
+            ),
+            scope,
+          );
+          yield* Deferred.succeed(entry.fiber, forked);
+          return entry.fiber;
+        }),
       );
-      yield* Deferred.succeed(entry.fiber, forked);
-      return entry.fiber;
-    }));
-    // Awaiting, not joining: a caller that goes away leaves the login running.
-    return yield* Effect.flatten(Fiber.await(yield* Deferred.await(fiber)));
-  });
+      // Awaiting, not joining: a caller that goes away leaves the login running.
+      return yield* Effect.flatten(Fiber.await(yield* Deferred.await(fiber)));
+    });
 };

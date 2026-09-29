@@ -26,26 +26,35 @@ export function hostPlugin(options: HostPluginOptions): Plugin<readonly [typeof 
     id: HOST_PLUGIN_ID,
     config: PathsSchema,
     provides: [Paths, HostControl],
-    layer: (paths) => Layer.merge(
-      Layer.succeed(Paths, paths),
-      Layer.effect(HostControl, Effect.gen(function* () {
-        const events = yield* Events;
-        const owner = yield* PluginContext;
-        const changed = Effect.flatMap(options.control.plugins, (plugins) => events.publish(PluginsChanged, { plugins }));
-        if (options.faults) {
-          yield* owner.background("faults", Stream.runForEach(options.faults, (fault) =>
-            events.publish(Notice, { level: "error", source: fault.pluginId, message: `${fault.message}: ${Cause.pretty(fault.cause)}` })
-              .pipe(Effect.zipRight(changed))));
-        }
-        return {
-          plugins: options.control.plugins,
-          composition: options.control.composition,
-          // A restart can leave dependents failed even when it errors, so publish either way.
-          restart: (pluginId) => options.control.restart(pluginId).pipe(Effect.ensuring(changed)),
-          // A failed reload leaves the composition untouched; a report may still carry dispose faults.
-          reload: options.control.reload.pipe(Effect.tap(() => changed)),
-        };
-      })),
-    ),
+    layer: (paths) =>
+      Layer.merge(
+        Layer.succeed(Paths, paths),
+        Layer.effect(
+          HostControl,
+          Effect.gen(function* () {
+            const events = yield* Events;
+            const owner = yield* PluginContext;
+            const changed = Effect.flatMap(options.control.plugins, (plugins) => events.publish(PluginsChanged, { plugins }));
+            if (options.faults) {
+              yield* owner.background(
+                "faults",
+                Stream.runForEach(options.faults, (fault) =>
+                  events
+                    .publish(Notice, { level: "error", source: fault.pluginId, message: `${fault.message}: ${Cause.pretty(fault.cause)}` })
+                    .pipe(Effect.zipRight(changed)),
+                ),
+              );
+            }
+            return {
+              plugins: options.control.plugins,
+              composition: options.control.composition,
+              // A restart can leave dependents failed even when it errors, so publish either way.
+              restart: (pluginId) => options.control.restart(pluginId).pipe(Effect.ensuring(changed)),
+              // A failed reload leaves the composition untouched; a report may still carry dispose faults.
+              reload: options.control.reload.pipe(Effect.tap(() => changed)),
+            };
+          }),
+        ),
+      ),
   });
 }

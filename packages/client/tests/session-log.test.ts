@@ -3,7 +3,11 @@ import type { SessionEvent } from "@basis/contracts";
 import { SessionLog, mergeEvents, rpcUrl, splitContiguous } from "../src/index.ts";
 
 const ev = (seq: number): SessionEvent => ({
-  seq, id: `e${seq}`, parent: seq === 1 ? null : `e${seq - 1}`, at: seq, data: { type: "title", title: `t${seq}` },
+  seq,
+  id: `e${seq}`,
+  parent: seq === 1 ? null : `e${seq - 1}`,
+  at: seq,
+  data: { type: "title", title: `t${seq}` },
 });
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ev(from + i));
 const seqs = (events: readonly SessionEvent[]) => events.map((event) => event.seq);
@@ -17,13 +21,22 @@ const server = (file: SessionEvent[]) => {
     calls.push(after);
     // Snapshot at call time, like a server reading the file when the request arrives.
     const result = file.filter((event) => event.seq > (after ?? 0));
-    if (holding) await new Promise<void>((resolve) => { hold = resolve; });
+    if (holding)
+      await new Promise<void>((resolve) => {
+        hold = resolve;
+      });
     return result;
   };
   return {
-    calls, fetch,
-    hold: () => { holding = true; },
-    release: () => { holding = false; hold?.(); },
+    calls,
+    fetch,
+    hold: () => {
+      holding = true;
+    },
+    release: () => {
+      holding = false;
+      hold?.();
+    },
   };
 };
 
@@ -175,7 +188,10 @@ describe("SessionLog", () => {
     let fail = true;
     const log = new SessionLog({
       sessionId: "s",
-      fetch: async (after) => { if (fail) throw new Error("offline"); return range(1, 2).filter((e) => e.seq > (after ?? 0)); },
+      fetch: async (after) => {
+        if (fail) throw new Error("offline");
+        return range(1, 2).filter((e) => e.seq > (after ?? 0));
+      },
     });
     const snapshots: string[] = [];
     log.subscribe((snapshot) => snapshots.push(`${snapshot.loaded}:${snapshot.error ?? ""}`));

@@ -10,7 +10,6 @@ there is no security sandbox. The package exports ESM JavaScript and TypeScript
 declarations and targets Node.js 24 and browsers. `package:check` verifies a packed
 consumer on Node.js.
 
-
 ## Use
 
 ```ts
@@ -25,10 +24,14 @@ const greeting = definePlugin({
   layer: Layer.succeed(Greeting, "Hello"),
 });
 
-await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-  const core = yield* makeCore([greeting]);
-  console.log(yield* core.run(Greeting));
-})));
+await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const core = yield* makeCore([greeting]);
+      console.log(yield* core.run(Greeting));
+    }),
+  ),
+);
 ```
 
 See [`examples/hello.ts`](examples/hello.ts) for a capability implementation extended by a separate plugin through its own hook. From the repository root:
@@ -85,18 +88,15 @@ const Render = Hook.make<string, string>("example/render");
 Contributors obtain `PluginContext` and register around middleware:
 
 ```ts
-const owner = yield* PluginContext;
-yield* owner.on(Render, (input, next) =>
-  Effect.map(next(input), (output) => output.toUpperCase()),
-  { order: 10 },
-);
+const owner = yield * PluginContext;
+yield * owner.on(Render, (input, next) => Effect.map(next(input), (output) => output.toUpperCase()), { order: 10 });
 ```
 
 The owning operation obtains `Hooks` and supplies its terminal behavior:
 
 ```ts
-const hooks = yield* Hooks;
-const result = yield* hooks.invoke(Render, "hello", Effect.succeed);
+const hooks = yield * Hooks;
+const result = yield * hooks.invoke(Render, "hello", Effect.succeed);
 ```
 
 These snippets assume the exports are imported from `@basis/core`; the complete runnable example shows the wiring.

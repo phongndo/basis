@@ -16,39 +16,49 @@ const args = new Set(process.argv.slice(2));
 const paths = resolvePaths({ env: process.env, cwd: process.env.INIT_CWD ?? process.cwd() });
 const userPluginsDir = join(paths.home, "plugins");
 
-const log = (message: string) => Effect.sync(() => { console.log(`basis: ${message}`); });
-const printDiagnostics = (diagnostics: readonly Diagnostic[]) => Effect.sync(() => {
-  for (const diagnostic of diagnostics) {
-    const where = diagnostic.pluginId === undefined ? "" : ` [${diagnostic.pluginId}]`;
-    console.error(`basis: ${diagnostic.severity}${where}: ${diagnostic.message}${diagnostic.suggestion === undefined ? "" : `\n  ${diagnostic.suggestion}`}`);
-  }
-});
+const log = (message: string) =>
+  Effect.sync(() => {
+    console.log(`basis: ${message}`);
+  });
+const printDiagnostics = (diagnostics: readonly Diagnostic[]) =>
+  Effect.sync(() => {
+    for (const diagnostic of diagnostics) {
+      const where = diagnostic.pluginId === undefined ? "" : ` [${diagnostic.pluginId}]`;
+      console.error(`basis: ${diagnostic.severity}${where}: ${diagnostic.message}${diagnostic.suggestion === undefined ? "" : `\n  ${diagnostic.suggestion}`}`);
+    }
+  });
 
 /** Definitions by id, rebuilt on every load. Local plugins shadow bundled ones with the same id. */
 let definitions = new Map<string, Plugin>();
 const source: PluginSource = {
   resolve: (id) => {
     const plugin = definitions.get(id);
-    return plugin ? Effect.succeed(plugin) : Effect.fail(new Diagnostic({
-      severity: "error", pluginId: id,
-      message: `No plugin "${id}"`,
-      suggestion: `Known plugins: ${[...definitions.keys()].join(", ")}. Local plugins go in ${userPluginsDir} or, in a trusted project, ${projectPluginsDir(paths)}.`,
-    }));
+    return plugin
+      ? Effect.succeed(plugin)
+      : Effect.fail(
+          new Diagnostic({
+            severity: "error",
+            pluginId: id,
+            message: `No plugin "${id}"`,
+            suggestion: `Known plugins: ${[...definitions.keys()].join(", ")}. Local plugins go in ${userPluginsDir} or, in a trusted project, ${projectPluginsDir(paths)}.`,
+          }),
+        );
   },
 };
 
 /** Read config files and local plugins into the next composition. Warnings print here; errors fail. */
-const load = (host: Plugin) => Effect.gen(function* () {
-  const loaded = yield* loadComposition(paths);
-  // Project plugins run only in a project the user config trusts; see `loadComposition`.
-  const local = yield* loadLocalPlugins(loaded.trusted ? [userPluginsDir, projectPluginsDir(paths)] : [userPluginsDir]);
-  const diagnostics = [...local.diagnostics, ...loaded.diagnostics];
-  yield* printDiagnostics(diagnostics.filter((diagnostic) => diagnostic.severity === "warning"));
-  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  if (errors.length) return yield* new ReloadError({ diagnostics: errors });
-  definitions = new Map([...bundled(host), ...local.plugins].map((plugin) => [plugin.id, plugin]));
-  return withDefaults([...definitions.keys()], loaded.composition);
-});
+const load = (host: Plugin) =>
+  Effect.gen(function* () {
+    const loaded = yield* loadComposition(paths);
+    // Project plugins run only in a project the user config trusts; see `loadComposition`.
+    const local = yield* loadLocalPlugins(loaded.trusted ? [userPluginsDir, projectPluginsDir(paths)] : [userPluginsDir]);
+    const diagnostics = [...local.diagnostics, ...loaded.diagnostics];
+    yield* printDiagnostics(diagnostics.filter((diagnostic) => diagnostic.severity === "warning"));
+    const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    if (errors.length) return yield* new ReloadError({ diagnostics: errors });
+    definitions = new Map([...bundled(host), ...local.plugins].map((plugin) => [plugin.id, plugin]));
+    return withDefaults([...definitions.keys()], loaded.composition);
+  });
 
 const describe = (report: ReloadReport): string => {
   const parts = [
@@ -65,13 +75,19 @@ const untilSignal = Effect.async<void>((resume) => {
   const done = () => resume(Effect.void);
   process.once("SIGINT", done);
   process.once("SIGTERM", done);
-  return Effect.sync(() => { process.off("SIGINT", done); process.off("SIGTERM", done); });
+  return Effect.sync(() => {
+    process.off("SIGINT", done);
+    process.off("SIGTERM", done);
+  });
 });
 
-const openBrowser = (url: string) => Effect.sync(() => {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-  spawn(command, [url], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
-});
+const openBrowser = (url: string) =>
+  Effect.sync(() => {
+    const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    spawn(command, [url], { detached: true, stdio: "ignore" })
+      .on("error", () => {})
+      .unref();
+  });
 
 const program = Effect.gen(function* () {
   // The host plugin activates inside makeLoader, so its handle binds to the loader once it exists.
@@ -81,11 +97,13 @@ const program = Effect.gen(function* () {
   let host: Plugin;
   const handle: HostControlService = {
     plugins: withLoader((loader) => Effect.map(loader.core.inspect, (snapshot) => snapshot.plugins)),
-    composition: withLoader((loader) => Effect.gen(function* () {
-      const composition = yield* loader.composition;
-      const { plugins } = yield* loader.core.inspect;
-      return compositionInfo(composition, plugins);
-    })),
+    composition: withLoader((loader) =>
+      Effect.gen(function* () {
+        const composition = yield* loader.composition;
+        const { plugins } = yield* loader.core.inspect;
+        return compositionInfo(composition, plugins);
+      }),
+    ),
     restart: (pluginId) => withLoader((loader) => loader.core.restart(pluginId)),
     // One reload at a time, reading and applying together: the watcher and `Host.Reload` can race, and a
     // reload that read the files earlier must not apply after one that read them later.
@@ -102,16 +120,24 @@ const program = Effect.gen(function* () {
   yield* log(`running ${plugins.map((plugin) => plugin.id).join(", ")}`);
   yield* log(`home ${paths.home}, project ${paths.cwd}`);
 
-  yield* Effect.forkScoped(Stream.runForEach(loader.core.faults, (fault) => Effect.sync(() => {
-    console.error(`basis: ${fault.message}\n${Cause.pretty(fault.cause)}`);
-  })));
-  yield* Effect.forkScoped(Stream.runForEach(watchConfig(paths), (file) => log(`${file} changed; reloading`).pipe(
-    Effect.zipRight(control.reload),
-    Effect.matchEffect({
-      onFailure: (error) => printDiagnostics(error.diagnostics).pipe(Effect.zipRight(log("reload rejected; the running composition is unchanged"))),
-      onSuccess: (report) => log(`reloaded: ${describe(report)}`),
-    }),
-  )));
+  yield* Effect.forkScoped(
+    Stream.runForEach(loader.core.faults, (fault) =>
+      Effect.sync(() => {
+        console.error(`basis: ${fault.message}\n${Cause.pretty(fault.cause)}`);
+      }),
+    ),
+  );
+  yield* Effect.forkScoped(
+    Stream.runForEach(watchConfig(paths), (file) =>
+      log(`${file} changed; reloading`).pipe(
+        Effect.zipRight(control.reload),
+        Effect.matchEffect({
+          onFailure: (error) => printDiagnostics(error.diagnostics).pipe(Effect.zipRight(log("reload rejected; the running composition is unchanged"))),
+          onSuccess: (report) => log(`reloaded: ${describe(report)}`),
+        }),
+      ),
+    ),
+  );
 
   const discovery = yield* readDiscovery(paths.home);
   if (discovery !== undefined) {

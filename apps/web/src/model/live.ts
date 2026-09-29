@@ -50,16 +50,19 @@ const applyToDraft = (draft: StepDraft, event: StreamEvent): StepDraft => {
       return { ...draft, blocks: setBlock(draft.blocks, event.index, { kind: "tool", id: event.id, name: event.name, args: "" }) };
     case "toolcall-delta": {
       const existing = draft.blocks[event.index];
-      const block: DraftBlock = existing?.kind === "tool"
-        ? { ...existing, args: existing.args + event.delta }
-        : { kind: "tool", id: "", name: "", args: event.delta };
+      const block: DraftBlock =
+        existing?.kind === "tool" ? { ...existing, args: existing.args + event.delta } : { kind: "tool", id: "", name: "", args: event.delta };
       return { ...draft, blocks: setBlock(draft.blocks, event.index, block) };
     }
     case "toolcall-end":
       return {
         ...draft,
         blocks: setBlock(draft.blocks, event.index, {
-          kind: "tool", id: event.toolCall.id, name: event.toolCall.name, args: JSON.stringify(event.toolCall.arguments), call: event.toolCall,
+          kind: "tool",
+          id: event.toolCall.id,
+          name: event.toolCall.name,
+          args: JSON.stringify(event.toolCall.arguments),
+          call: event.toolCall,
         }),
       };
     case "done":
@@ -117,7 +120,7 @@ export const parseDraftArgs = (block: Extract<DraftBlock, { kind: "tool" }>): Re
   if (block.call !== undefined) return block.call.arguments;
   try {
     const value: unknown = JSON.parse(block.args);
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
   }

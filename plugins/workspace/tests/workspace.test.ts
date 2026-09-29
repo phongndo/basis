@@ -15,8 +15,12 @@ beforeAll(() => {
 });
 
 let dir: string;
-beforeEach(async () => { dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-workspace-"))); });
-afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => {
+  dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "basis-workspace-")));
+});
+afterEach(async () => {
+  await fs.rm(dir, { recursive: true, force: true });
+});
 
 const sh = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
@@ -38,7 +42,9 @@ const commit = async (root: string, file: string, content: string, message: stri
   sh(root, "add", file);
   const date = `@${clock++} +0000`;
   execFileSync("git", ["commit", "-q", "-m", message], {
-    cwd: root, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }, stdio: "ignore",
+    cwd: root,
+    env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    stdio: "ignore",
   });
 };
 
@@ -70,7 +76,9 @@ describe("status", () => {
     const root = await repo("empty", { empty: true });
     await fs.writeFile(path.join(root, "new.txt"), "x");
     expect(await run(ws.status(root))).toEqual({
-      path: root, exists: true, git: { root, branch: "main", changes: 1, ahead: 0, behind: 0 },
+      path: root,
+      exists: true,
+      git: { root, branch: "main", changes: 1, ahead: 0, behind: 0 },
     });
   });
 
@@ -145,7 +153,10 @@ describe("branches", () => {
     const root = await withRemote();
     const listed = await run(ws.branches(root));
     expect(listed.map((branch) => [branch.name, branch.current, branch.remote])).toEqual([
-      ["new", false, false], ["old", false, false], ["main", true, false], ["origin/remote-only", false, true],
+      ["new", false, false],
+      ["old", false, false],
+      ["main", true, false],
+      ["origin/remote-only", false, true],
     ]);
     expect(listed[0]!.updatedAt).toBeGreaterThan(listed[1]!.updatedAt);
     expect(listed[0]!.updatedAt % 1000).toBe(0);
@@ -200,15 +211,19 @@ describe("checkout", () => {
 
 describe("plugin", () => {
   it("provides Workspace", async () => {
-    const state = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-      const paths = definePlugin({
-        id: "paths",
-        provides: [Paths],
-        layer: Layer.succeed(Paths, { home: dir, userConfig: "", projectConfig: "", auth: "", sessions: "", cwd: dir }),
-      });
-      const core = yield* makeCore([paths, workspace]);
-      return yield* core.run(Effect.flatMap(Workspace, (service) => service.status(dir)));
-    })));
+    const state = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const paths = definePlugin({
+            id: "paths",
+            provides: [Paths],
+            layer: Layer.succeed(Paths, { home: dir, userConfig: "", projectConfig: "", auth: "", sessions: "", cwd: dir }),
+          });
+          const core = yield* makeCore([paths, workspace]);
+          return yield* core.run(Effect.flatMap(Workspace, (service) => service.status(dir)));
+        }),
+      ),
+    );
     expect(state).toEqual({ path: dir, exists: true });
   });
 });

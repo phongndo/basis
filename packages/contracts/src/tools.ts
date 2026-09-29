@@ -74,20 +74,23 @@ export interface ToolContribution {
   readonly source: string;
 }
 
-export class Tools extends Context.Tag("basis/Tools")<Tools, {
-  /**
-   * Call during activation: the registering plugin's `PluginContext` supplies
-   * the provenance id. Removed when that plugin's scope closes. A duplicate
-   * name fails with `InvalidInput`.
-   */
-  readonly register: <I>(tool: Tool<I>) => Effect.Effect<void, ToolError, Scope.Scope | PluginContext>;
-  readonly guard: (name: string, guard: Guard) => Effect.Effect<void, never, Scope.Scope | PluginContext>;
-  readonly list: Effect.Effect<readonly ToolContribution[]>;
-  /**
-   * Validates input, runs `ToolExecuteHook`, guards, then the tool. Tool
-   * failures and denials become `isError` results; only unknown tools
-   * (`NotFound`), an aborted `signal` (`Cancelled`, which interrupts the tool
-   * and publishes no `ToolExecuted`), and interruption escape as failures.
-   */
-  readonly execute: (invocation: ToolInvocation, signal: AbortSignal) => Effect.Effect<ToolResult, ToolError>;
-}>() {}
+export class Tools extends Context.Tag("basis/Tools")<
+  Tools,
+  {
+    /**
+     * Call during activation: the registering plugin's `PluginContext` supplies
+     * the provenance id. Removed when that plugin's scope closes. A duplicate
+     * name fails with `InvalidInput`.
+     */
+    readonly register: <I>(tool: Tool<I>) => Effect.Effect<void, ToolError, Scope.Scope | PluginContext>;
+    readonly guard: (name: string, guard: Guard) => Effect.Effect<void, never, Scope.Scope | PluginContext>;
+    readonly list: Effect.Effect<readonly ToolContribution[]>;
+    /**
+     * Validates input, runs `ToolExecuteHook`, guards, then the tool. Tool
+     * failures and denials become `isError` results; only unknown tools
+     * (`NotFound`), an aborted `signal` (`Cancelled`, which interrupts the tool
+     * and publishes no `ToolExecuted`), and interruption escape as failures.
+     */
+    readonly execute: (invocation: ToolInvocation, signal: AbortSignal) => Effect.Effect<ToolResult, ToolError>;
+  }
+>() {}

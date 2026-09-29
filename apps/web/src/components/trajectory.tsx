@@ -1,10 +1,21 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import {
-  RECORD_KIND_LABEL, contentText, ledger, ledgerSpans, parseLedgerFilter, promptDiff, rebuildRequest, recordDuration, recordFailed, recordName, recordRequest,
-  recordStart, recordStatus, sortRecords,
+  RECORD_KIND_LABEL,
+  contentText,
+  ledger,
+  ledgerSpans,
+  parseLedgerFilter,
+  promptDiff,
+  rebuildRequest,
+  recordDuration,
+  recordFailed,
+  recordName,
+  recordRequest,
+  recordStatus,
+  sortRecords,
 } from "@basis/contracts";
-import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest, UserRecord } from "@basis/contracts";
+import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest } from "@basis/contracts";
 import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
 import { activeBranch, checkoutSession, isBusy, reportError, state, trajectory } from "../store.ts";
 import { CopyIcon, XIcon } from "./icons.tsx";
@@ -52,16 +63,23 @@ const clock = (ms: number) => {
   const two = (n: number) => String(n).padStart(2, "0");
   return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 };
-const firstLine = (text: string) => text.trim().split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+const firstLine = (text: string) =>
+  text
+    .trim()
+    .split("\n")
+    .find((line) => line.trim() !== "")
+    ?.trim() ?? "";
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 const inputTokens = (usage: { input: number; cacheRead: number; cacheWrite: number }) => usage.input + usage.cacheRead + usage.cacheWrite;
-const thinkingOf = (record: AssistantRecord) =>
-  record.message.content.flatMap((part) => (part.type === "thinking" ? [part.thinking] : [])).join("\n\n");
+const thinkingOf = (record: AssistantRecord) => record.message.content.flatMap((part) => (part.type === "thinking" ? [part.thinking] : [])).join("\n\n");
 const callsOf = (record: AssistantRecord) => record.message.content.flatMap((part) => (part.type === "toolCall" ? [part.name] : []));
 
-
 const copy = async (text: string) => {
-  try { await navigator.clipboard.writeText(text); } catch (error) { reportError(error, "Could not copy"); }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    reportError(error, "Could not copy");
+  }
 };
 
 /** Current time while a turn runs, so running bars grow. */
@@ -101,11 +119,13 @@ function timeScale(all: readonly LedgerSpan[], now: number) {
     byTurn.set(key, current === undefined ? { from: span.start, to: end } : { from: Math.min(current.from, span.start), to: Math.max(current.to, end) });
   }
   let active = 0;
-  const segments = [...byTurn.values()].sort((a, b) => a.from - b.from).map((segment, index) => {
-    const out = { ...segment, before: active, index };
-    active += Math.max(1, segment.to - segment.from);
-    return out;
-  });
+  const segments = [...byTurn.values()]
+    .sort((a, b) => a.from - b.from)
+    .map((segment, index) => {
+      const out = { ...segment, before: active, index };
+      active += Math.max(1, segment.to - segment.from);
+      return out;
+    });
   const total = Math.max(1, active);
   const usable = 1 - GAP * Math.max(0, segments.length - 1);
   const fraction = (at: number) => {
@@ -153,30 +173,61 @@ const wheelZoom = (event: WheelEvent, box: DOMRect) => {
 // ------------------------------------------------------------------ toolbar
 
 const TYPES: readonly { id: TypeFilter; label: string }[] = [
-  { id: "all", label: "All" }, { id: "user", label: "User" }, { id: "assistant", label: "Model" },
-  { id: "tool", label: "Tool" }, { id: "system", label: "System" }, { id: "error", label: "Errors" },
+  { id: "all", label: "All" },
+  { id: "user", label: "User" },
+  { id: "assistant", label: "Model" },
+  { id: "tool", label: "Tool" },
+  { id: "system", label: "System" },
+  { id: "error", label: "Errors" },
 ];
 
 function Toolbar() {
   return (
     <div class="trj-toolbar" role="toolbar" aria-label="Trajectory toolbar">
       <label class="trj-filter">
-        <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z" /></svg>
-        <input ref={(el) => { filterInput = el; }} type="search" placeholder="Filter  (is:error  tool:bash  turn:2  -text)" aria-label="Filter trajectory"
-          value={query()} onInput={(event) => setQuery(event.currentTarget.value)} spellcheck={false} />
+        <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z" />
+        </svg>
+        <input
+          ref={(el) => {
+            filterInput = el;
+          }}
+          type="search"
+          placeholder="Filter  (is:error  tool:bash  turn:2  -text)"
+          aria-label="Filter trajectory"
+          value={query()}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          spellcheck={false}
+        />
       </label>
       <span class="trj-sep" />
       <For each={TYPES}>
-        {(type) => <button class="trj-chip" aria-pressed={typeFilter() === type.id} onClick={() => setTypeFilter(type.id)}>{type.label}</button>}
+        {(type) => (
+          <button class="trj-chip" aria-pressed={typeFilter() === type.id} onClick={() => setTypeFilter(type.id)}>
+            {type.label}
+          </button>
+        )}
       </For>
       <span class="trj-sep" />
-      <label class="trj-check" data-tip="Group rows under their turn"><input type="checkbox" checked={groupTurns()} onChange={(event) => setGroupTurns(event.currentTarget.checked)} />Group by turn</label>
-      <label class="trj-check" data-tip="Every record gets the same width in the overview and waterfall"><input type="checkbox" checked={equalDurations()} onChange={(event) => setEqualDurations(event.currentTarget.checked)} />Equal widths</label>
+      <label class="trj-check" data-tip="Group rows under their turn">
+        <input type="checkbox" checked={groupTurns()} onChange={(event) => setGroupTurns(event.currentTarget.checked)} />
+        Group by turn
+      </label>
+      <label class="trj-check" data-tip="Every record gets the same width in the overview and waterfall">
+        <input type="checkbox" checked={equalDurations()} onChange={(event) => setEqualDurations(event.currentTarget.checked)} />
+        Equal widths
+      </label>
       <Show when={zoom().start > 0 || zoom().end < 1}>
-        <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole session (or double-click the overview)">Reset zoom</button>
+        <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole session (or double-click the overview)">
+          Reset zoom
+        </button>
       </Show>
       <Show when={range()}>
-        {(r) => <button class="trj-chip trj-accent" onClick={() => setRange(undefined)} data-tip="Clear the selected time range">{formatDuration(r().to - r().from)} range <XIcon /></button>}
+        {(r) => (
+          <button class="trj-chip trj-accent" onClick={() => setRange(undefined)} data-tip="Clear the selected time range">
+            {formatDuration(r().to - r().from)} range <XIcon />
+          </button>
+        )}
       </Show>
     </div>
   );
@@ -192,13 +243,15 @@ function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now
   const [hover, setHover] = createSignal<{ span: LedgerSpan; x: number }>();
   const [drag, setDrag] = createSignal<{ from: number; to: number }>();
   const [pan, setPan] = createSignal<{ x: number; start: number; end: number }>();
-  const observer = new ResizeObserver(([entry]) => { if (entry) setWidth(entry.contentRect.width); });
+  const observer = new ResizeObserver(([entry]) => {
+    if (entry) setWidth(entry.contentRect.width);
+  });
   onCleanup(() => observer.disconnect());
 
   const order = createMemo(() => new Map(props.ledgerSpans.map((span, index) => [span, index])));
   const fractionOf = (span: LedgerSpan, end: boolean) => {
     if (equalDurations()) return (order().get(span)! + (end ? 0.8 : 0)) / Math.max(1, props.ledgerSpans.length);
-    return props.scale.fraction(end ? span.end ?? props.now : span.start);
+    return props.scale.fraction(end ? (span.end ?? props.now) : span.start);
   };
   const x = (f: number) => place(f, width());
   const timeAt = (clientX: number) => {
@@ -222,7 +275,11 @@ function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now
   });
 
   const onPointerDown = (event: PointerEvent) => {
-    if (event.button === 2) { setPan({ x: event.clientX, ...zoom() }); track.setPointerCapture(event.pointerId); return; }
+    if (event.button === 2) {
+      setPan({ x: event.clientX, ...zoom() });
+      track.setPointerCapture(event.pointerId);
+      return;
+    }
     if (event.button !== 0 || equalDurations()) return;
     const start = timeAt(event.clientX);
     setDrag({ from: start, to: start });
@@ -242,23 +299,51 @@ function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now
   const onPointerUp = (event: PointerEvent) => {
     const panning = pan();
     setPan(undefined);
-    if (panning !== undefined) { if (Math.abs(event.clientX - panning.x) < 3) setRange(undefined); return; }
+    if (panning !== undefined) {
+      if (Math.abs(event.clientX - panning.x) < 3) setRange(undefined);
+      return;
+    }
     const current = drag();
     setDrag(undefined);
     if (current === undefined) return;
     const from = Math.min(current.from, current.to);
     const to = Math.max(current.from, current.to);
-    if (Math.abs(x(props.scale.fraction(to)) - x(props.scale.fraction(from))) < 4) setRange(undefined); else setRange({ from, to });
+    if (Math.abs(x(props.scale.fraction(to)) - x(props.scale.fraction(from))) < 4) setRange(undefined);
+    else setRange({ from, to });
   };
-  const shown = () => (equalDurations() ? undefined : drag() ?? range());
+  const shown = () => (equalDurations() ? undefined : (drag() ?? range()));
 
   return (
     <div class="trj-overview" role="region" aria-label="Trajectory overview">
-      <div class="trj-lane-labels" aria-hidden="true"><span>in</span><span>model</span><span>tools</span></div>
-      <div class="trj-track" ref={(el) => { track = el; observer.observe(el); }} data-panning={pan() !== undefined}
-        onWheel={(event) => wheelZoom(event, track.getBoundingClientRect())} onDblClick={() => setZoom({ start: 0, end: 1 })}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(event) => event.preventDefault()}>
-        <For each={ticks()}>{(tick) => <><div class="trj-tick" style={{ left: `${tick.left}px` }} /><span class="trj-tick-label" style={{ left: `${tick.left + 3}px` }}>{tick.label}</span></>}</For>
+      <div class="trj-lane-labels" aria-hidden="true">
+        <span>in</span>
+        <span>model</span>
+        <span>tools</span>
+      </div>
+      <div
+        class="trj-track"
+        ref={(el) => {
+          track = el;
+          observer.observe(el);
+        }}
+        data-panning={pan() !== undefined}
+        onWheel={(event) => wheelZoom(event, track.getBoundingClientRect())}
+        onDblClick={() => setZoom({ start: 0, end: 1 })}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <For each={ticks()}>
+          {(tick) => (
+            <>
+              <div class="trj-tick" style={{ left: `${tick.left}px` }} />
+              <span class="trj-tick-label" style={{ left: `${tick.left + 3}px` }}>
+                {tick.label}
+              </span>
+            </>
+          )}
+        </For>
         <Show when={!equalDurations()}>
           <For each={props.scale.boundaries}>{(f) => <div class="trj-turn-boundary" style={{ left: `${x(f)}px` }} />}</For>
         </Show>
@@ -266,19 +351,42 @@ function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now
           {(span) => {
             const left = () => x(fractionOf(span, false));
             const right = () => x(fractionOf(span, true));
-            const ttft = () => (span.ttft === undefined || span.end === undefined || span.end <= span.start ? undefined : Math.min(100, (span.ttft / (span.end - span.start)) * 100));
-            const current = () => { const s = selection(); return s?.type === "record" && s.id === span.record.id; };
-            const outside = () => { const r = range(); return r !== undefined && ((span.end ?? props.now) < r.from || span.start > r.to); };
+            const ttft = () =>
+              span.ttft === undefined || span.end === undefined || span.end <= span.start
+                ? undefined
+                : Math.min(100, (span.ttft / (span.end - span.start)) * 100);
+            const current = () => {
+              const s = selection();
+              return s?.type === "record" && s.id === span.record.id;
+            };
+            const outside = () => {
+              const r = range();
+              return r !== undefined && ((span.end ?? props.now) < r.from || span.start > r.to);
+            };
             return (
               <div
-                class="trj-span" data-kind={span.record.kind} data-error={span.error} data-current={current()}
-                data-dim={outside() || !props.matches(span.record)} data-running={span.end === undefined}
+                class="trj-span"
+                data-kind={span.record.kind}
+                data-error={span.error}
+                data-current={current()}
+                data-dim={outside() || !props.matches(span.record)}
+                data-running={span.end === undefined}
                 classList={{ "has-ttft": ttft() !== undefined && !equalDurations() }}
-                style={{ left: `${left()}px`, width: `${Math.max(2, right() - left() - 1)}px`, top: `${LANE_TOP + span.lane * 11}px`, "--ttft": `${ttft() ?? 0}%` }}
+                style={{
+                  left: `${left()}px`,
+                  width: `${Math.max(2, right() - left() - 1)}px`,
+                  top: `${LANE_TOP + span.lane * 11}px`,
+                  "--ttft": `${ttft() ?? 0}%`,
+                }}
                 onPointerEnter={(event) => setHover({ span, x: event.clientX - track.getBoundingClientRect().left })}
                 onPointerLeave={() => setHover(undefined)}
-                onPointerDown={(event) => { if (event.button === 0) event.stopPropagation(); }}
-                onClick={() => { select({ type: "record", id: span.record.id }); document.getElementById(`trj-row-${span.record.id}`)?.scrollIntoView({ block: "nearest" }); }}
+                onPointerDown={(event) => {
+                  if (event.button === 0) event.stopPropagation();
+                }}
+                onClick={() => {
+                  select({ type: "record", id: span.record.id });
+                  document.getElementById(`trj-row-${span.record.id}`)?.scrollIntoView({ block: "nearest" });
+                }}
               />
             );
           }}
@@ -293,15 +401,27 @@ function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now
         <Show when={hover()}>
           {(h) => (
             <div class="trj-tip" role="tooltip" style={{ left: `${Math.min(Math.max(h().x, 90), width() - 90)}px` }}>
-              <strong>{h().span.record.kind === "tool" ? (h().span.record as ToolRecord).run.call.name : h().span.record.kind === "assistant" ? `Request #${(h().span.record as AssistantRecord).requestNumber}` : RECORD_KIND_LABEL[h().span.record.kind]}</strong>
-              <span>{clock(h().span.start)} · {h().span.end === undefined ? "running" : formatDuration(h().span.end! - h().span.start)}</span>
+              <strong>
+                {h().span.record.kind === "tool"
+                  ? (h().span.record as ToolRecord).run.call.name
+                  : h().span.record.kind === "assistant"
+                    ? `Request #${(h().span.record as AssistantRecord).requestNumber}`
+                    : RECORD_KIND_LABEL[h().span.record.kind]}
+              </strong>
+              <span>
+                {clock(h().span.start)} · {h().span.end === undefined ? "running" : formatDuration(h().span.end! - h().span.start)}
+              </span>
               <Show when={h().span.ttft !== undefined && h().span.end !== undefined}>
-                <span>TTFT {formatDuration(h().span.ttft!)} · decoding {formatDuration(h().span.end! - h().span.start - h().span.ttft!)}</span>
+                <span>
+                  TTFT {formatDuration(h().span.ttft!)} · decoding {formatDuration(h().span.end! - h().span.start - h().span.ttft!)}
+                </span>
               </Show>
             </div>
           )}
         </Show>
-        <Show when={props.ledgerSpans.length === 0}><div class="trj-empty-track">No timing yet</div></Show>
+        <Show when={props.ledgerSpans.length === 0}>
+          <div class="trj-empty-track">No timing yet</div>
+        </Show>
       </div>
     </div>
   );
@@ -320,16 +440,23 @@ function Waterfall(props: { record: LedgerRecord; span: LedgerSpan | undefined; 
   const pct = (f: number) => ((f - zoom().start) / (zoom().end - zoom().start)) * 100;
   const ttft = () => {
     const span = props.span;
-    return span?.ttft === undefined || span.end === undefined || span.end <= span.start ? undefined : Math.min(100, (span.ttft / (span.end - span.start)) * 100);
+    return span?.ttft === undefined || span.end === undefined || span.end <= span.start
+      ? undefined
+      : Math.min(100, (span.ttft / (span.end - span.start)) * 100);
   };
   return (
     <div class="trj-wf">
       <Show when={bounds()}>
         {(b) => (
-          <div class="trj-wf-bar" data-kind={props.record.kind} data-error={props.span!.error} data-running={props.span!.end === undefined}
+          <div
+            class="trj-wf-bar"
+            data-kind={props.record.kind}
+            data-error={props.span!.error}
+            data-running={props.span!.end === undefined}
             classList={{ "has-ttft": ttft() !== undefined && !equalDurations() }}
             style={{ left: `${pct(b().from)}%`, width: `max(2px, ${pct(b().to) - pct(b().from)}%)`, "--ttft": `${ttft() ?? 0}%` }}
-            data-tip={`${clock(props.span!.start)}${props.span!.end === undefined ? " · running" : ` · ${formatDuration(props.span!.end - props.span!.start)}`}${props.span!.ttft === undefined ? "" : ` · TTFT ${formatDuration(props.span!.ttft)}`}`} />
+            data-tip={`${clock(props.span!.start)}${props.span!.end === undefined ? " · running" : ` · ${formatDuration(props.span!.end - props.span!.start)}`}${props.span!.ttft === undefined ? "" : ` · TTFT ${formatDuration(props.span!.ttft)}`}`}
+          />
         )}
       </Show>
     </div>
@@ -341,7 +468,19 @@ function NameCell(props: { record: LedgerRecord }) {
   return (
     <span class="trj-name">
       <i class="trj-dot" data-kind={r.kind} data-error={recordFailed(r)} />
-      <Switch fallback={<span class="trj-text" classList={{ "trj-muted": r.kind === "system" || (r.kind === "assistant" && !firstLine(contentText(r.message.content)) && !r.failed), "trj-error": recordFailed(r) }}>{recordName(r)}</span>}>
+      <Switch
+        fallback={
+          <span
+            class="trj-text"
+            classList={{
+              "trj-muted": r.kind === "system" || (r.kind === "assistant" && !firstLine(contentText(r.message.content)) && !r.failed),
+              "trj-error": recordFailed(r),
+            }}
+          >
+            {recordName(r)}
+          </span>
+        }
+      >
         <Match when={r.kind === "tool" && r}>
           {(tool) => (
             <span class="trj-text">
@@ -355,7 +494,9 @@ function NameCell(props: { record: LedgerRecord }) {
   );
 }
 
-type Row = { readonly type: "record"; readonly record: LedgerRecord; readonly index: number } | { readonly type: "turn"; readonly turn: LedgerRecord["turn"]; readonly count: number };
+type Row =
+  | { readonly type: "record"; readonly record: LedgerRecord; readonly index: number }
+  | { readonly type: "turn"; readonly turn: LedgerRecord["turn"]; readonly count: number };
 
 const COLUMNS: readonly { key: SortKey | "initiator" | "waterfall"; label: string; class: string; sortable: boolean }[] = [
   { key: "name", label: "Name", class: "trj-c-name", sortable: true },
@@ -367,7 +508,14 @@ const COLUMNS: readonly { key: SortKey | "initiator" | "waterfall"; label: strin
   { key: "waterfall", label: "Waterfall", class: "trj-c-wf", sortable: false },
 ];
 
-function Table(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; scale: Scale; ledgerSpans: ReadonlyMap<string, LedgerSpan>; now: number; compact: boolean }) {
+function Table(props: {
+  records: readonly LedgerRecord[];
+  visible: readonly LedgerRecord[];
+  scale: Scale;
+  ledgerSpans: ReadonlyMap<string, LedgerSpan>;
+  now: number;
+  compact: boolean;
+}) {
   const inRange = (record: LedgerRecord) => {
     const r = range();
     if (r === undefined) return true;
@@ -391,26 +539,46 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
     }
     return out;
   });
-  const selectedId = () => { const s = selection(); return s?.type === "record" ? s.id : undefined; };
-  const selectedRequest = () => { const s = selection(); return s?.type === "request" ? s.eventId : undefined; };
-  const sortBy = (key: SortKey) => setSort((current) => (current.key === key ? (current.desc ? { key: "time", desc: false } : { key, desc: true }) : { key, desc: false }));
+  const selectedId = () => {
+    const s = selection();
+    return s?.type === "record" ? s.id : undefined;
+  };
+  const selectedRequest = () => {
+    const s = selection();
+    return s?.type === "request" ? s.eventId : undefined;
+  };
+  const sortBy = (key: SortKey) =>
+    setSort((current) => (current.key === key ? (current.desc ? { key: "time", desc: false } : { key, desc: true }) : { key, desc: false }));
   const columns = () => (props.compact ? COLUMNS.slice(0, 1) : COLUMNS);
   let wfHeader: HTMLTableCellElement | undefined;
 
   return (
     <table class="trj-table" classList={{ compact: props.compact }}>
-      <colgroup><For each={columns()}>{(column) => <col class={column.class} />}</For></colgroup>
+      <colgroup>
+        <For each={columns()}>{(column) => <col class={column.class} />}</For>
+      </colgroup>
       <thead>
         <tr>
           <For each={columns()}>
             {(column) => (
-              <th class={column.class} data-sortable={column.sortable}
-                ref={(el) => { if (column.key === "waterfall") wfHeader = el; }}
+              <th
+                class={column.class}
+                data-sortable={column.sortable}
+                ref={(el) => {
+                  if (column.key === "waterfall") wfHeader = el;
+                }}
                 aria-sort={sort().key === column.key ? (sort().desc ? "descending" : "ascending") : "none"}
-                onClick={() => { if (column.sortable) sortBy(column.key as SortKey); }}
-                onWheel={(event) => { if (column.key === "waterfall" && wfHeader !== undefined) wheelZoom(event, wfHeader.getBoundingClientRect()); }}>
+                onClick={() => {
+                  if (column.sortable) sortBy(column.key as SortKey);
+                }}
+                onWheel={(event) => {
+                  if (column.key === "waterfall" && wfHeader !== undefined) wheelZoom(event, wfHeader.getBoundingClientRect());
+                }}
+              >
                 {column.label}
-                <Show when={sort().key === column.key && column.sortable}><span class="trj-sort">{sort().desc ? "▼" : "▲"}</span></Show>
+                <Show when={sort().key === column.key && column.sortable}>
+                  <span class="trj-sort">{sort().desc ? "▼" : "▲"}</span>
+                </Show>
               </th>
             )}
           </For>
@@ -424,19 +592,28 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
                 {(group) => {
                   const turn = () => group().turn;
                   const open = () => !collapsed().has(turn().turnId);
-                  const toggle = () => setCollapsed((set) => { const next = new Set(set); if (!next.delete(turn().turnId)) next.add(turn().turnId); return next; });
+                  const toggle = () =>
+                    setCollapsed((set) => {
+                      const next = new Set(set);
+                      if (!next.delete(turn().turnId)) next.add(turn().turnId);
+                      return next;
+                    });
                   return (
                     <tr class="trj-group" onClick={toggle}>
-                      <td colSpan={columns().length}><div class="trj-group-row">
-                        <span class="trj-caret" data-open={open()}>▶</span>
-                        <span class="trj-group-label">Turn {turn().index}</span>
-                        <span class="trj-group-prompt">{turn().prompt === undefined ? "" : firstLine(contentText(turn().prompt!.content))}</span>
-                        <span class="trj-group-meta">
-                          {group().count} records · {turn().steps.length} requests
-                          {turn().endedAt === undefined ? " · running" : ` · ${formatDuration(turn().endedAt! - turn().startedAt)}`}
-                          {turn().end !== undefined && turn().end!.reason !== "done" ? ` · ${turn().end!.reason}` : ""}
-                        </span>
-                      </div></td>
+                      <td colSpan={columns().length}>
+                        <div class="trj-group-row">
+                          <span class="trj-caret" data-open={open()}>
+                            ▶
+                          </span>
+                          <span class="trj-group-label">Turn {turn().index}</span>
+                          <span class="trj-group-prompt">{turn().prompt === undefined ? "" : firstLine(contentText(turn().prompt!.content))}</span>
+                          <span class="trj-group-meta">
+                            {group().count} records · {turn().steps.length} requests
+                            {turn().endedAt === undefined ? " · running" : ` · ${formatDuration(turn().endedAt! - turn().startedAt)}`}
+                            {turn().end !== undefined && turn().end!.reason !== "done" ? ` · ${turn().end!.reason}` : ""}
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                   );
                 }}
@@ -446,32 +623,74 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
                   const r = item().record;
                   const assistant = r.kind === "assistant" ? r : undefined;
                   const initiator = r.kind === "tool" || r.kind === "assistant" ? r.step.request : r.kind === "system" ? r.request : undefined;
-                  const number = r.kind === "assistant" || r.kind === "system" ? r.requestNumber
-                    : r.kind === "tool" ? props.records.find((c): c is AssistantRecord => c.kind === "assistant" && c.step === r.step)?.requestNumber : undefined;
+                  const number =
+                    r.kind === "assistant" || r.kind === "system"
+                      ? r.requestNumber
+                      : r.kind === "tool"
+                        ? props.records.find((c): c is AssistantRecord => c.kind === "assistant" && c.step === r.step)?.requestNumber
+                        : undefined;
                   const duration = recordDuration(r);
                   const usage = assistant?.message.usage;
                   return (
                     <tr
-                      id={`trj-row-${r.id}`} tabindex="-1" data-kind={r.kind} data-error={recordFailed(r)}
-                      data-selected={selectedId() === r.id} data-dim={!inRange(r)}
+                      id={`trj-row-${r.id}`}
+                      tabindex="-1"
+                      data-kind={r.kind}
+                      data-error={recordFailed(r)}
+                      data-selected={selectedId() === r.id}
+                      data-dim={!inRange(r)}
                       onClick={() => select({ type: "record", id: r.id })}
-                      onContextMenu={(event) => { event.preventDefault(); select({ type: "record", id: r.id }); setMenu({ x: event.clientX, y: event.clientY, record: r }); }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        select({ type: "record", id: r.id });
+                        setMenu({ x: event.clientX, y: event.clientY, record: r });
+                      }}
                     >
-                      <td class="trj-c-name"><NameCell record={r} /></td>
+                      <td class="trj-c-name">
+                        <NameCell record={r} />
+                      </td>
                       <Show when={!props.compact}>
-                        <td class="trj-c-status" classList={{ "trj-error": recordFailed(r) }}>{statusOf(r)}</td>
+                        <td class="trj-c-status" classList={{ "trj-error": recordFailed(r) }}>
+                          {statusOf(r)}
+                        </td>
                         <td class="trj-c-type">{RECORD_KIND_LABEL[r.kind]}</td>
                         <td class="trj-c-init">
                           <Show when={initiator !== undefined && number !== undefined} fallback={<span class="trj-muted">turn {r.turn.index}</span>}>
-                            <button class="trj-link-cell" data-active={selectedRequest() === initiator!.eventId}
-                              onClick={(event) => { event.stopPropagation(); select({ type: "request", eventId: initiator!.eventId }); }}>request #{number}</button>
+                            <button
+                              class="trj-link-cell"
+                              data-active={selectedRequest() === initiator!.eventId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                select({ type: "request", eventId: initiator!.eventId });
+                              }}
+                            >
+                              request #{number}
+                            </button>
                           </Show>
                         </td>
-                        <td class="trj-c-tok trj-num" data-tip={usage === undefined ? undefined : `${usage.cacheRead.toLocaleString()} cached · ${(usage.input + usage.cacheWrite).toLocaleString()} new · ${usage.output.toLocaleString()} out`}>
+                        <td
+                          class="trj-c-tok trj-num"
+                          data-tip={
+                            usage === undefined
+                              ? undefined
+                              : `${usage.cacheRead.toLocaleString()} cached · ${(usage.input + usage.cacheWrite).toLocaleString()} new · ${usage.output.toLocaleString()} out`
+                          }
+                        >
                           {usage === undefined ? "" : `${formatTokens(inputTokens(usage))} / ${formatTokens(usage.output)}`}
                         </td>
-                        <td class="trj-c-time trj-num">{duration === undefined ? (r.kind === "assistant" || r.kind === "tool" ? "(pending)" : "") : formatDuration(duration)}</td>
-                        <td class="trj-c-wf"><Waterfall record={r} span={props.ledgerSpans.get(r.id)} scale={props.scale} index={item().index} count={props.records.length} now={props.now} /></td>
+                        <td class="trj-c-time trj-num">
+                          {duration === undefined ? (r.kind === "assistant" || r.kind === "tool" ? "(pending)" : "") : formatDuration(duration)}
+                        </td>
+                        <td class="trj-c-wf">
+                          <Waterfall
+                            record={r}
+                            span={props.ledgerSpans.get(r.id)}
+                            scale={props.scale}
+                            index={item().index}
+                            count={props.records.length}
+                            now={props.now}
+                          />
+                        </td>
                       </Show>
                     </tr>
                   );
@@ -492,20 +711,33 @@ function ContextMenu() {
     const close = () => setMenu(undefined);
     window.addEventListener("pointerdown", close);
     window.addEventListener("blur", close);
-    onCleanup(() => { window.removeEventListener("pointerdown", close); window.removeEventListener("blur", close); });
+    onCleanup(() => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("blur", close);
+    });
   });
   const items = (record: LedgerRecord): { label: string; run: () => void }[] => {
     const request = recordRequest(record);
     const out: { label: string; run: () => void }[] = [];
     if (request !== undefined) out.push({ label: "Inspect request", run: () => select({ type: "request", eventId: request.eventId }) });
-    if (request !== undefined) out.push({ label: "Copy exact request", run: () => { const rebuilt = rebuildRequest(activeBranch(), request.eventId); if (rebuilt !== undefined) void copy(json(rebuilt)); } });
+    if (request !== undefined)
+      out.push({
+        label: "Copy exact request",
+        run: () => {
+          const rebuilt = rebuildRequest(activeBranch(), request.eventId);
+          if (rebuilt !== undefined) void copy(json(rebuilt));
+        },
+      });
     if (record.kind === "tool") {
       out.push({ label: "Copy payload", run: () => void copy(json(record.run.call.arguments)) });
       if (record.run.result !== undefined) out.push({ label: "Copy result", run: () => void copy(contentText(record.run.result!.content)) });
       out.push({ label: `Filter: tool:${record.run.call.name}`, run: () => setQuery(`tool:${record.run.call.name}`) });
     }
     if (record.kind === "assistant" || record.kind === "user") out.push({ label: "Copy text", run: () => void copy(contentText(record.message.content)) });
-    out.push({ label: "Copy as JSON", run: () => void copy(json(record.kind === "tool" ? record.run : record.kind === "system" ? record.request : record.message)) });
+    out.push({
+      label: "Copy as JSON",
+      run: () => void copy(json(record.kind === "tool" ? record.run : record.kind === "system" ? record.request : record.message)),
+    });
     out.push({ label: `Filter: turn:${record.turn.index}`, run: () => setQuery(`turn:${record.turn.index}`) });
     // Records of model calls and tool runs are log events; the next prompt can continue from one of them.
     if (record.kind === "assistant" || record.kind === "tool") {
@@ -516,10 +748,25 @@ function ContextMenu() {
   return (
     <Show when={menu()}>
       {(m) => (
-        <div class="trj-menu" role="menu" style={{ left: `${Math.min(m().x, window.innerWidth - 220)}px`, top: `${Math.min(m().y, window.innerHeight - 260)}px` }}
-          onPointerDown={(event) => event.stopPropagation()}>
+        <div
+          class="trj-menu"
+          role="menu"
+          style={{ left: `${Math.min(m().x, window.innerWidth - 220)}px`, top: `${Math.min(m().y, window.innerHeight - 260)}px` }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <For each={items(m().record)}>
-            {(item) => <button role="menuitem" class="trj-menu-item" onClick={() => { item.run(); setMenu(undefined); }}>{item.label}</button>}
+            {(item) => (
+              <button
+                role="menuitem"
+                class="trj-menu-item"
+                onClick={() => {
+                  item.run();
+                  setMenu(undefined);
+                }}
+              >
+                {item.label}
+              </button>
+            )}
           </For>
         </div>
       )}
@@ -531,7 +778,14 @@ function ContextMenu() {
 
 function StatusBar(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; now: number }) {
   const stats = createMemo(() => {
-    let requests = 0; let tools = 0; let errors = 0; let input = 0; let output = 0; let cost = 0; let first = Infinity; let last = 0;
+    let requests = 0;
+    let tools = 0;
+    let errors = 0;
+    let input = 0;
+    let output = 0;
+    let cost = 0;
+    let first = Infinity;
+    let last = 0;
     for (const record of props.visible) {
       if (record.kind === "assistant") {
         requests++;
@@ -551,12 +805,20 @@ function StatusBar(props: { records: readonly LedgerRecord[]; visible: readonly 
   });
   return (
     <div class="trj-status" role="status">
-      <span>{props.visible.length} / {props.records.length} records</span>
+      <span>
+        {props.visible.length} / {props.records.length} records
+      </span>
       <span>{stats().requests} requests</span>
       <span>{stats().tools} tool calls</span>
-      <Show when={stats().errors > 0}><span class="trj-error">{stats().errors} errors</span></Show>
-      <span data-tip="Input tokens (including cache) / output tokens">{formatTokens(stats().input)} / {formatTokens(stats().output)} tokens</span>
-      <Show when={stats().cost > 0}><span>{formatCost(stats().cost)}</span></Show>
+      <Show when={stats().errors > 0}>
+        <span class="trj-error">{stats().errors} errors</span>
+      </Show>
+      <span data-tip="Input tokens (including cache) / output tokens">
+        {formatTokens(stats().input)} / {formatTokens(stats().output)} tokens
+      </span>
+      <Show when={stats().cost > 0}>
+        <span>{formatCost(stats().cost)}</span>
+      </Show>
       <span data-tip="Time the agent was working, summed over turns">Active: {formatDuration(stats().active)}</span>
       <Show when={range()}>{(r) => <span class="trj-accent">Range: {formatDuration(r().to - r().from)}</span>}</Show>
     </div>
@@ -568,7 +830,12 @@ function StatusBar(props: { records: readonly LedgerRecord[]; visible: readonly 
 function Section(props: { title: string; children: JSX.Element; aside?: JSX.Element }) {
   return (
     <section class="trj-section">
-      <h4><span>{props.title}</span><Show when={props.aside}><span class="trj-section-aside">{props.aside}</span></Show></h4>
+      <h4>
+        <span>{props.title}</span>
+        <Show when={props.aside}>
+          <span class="trj-section-aside">{props.aside}</span>
+        </Show>
+      </h4>
       {props.children}
     </section>
   );
@@ -577,7 +844,14 @@ function Section(props: { title: string; children: JSX.Element; aside?: JSX.Elem
 function Facts(props: { rows: readonly (readonly [string, JSX.Element | string | undefined])[] }) {
   return (
     <dl class="trj-facts">
-      <For each={props.rows.filter(([, value]) => value !== undefined && value !== "")}>{([key, value]) => <><dt>{key}</dt><dd>{value}</dd></>}</For>
+      <For each={props.rows.filter(([, value]) => value !== undefined && value !== "")}>
+        {([key, value]) => (
+          <>
+            <dt>{key}</dt>
+            <dd>{value}</dd>
+          </>
+        )}
+      </For>
     </dl>
   );
 }
@@ -585,14 +859,26 @@ function Facts(props: { rows: readonly (readonly [string, JSX.Element | string |
 function Pre(props: { text: string; error?: boolean }) {
   return (
     <div class="trj-pre-wrap">
-      <button class="trj-copy" aria-label="Copy" data-tip="Copy" onClick={() => void copy(props.text)}><CopyIcon /></button>
-      <pre class="trj-pre" classList={{ "trj-error": props.error === true }}>{props.text}</pre>
+      <button class="trj-copy" aria-label="Copy" data-tip="Copy" onClick={() => void copy(props.text)}>
+        <CopyIcon />
+      </button>
+      <pre class="trj-pre" classList={{ "trj-error": props.error === true }}>
+        {props.text}
+      </pre>
     </div>
   );
 }
 
 function Meta(props: { source: string; chars: number; changed: boolean }) {
-  return <><span class="trj-source">{props.source}</span>{props.chars.toLocaleString()} chars<Show when={props.changed}><span class="trj-changed">changed</span></Show></>;
+  return (
+    <>
+      <span class="trj-source">{props.source}</span>
+      {props.chars.toLocaleString()} chars
+      <Show when={props.changed}>
+        <span class="trj-changed">changed</span>
+      </Show>
+    </>
+  );
 }
 
 function SystemPrompt(props: { request: TrajectoryRequest }) {
@@ -602,11 +888,19 @@ function SystemPrompt(props: { request: TrajectoryRequest }) {
       <For each={props.request.sections}>
         {(section) => (
           <Section title={section.id} aside={<Meta source={section.source} chars={section.chars} changed={section.changed} />}>
-            <Show when={section.text !== undefined}><Pre text={section.text!} /></Show>
+            <Show when={section.text !== undefined}>
+              <Pre text={section.text!} />
+            </Show>
           </Section>
         )}
       </For>
-      <Show when={unsplit() && props.request.system}>{(system) => <Section title="Whole prompt"><Pre text={system()} /></Section>}</Show>
+      <Show when={unsplit() && props.request.system}>
+        {(system) => (
+          <Section title="Whole prompt">
+            <Pre text={system()} />
+          </Section>
+        )}
+      </Show>
     </>
   );
 }
@@ -616,7 +910,14 @@ function ToolsList(props: { request: TrajectoryRequest }) {
     <For each={props.request.tools}>
       {(tool) => (
         <Section title={tool.name} aside={<Meta source={tool.source} chars={tool.chars} changed={tool.changed} />}>
-          <Show when={tool.spec}>{(spec) => <><p class="trj-desc">{spec().description}</p><Pre text={json(spec().parameters)} /></>}</Show>
+          <Show when={tool.spec}>
+            {(spec) => (
+              <>
+                <p class="trj-desc">{spec().description}</p>
+                <Pre text={json(spec().parameters)} />
+              </>
+            )}
+          </Show>
         </Section>
       )}
     </For>
@@ -628,15 +929,33 @@ function Diff(props: { previous: TrajectoryRequest | undefined; request: Traject
   const sections = createMemo(() => promptDiff(props.previous, props.request));
   return (
     <Switch>
-      <Match when={props.previous === undefined}><p class="trj-desc">This is the first request; everything in it is new (see System Prompt).</p></Match>
-      <Match when={sections().length === 0}><p class="trj-desc">The system prompt is unchanged from the request before.</p></Match>
+      <Match when={props.previous === undefined}>
+        <p class="trj-desc">This is the first request; everything in it is new (see System Prompt).</p>
+      </Match>
+      <Match when={sections().length === 0}>
+        <p class="trj-desc">The system prompt is unchanged from the request before.</p>
+      </Match>
       <Match when={true}>
         <For each={sections()}>
           {(section) => (
-            <Section title={section.id} aside={<><span class="trj-source">{section.source}</span>{section.status}</>}>
+            <Section
+              title={section.id}
+              aside={
+                <>
+                  <span class="trj-source">{section.source}</span>
+                  {section.status}
+                </>
+              }
+            >
               <pre class="trj-pre trj-diff">
                 <For each={section.lines}>
-                  {(line) => <span class={`trj-diff-${line.kind}`}>{line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}{line.text}{"\n"}</span>}
+                  {(line) => (
+                    <span class={`trj-diff-${line.kind}`}>
+                      {line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}
+                      {line.text}
+                      {"\n"}
+                    </span>
+                  )}
                 </For>
               </pre>
             </Section>
@@ -670,7 +989,9 @@ function Sources(props: { request: TrajectoryRequest }) {
         {([source, entry]) => (
           <div class="trj-source-row">
             <span class="trj-source-name">{source}</span>
-            <span class="trj-source-bar"><i style={{ width: `${(entry.chars / max()) * 100}%` }} /></span>
+            <span class="trj-source-bar">
+              <i style={{ width: `${(entry.chars / max()) * 100}%` }} />
+            </span>
             <span class="trj-source-chars">{entry.chars.toLocaleString()}</span>
             <span class="trj-source-parts">{entry.parts.join(", ")}</span>
           </div>
@@ -680,20 +1001,29 @@ function Sources(props: { request: TrajectoryRequest }) {
   );
 }
 
-interface Tab { readonly id: string; readonly label: string; readonly render: () => JSX.Element }
+interface Tab {
+  readonly id: string;
+  readonly label: string;
+  readonly render: () => JSX.Element;
+}
 
 function TimingFacts(props: { timing: Timing; output?: number | undefined }) {
   const t = () => props.timing;
   const decoding = () => (t().firstTokenAt === undefined ? undefined : t().endedAt - t().firstTokenAt!);
   return (
-    <Facts rows={[
-      ["Started", clock(t().startedAt)],
-      ["First token", t().firstTokenAt === undefined ? undefined : `${clock(t().firstTokenAt!)} · TTFT ${formatDuration(t().firstTokenAt! - t().startedAt)}`],
-      ["Ended", clock(t().endedAt)],
-      ["Duration", formatDuration(t().endedAt - t().startedAt)],
-      ["Decoding", decoding() === undefined ? undefined : formatDuration(decoding()!)],
-      ["Throughput", decoding() !== undefined && decoding()! > 0 && props.output ? `${(props.output / (decoding()! / 1000)).toFixed(1)} tokens/s` : undefined],
-    ]} />
+    <Facts
+      rows={[
+        ["Started", clock(t().startedAt)],
+        ["First token", t().firstTokenAt === undefined ? undefined : `${clock(t().firstTokenAt!)} · TTFT ${formatDuration(t().firstTokenAt! - t().startedAt)}`],
+        ["Ended", clock(t().endedAt)],
+        ["Duration", formatDuration(t().endedAt - t().startedAt)],
+        ["Decoding", decoding() === undefined ? undefined : formatDuration(decoding()!)],
+        [
+          "Throughput",
+          decoding() !== undefined && decoding()! > 0 && props.output ? `${(props.output / (decoding()! / 1000)).toFixed(1)} tokens/s` : undefined,
+        ],
+      ]}
+    />
   );
 }
 
@@ -702,39 +1032,63 @@ function requestTabs(request: TrajectoryRequest, assistant: AssistantRecord | un
   const timing = assistant?.timing;
   return [
     {
-      id: "summary", label: "Summary", render: () => (
+      id: "summary",
+      label: "Summary",
+      render: () => (
         <>
-          <Facts rows={[
-            ["Model", request.model],
-            ["Thinking", request.thinking],
-            ["History", `${request.messages} message${request.messages === 1 ? "" : "s"}`],
-            ["Composition", <span class="trj-mono" data-tip={request.composition}>{request.composition.slice(0, 16)}</span>],
-            ["Event", <span class="trj-mono">{request.eventId}</span>],
-          ]} />
-          <Section title="Prompt by source" aside={`${request.sections.length} sections · ${request.tools.length} tools`}><Sources request={request} /></Section>
-          <button class="trj-link" onClick={() => {
-            const rebuilt = rebuildRequest(activeBranch(), request.eventId);
-            if (rebuilt !== undefined) void copy(json(rebuilt));
-          }}><CopyIcon /> Copy exact request</button>
+          <Facts
+            rows={[
+              ["Model", request.model],
+              ["Thinking", request.thinking],
+              ["History", `${request.messages} message${request.messages === 1 ? "" : "s"}`],
+              [
+                "Composition",
+                <span class="trj-mono" data-tip={request.composition}>
+                  {request.composition.slice(0, 16)}
+                </span>,
+              ],
+              ["Event", <span class="trj-mono">{request.eventId}</span>],
+            ]}
+          />
+          <Section title="Prompt by source" aside={`${request.sections.length} sections · ${request.tools.length} tools`}>
+            <Sources request={request} />
+          </Section>
+          <button
+            class="trj-link"
+            onClick={() => {
+              const rebuilt = rebuildRequest(activeBranch(), request.eventId);
+              if (rebuilt !== undefined) void copy(json(rebuilt));
+            }}
+          >
+            <CopyIcon /> Copy exact request
+          </button>
         </>
       ),
     },
     { id: "system", label: "System Prompt", render: () => <SystemPrompt request={request} /> },
     { id: "tools", label: "Tools", render: () => <ToolsList request={request} /> },
     { id: "diff", label: "Diff", render: () => <Diff previous={previous} request={request} /> },
-    ...(usage === undefined ? [] : [{
-      id: "usage", label: "Usage", render: () => (
-        <Facts rows={[
-          ["Input", `${inputTokens(usage).toLocaleString()} tokens`],
-          ["Cache read", usage.cacheRead.toLocaleString()],
-          ["Cache write", usage.cacheWrite.toLocaleString()],
-          ["Uncached", usage.input.toLocaleString()],
-          ["Output", usage.output.toLocaleString()],
-          ["Reasoning", usage.reasoning?.toLocaleString()],
-          ["Cost", usage.cost.total > 0 ? `$${usage.cost.total.toFixed(4)}` : undefined],
-        ]} />
-      ),
-    }]),
+    ...(usage === undefined
+      ? []
+      : [
+          {
+            id: "usage",
+            label: "Usage",
+            render: () => (
+              <Facts
+                rows={[
+                  ["Input", `${inputTokens(usage).toLocaleString()} tokens`],
+                  ["Cache read", usage.cacheRead.toLocaleString()],
+                  ["Cache write", usage.cacheWrite.toLocaleString()],
+                  ["Uncached", usage.input.toLocaleString()],
+                  ["Output", usage.output.toLocaleString()],
+                  ["Reasoning", usage.reasoning?.toLocaleString()],
+                  ["Cost", usage.cost.total > 0 ? `$${usage.cost.total.toFixed(4)}` : undefined],
+                ]}
+              />
+            ),
+          },
+        ]),
     ...(timing === undefined ? [] : [{ id: "timing", label: "Timing", render: () => <TimingFacts timing={timing} output={usage?.output} /> }]),
   ];
 }
@@ -750,7 +1104,21 @@ function recordTabs(record: LedgerRecord, previous: TrajectoryRequest | undefine
       ];
     case "user":
       return [
-        { id: "summary", label: "Summary", render: () => <><Facts rows={[["Turn", String(record.turn.index)], ["Sent", clock(record.at)]]} /><Pre text={contentText(record.message.content)} /></> },
+        {
+          id: "summary",
+          label: "Summary",
+          render: () => (
+            <>
+              <Facts
+                rows={[
+                  ["Turn", String(record.turn.index)],
+                  ["Sent", clock(record.at)],
+                ]}
+              />
+              <Pre text={contentText(record.message.content)} />
+            </>
+          ),
+        },
         { id: "raw", label: "Raw", render: () => <Pre text={json(record.message)} /> },
       ];
     case "assistant": {
@@ -759,34 +1127,55 @@ function recordTabs(record: LedgerRecord, previous: TrajectoryRequest | undefine
       const text = contentText(message.content);
       return [
         {
-          id: "summary", label: "Summary", render: () => (
+          id: "summary",
+          label: "Summary",
+          render: () => (
             <>
-              <Facts rows={[
-                ["Request", `#${record.requestNumber}`],
-                ["Model", `${message.provider}/${message.model}`],
-                ["Stop", message.stopReason],
-                ["Error", message.errorMessage],
-                ["Tokens", `${formatTokens(inputTokens(message.usage))} in · ${formatTokens(message.usage.output)} out`],
-                ["Duration", record.timing === undefined ? undefined : formatDuration(record.timing.endedAt - record.timing.startedAt)],
-                ["TTFT", record.timing?.firstTokenAt === undefined ? undefined : formatDuration(record.timing.firstTokenAt - record.timing.startedAt)],
-                ["Tool calls", callsOf(record).join(", ")],
-              ]} />
+              <Facts
+                rows={[
+                  ["Request", `#${record.requestNumber}`],
+                  ["Model", `${message.provider}/${message.model}`],
+                  ["Stop", message.stopReason],
+                  ["Error", message.errorMessage],
+                  ["Tokens", `${formatTokens(inputTokens(message.usage))} in · ${formatTokens(message.usage.output)} out`],
+                  ["Duration", record.timing === undefined ? undefined : formatDuration(record.timing.endedAt - record.timing.startedAt)],
+                  ["TTFT", record.timing?.firstTokenAt === undefined ? undefined : formatDuration(record.timing.firstTokenAt - record.timing.startedAt)],
+                  ["Tool calls", callsOf(record).join(", ")],
+                ]}
+              />
               <Show when={record.step.request}>
-                {(request) => <button class="trj-link" onClick={() => select({ type: "request", eventId: request().eventId })}>Open request #{record.requestNumber} →</button>}
+                {(request) => (
+                  <button class="trj-link" onClick={() => select({ type: "request", eventId: request().eventId })}>
+                    Open request #{record.requestNumber} →
+                  </button>
+                )}
               </Show>
             </>
           ),
         },
         {
-          id: "preview", label: "Preview", render: () => (
+          id: "preview",
+          label: "Preview",
+          render: () => (
             <>
-              <Show when={thinking}><details class="trj-thinking"><summary>Thinking</summary><div class="trj-quote">{thinking}</div></details></Show>
-              <Show when={text} fallback={<p class="trj-desc">No text output.</p>}><div class="trj-md"><Markdown text={text} /></div></Show>
+              <Show when={thinking}>
+                <details class="trj-thinking">
+                  <summary>Thinking</summary>
+                  <div class="trj-quote">{thinking}</div>
+                </details>
+              </Show>
+              <Show when={text} fallback={<p class="trj-desc">No text output.</p>}>
+                <div class="trj-md">
+                  <Markdown text={text} />
+                </div>
+              </Show>
             </>
           ),
         },
         { id: "raw", label: "Raw", render: () => <Pre text={json(message)} /> },
-        ...(record.timing === undefined ? [] : [{ id: "timing", label: "Timing", render: () => <TimingFacts timing={record.timing!} output={message.usage.output} /> }]),
+        ...(record.timing === undefined
+          ? []
+          : [{ id: "timing", label: "Timing", render: () => <TimingFacts timing={record.timing!} output={message.usage.output} /> }]),
       ];
     }
     case "tool": {
@@ -795,25 +1184,62 @@ function recordTabs(record: LedgerRecord, previous: TrajectoryRequest | undefine
       const timing = run.timing;
       return [
         {
-          id: "summary", label: "Summary", render: () => (
+          id: "summary",
+          label: "Summary",
+          render: () => (
             <>
-              <Facts rows={[
-                ["Tool", run.call.name],
-                ["Status", run.result === undefined ? "no result" : run.result.isError ? "error" : "ok"],
-                ["Duration", timing === undefined ? undefined : formatDuration(timing.endedAt - timing.startedAt)],
-                ["Call id", <span class="trj-mono">{run.call.id}</span>],
-              ]} />
-              <Section title="Payload"><Pre text={json(run.call.arguments)} /></Section>
-              <Show when={result !== undefined}><Section title="Result"><Pre text={result!} error={run.result?.isError === true} /></Section></Show>
+              <Facts
+                rows={[
+                  ["Tool", run.call.name],
+                  ["Status", run.result === undefined ? "no result" : run.result.isError ? "error" : "ok"],
+                  ["Duration", timing === undefined ? undefined : formatDuration(timing.endedAt - timing.startedAt)],
+                  ["Call id", <span class="trj-mono">{run.call.id}</span>],
+                ]}
+              />
+              <Section title="Payload">
+                <Pre text={json(run.call.arguments)} />
+              </Section>
+              <Show when={result !== undefined}>
+                <Section title="Result">
+                  <Pre text={result!} error={run.result?.isError === true} />
+                </Section>
+              </Show>
             </>
           ),
         },
         { id: "payload", label: "Payload", render: () => <Pre text={json(run.call.arguments)} /> },
         ...(result === undefined ? [] : [{ id: "result", label: "Result", render: () => <Pre text={result} error={run.result?.isError === true} /> }]),
-        ...(record.spec === undefined ? [] : [{ id: "schema", label: "Schema", render: () => <><p class="trj-desc">{record.spec!.description}</p><Pre text={json(record.spec!.parameters)} /></> }]),
-        ...(timing === undefined ? [] : [{
-          id: "timing", label: "Timing", render: () => <Facts rows={[["Started", clock(timing.startedAt)], ["Ended", clock(timing.endedAt)], ["Duration", formatDuration(timing.endedAt - timing.startedAt)]]} />,
-        }]),
+        ...(record.spec === undefined
+          ? []
+          : [
+              {
+                id: "schema",
+                label: "Schema",
+                render: () => (
+                  <>
+                    <p class="trj-desc">{record.spec!.description}</p>
+                    <Pre text={json(record.spec!.parameters)} />
+                  </>
+                ),
+              },
+            ]),
+        ...(timing === undefined
+          ? []
+          : [
+              {
+                id: "timing",
+                label: "Timing",
+                render: () => (
+                  <Facts
+                    rows={[
+                      ["Started", clock(timing.startedAt)],
+                      ["Ended", clock(timing.endedAt)],
+                      ["Duration", formatDuration(timing.endedAt - timing.startedAt)],
+                    ]}
+                  />
+                ),
+              },
+            ]),
       ];
     }
   }
@@ -826,11 +1252,19 @@ function Tabs(props: { tabs: readonly Tab[]; lead?: JSX.Element; title?: JSX.Ele
       <div class="trj-tabs" role="tablist" aria-label="Event details">
         {props.lead}
         <For each={props.tabs}>
-          {(candidate) => <button role="tab" class="trj-tab" aria-selected={active()?.id === candidate.id} onClick={() => setTab(candidate.id)}>{candidate.label}</button>}
+          {(candidate) => (
+            <button role="tab" class="trj-tab" aria-selected={active()?.id === candidate.id} onClick={() => setTab(candidate.id)}>
+              {candidate.label}
+            </button>
+          )}
         </For>
       </div>
-      <Show when={props.title}><div class="trj-details-title">{props.title}</div></Show>
-      <div class="trj-detail-body" role="tabpanel">{active()?.render()}</div>
+      <Show when={props.title}>
+        <div class="trj-details-title">{props.title}</div>
+      </Show>
+      <div class="trj-detail-body" role="tabpanel">
+        {active()?.render()}
+      </div>
     </>
   );
 }
@@ -841,7 +1275,10 @@ function Details(props: { records: readonly LedgerRecord[] }) {
   // Requests in log order, for each one's predecessor (the Diff tab).
   const requests = createMemo(() => {
     const seen = new Map<string, TrajectoryRequest>();
-    for (const record of props.records) { const request = recordRequest(record); if (request !== undefined && !seen.has(request.eventId)) seen.set(request.eventId, request); }
+    for (const record of props.records) {
+      const request = recordRequest(record);
+      if (request !== undefined && !seen.has(request.eventId)) seen.set(request.eventId, request);
+    }
     return [...seen.values()];
   });
   const previousOf = (eventId: string | undefined) => {
@@ -854,9 +1291,12 @@ function Details(props: { records: readonly LedgerRecord[] }) {
     if (s.type === "record") {
       const record = props.records.find((candidate) => candidate.id === s.id);
       if (record === undefined) return undefined;
-      const where = record.kind === "user" ? `Turn ${record.turn.index}`
-        : record.kind === "system" ? `Request #${record.requestNumber}`
-        : `Turn ${record.turn.index} · Step ${record.step.index}`;
+      const where =
+        record.kind === "user"
+          ? `Turn ${record.turn.index}`
+          : record.kind === "system"
+            ? `Request #${record.requestNumber}`
+            : `Turn ${record.turn.index} · Step ${record.step.index}`;
       return {
         kind: record.kind as LedgerRecord["kind"] | "request",
         name: record.kind === "tool" ? record.run.call.name : "",
@@ -864,7 +1304,9 @@ function Details(props: { records: readonly LedgerRecord[] }) {
         tabs: recordTabs(record, previousOf(recordRequest(record)?.eventId)),
       };
     }
-    const assistant = props.records.find((record): record is AssistantRecord => record.kind === "assistant" && !record.failed && record.step.request?.eventId === s.eventId);
+    const assistant = props.records.find(
+      (record): record is AssistantRecord => record.kind === "assistant" && !record.failed && record.step.request?.eventId === s.eventId,
+    );
     const request = assistant?.step.request ?? systemFor(s.eventId)?.request;
     if (request === undefined) return undefined;
     return {
@@ -880,13 +1322,21 @@ function Details(props: { records: readonly LedgerRecord[] }) {
         <aside class="trj-details" aria-label="Event details">
           <Tabs
             tabs={v().tabs}
-            lead={<button class="trj-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}><XIcon /></button>}
-            title={<>
-              <span class="trj-dot" data-kind={v().kind} />
-              <span class="trj-details-kind">{v().kind === "request" ? "request" : RECORD_KIND_LABEL[v().kind as Kind]}</span>
-              <Show when={v().name}><span class="trj-mono">{v().name}</span></Show>
-              <span class="trj-details-where">{v().where}</span>
-            </>}
+            lead={
+              <button class="trj-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}>
+                <XIcon />
+              </button>
+            }
+            title={
+              <>
+                <span class="trj-dot" data-kind={v().kind} />
+                <span class="trj-details-kind">{v().kind === "request" ? "request" : RECORD_KIND_LABEL[v().kind as Kind]}</span>
+                <Show when={v().name}>
+                  <span class="trj-mono">{v().name}</span>
+                </Show>
+                <span class="trj-details-where">{v().where}</span>
+              </>
+            }
           />
         </aside>
       )}
@@ -907,9 +1357,19 @@ export function Trajectory(): JSX.Element {
   const visible = createMemo(() => records().filter(matches));
   let root!: HTMLDivElement;
 
-  createEffect(on(() => state.activeId, () => {
-    select(undefined); setRange(undefined); setQuery(""); setZoom({ start: 0, end: 1 }); setCollapsed(new Set<string>()); setMenu(undefined);
-  }));
+  createEffect(
+    on(
+      () => state.activeId,
+      () => {
+        select(undefined);
+        setRange(undefined);
+        setQuery("");
+        setZoom({ start: 0, end: 1 });
+        setCollapsed(new Set<string>());
+        setMenu(undefined);
+      },
+    ),
+  );
 
   // DevTools keys: arrows move the selection, Escape closes the panel (or the menu), "/" and Ctrl/Cmd+F focus the filter.
   const onKeyDown = (event: KeyboardEvent) => {
@@ -942,7 +1402,10 @@ export function Trajectory(): JSX.Element {
       <Overview ledgerSpans={allSpans()} scale={scale()} now={now()} matches={matches} />
       <div class="trj-body">
         <div class="trj-scroll">
-          <Show when={records().length > 0} fallback={<p class="trj-empty">{state.activeId === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>}>
+          <Show
+            when={records().length > 0}
+            fallback={<p class="trj-empty">{state.activeId === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>}
+          >
             <Table records={records()} visible={visible()} scale={scale()} ledgerSpans={spanById()} now={now()} compact={selection() !== undefined} />
           </Show>
         </div>

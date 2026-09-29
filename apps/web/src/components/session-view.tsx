@@ -16,27 +16,54 @@ export function SessionView(props: { onToggleSidebar: () => void }) {
   return (
     <main class="main">
       <header class="main-head">
-        <button class="icon-button sidebar-toggle" aria-label="Toggle sidebar" data-tip="Toggle sidebar" onClick={() => props.onToggleSidebar()}><SidebarIcon /></button>
+        <button class="icon-button sidebar-toggle" aria-label="Toggle sidebar" data-tip="Toggle sidebar" onClick={() => props.onToggleSidebar()}>
+          <SidebarIcon />
+        </button>
         <div class="main-title">
           <h1>{state.activeId === undefined ? "New chat" : sessionTitle(activeSession())}</h1>
-          <Show when={cwd()}>{(dir) => <span class="main-cwd" data-tip={dir()}>{tildePath(dir(), state.info?.home)}</span>}</Show>
+          <Show when={cwd()}>
+            {(dir) => (
+              <span class="main-cwd" data-tip={dir()}>
+                {tildePath(dir(), state.info?.home)}
+              </span>
+            )}
+          </Show>
         </div>
         <span class="spacer" />
-        <Show when={isBusy()}><span class="busy-chip"><Spinner /> Running</span></Show>
+        <Show when={isBusy()}>
+          <span class="busy-chip">
+            <Spinner /> Running
+          </span>
+        </Show>
         <Show when={state.activeId !== undefined}>
           <div class="view-tabs" role="tablist" aria-label="Session view">
-            <button role="tab" class="view-tab" aria-label="Chat" data-tip="Chat" aria-selected={state.view === "chat"} onClick={() => setView("chat")}><ChatIcon /></button>
-            <button role="tab" class="view-tab" aria-label="Trajectory" data-tip="Trajectory" aria-selected={state.view === "trajectory"} onClick={() => setView("trajectory")}><TrajectoryIcon /></button>
+            <button role="tab" class="view-tab" aria-label="Chat" data-tip="Chat" aria-selected={state.view === "chat"} onClick={() => setView("chat")}>
+              <ChatIcon />
+            </button>
+            <button
+              role="tab"
+              class="view-tab"
+              aria-label="Trajectory"
+              data-tip="Trajectory"
+              aria-selected={state.view === "trajectory"}
+              onClick={() => setView("trajectory")}
+            >
+              <TrajectoryIcon />
+            </button>
           </div>
         </Show>
       </header>
       <Switch>
-        <Match when={state.view === "chat" || state.activeId === undefined}><ChatView /></Match>
+        <Match when={state.view === "chat" || state.activeId === undefined}>
+          <ChatView />
+        </Match>
         <Match when={state.view === "trajectory"}>
           <Trajectory />
         </Match>
       </Switch>
-      <Show when={state.view === "chat" || state.activeId === undefined}><Composer /></Show>
+      <Show when={state.view === "chat" || state.activeId === undefined}>
+        <Composer />
+      </Show>
     </main>
   );
 }
@@ -50,11 +77,21 @@ function ChatView() {
 
   onMount(() => {
     // Follow new output while the reader is at the bottom; leave them alone once they scroll up.
-    const observer = new ResizeObserver(() => { if (stuck()) toBottom(); });
+    const observer = new ResizeObserver(() => {
+      if (stuck()) toBottom();
+    });
     observer.observe(content);
     onCleanup(() => observer.disconnect());
   });
-  createEffect(on(() => state.activeId, () => { setStuck(true); queueMicrotask(() => toBottom()); }));
+  createEffect(
+    on(
+      () => state.activeId,
+      () => {
+        setStuck(true);
+        queueMicrotask(() => toBottom());
+      },
+    ),
+  );
 
   const empty = () => transcript().turns.length === 0;
   return (
@@ -62,7 +99,9 @@ function ChatView() {
       <div class="content" ref={content}>
         <Switch>
           <Match when={state.activeId !== undefined && !sessionLog().loaded}>
-            <div class="loading"><Spinner /> Loading session…</div>
+            <div class="loading">
+              <Spinner /> Loading session…
+            </div>
           </Match>
           <Match when={empty() && !isBusy()}>
             <div class="empty-state">
@@ -77,7 +116,16 @@ function ChatView() {
         </Show>
       </div>
       <Show when={!stuck()}>
-        <button class="jump" aria-label="Jump to latest" onClick={() => { setStuck(true); toBottom(true); }}><ChevronDownIcon /></button>
+        <button
+          class="jump"
+          aria-label="Jump to latest"
+          onClick={() => {
+            setStuck(true);
+            toBottom(true);
+          }}
+        >
+          <ChevronDownIcon />
+        </button>
       </Show>
     </div>
   );

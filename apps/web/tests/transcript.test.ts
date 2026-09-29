@@ -7,14 +7,16 @@ const call = (id: string) => ({ type: "toolCall" as const, id, name: "bash", arg
 
 describe("projectTranscript", () => {
   it("groups a turn and pairs tool calls with results", () => {
-    const t = projectTranscript(branch(
-      { type: "turn-start", turnId: "t1" },
-      user("hi", "t1"),
-      { type: "message", turnId: "t1", stepId: "s1", message: assistant([{ type: "thinking", thinking: "hmm" }, { type: "text", text: "ok" }, call("c1")]) },
-      toolResult("c1", "a\nb", { details: { exitCode: 0 } }),
-      { type: "message", turnId: "t1", stepId: "s2", message: assistant([{ type: "text", text: "done" }]) },
-      { type: "turn-end", turnId: "t1", reason: "done" },
-    ));
+    const t = projectTranscript(
+      branch(
+        { type: "turn-start", turnId: "t1" },
+        user("hi", "t1"),
+        { type: "message", turnId: "t1", stepId: "s1", message: assistant([{ type: "thinking", thinking: "hmm" }, { type: "text", text: "ok" }, call("c1")]) },
+        toolResult("c1", "a\nb", { details: { exitCode: 0 } }),
+        { type: "message", turnId: "t1", stepId: "s2", message: assistant([{ type: "text", text: "done" }]) },
+        { type: "turn-end", turnId: "t1", reason: "done" },
+      ),
+    );
     expect(t.turns).toHaveLength(1);
     const turn = t.turns[0]!;
     expect(turn.turnId).toBe("t1");
@@ -36,21 +38,34 @@ describe("projectTranscript", () => {
   });
 
   it("starts a new turn per user message and per turn-start", () => {
-    const t = projectTranscript(branch(
-      { type: "turn-start", turnId: "t1" }, user("a", "t1"), { type: "message", turnId: "t1", message: assistant([{ type: "text", text: "x" }]) },
-      { type: "turn-end", turnId: "t1", reason: "done" },
-      { type: "turn-start", turnId: "t2" }, user("b", "t2"),
-    ));
+    const t = projectTranscript(
+      branch(
+        { type: "turn-start", turnId: "t1" },
+        user("a", "t1"),
+        { type: "message", turnId: "t1", message: assistant([{ type: "text", text: "x" }]) },
+        { type: "turn-end", turnId: "t1", reason: "done" },
+        { type: "turn-start", turnId: "t2" },
+        user("b", "t2"),
+      ),
+    );
     expect(t.turns.map((turn) => turn.key)).toEqual(["t1", "t2"]);
     expect(t.turns[1]!.end).toBeUndefined();
   });
 
   it("shows attempts distinctly and counts their usage but not as steps", () => {
-    const t = projectTranscript(branch(
-      { type: "turn-start", turnId: "t1" },
-      { type: "attempt", turnId: "t1", stepId: "s1", message: assistant([], { stopReason: "error", errorMessage: "overloaded", usage: usage(3, 0) }), timing: { startedAt: 0, endedAt: 5 } },
-      { type: "message", turnId: "t1", stepId: "s1", message: assistant([{ type: "text", text: "ok" }]) },
-    ));
+    const t = projectTranscript(
+      branch(
+        { type: "turn-start", turnId: "t1" },
+        {
+          type: "attempt",
+          turnId: "t1",
+          stepId: "s1",
+          message: assistant([], { stopReason: "error", errorMessage: "overloaded", usage: usage(3, 0) }),
+          timing: { startedAt: 0, endedAt: 5 },
+        },
+        { type: "message", turnId: "t1", stepId: "s1", message: assistant([{ type: "text", text: "ok" }]) },
+      ),
+    );
     const turn = t.turns[0]!;
     expect(turn.items.map((item) => item.kind)).toEqual(["attempt", "assistant"]);
     expect(turn.steps).toBe(1);
@@ -58,22 +73,22 @@ describe("projectTranscript", () => {
   });
 
   it("keeps the latest title, compactions, and orphan results", () => {
-    const t = projectTranscript(branch(
-      { type: "title", title: "one" },
-      { type: "compaction", summary: "s", firstKeptId: "e1", tokensBefore: 900, source: "x" },
-      toolResult("nope", "?"),
-      { type: "title", title: "two" },
-    ));
+    const t = projectTranscript(
+      branch(
+        { type: "title", title: "one" },
+        { type: "compaction", summary: "s", firstKeptId: "e1", tokensBefore: 900, source: "x" },
+        toolResult("nope", "?"),
+        { type: "title", title: "two" },
+      ),
+    );
     expect(t.title).toBe("two");
     expect(t.turns[0]!.items.map((item) => item.kind)).toEqual(["compaction", "orphan-result"]);
   });
 
   it("lists pending tool calls", () => {
-    const t = projectTranscript(branch(
-      { type: "turn-start", turnId: "t1" },
-      { type: "message", turnId: "t1", message: assistant([call("c1"), call("c2")]) },
-      toolResult("c1", "x"),
-    ));
+    const t = projectTranscript(
+      branch({ type: "turn-start", turnId: "t1" }, { type: "message", turnId: "t1", message: assistant([call("c1"), call("c2")]) }, toolResult("c1", "x")),
+    );
     expect([...pendingToolCalls(t)]).toEqual(["c2"]);
   });
 });
@@ -82,10 +97,12 @@ describe("createProjector", () => {
   it("reuses unchanged items, blocks, and turns across calls", () => {
     const project = createProjector();
     const events = branch(
-      { type: "turn-start", turnId: "t1" }, user("hi", "t1"),
+      { type: "turn-start", turnId: "t1" },
+      user("hi", "t1"),
       { type: "message", turnId: "t1", message: assistant([{ type: "text", text: "a" }, call("c1")]) },
       { type: "turn-end", turnId: "t1", reason: "done" },
-      { type: "turn-start", turnId: "t2" }, user("next", "t2"),
+      { type: "turn-start", turnId: "t2" },
+      user("next", "t2"),
       { type: "message", turnId: "t2", message: assistant([call("c2")]) },
     );
     const before = project(events);

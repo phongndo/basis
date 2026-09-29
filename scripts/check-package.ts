@@ -8,27 +8,33 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const core = join(root, "packages/core");
 const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
 const consumer = mkdtempSync(join(tmpdir(), "basis-package-check-"));
-const run = (command: string, args: string[], cwd = consumer) =>
-  execFileSync(command, args, { cwd, stdio: "inherit" });
+const run = (command: string, args: string[], cwd = consumer) => execFileSync(command, args, { cwd, stdio: "inherit" });
 
 try {
   // Pack invokes prepack, building exactly what a separate application receives.
   run("pnpm", ["pack", "--out", join(consumer, "basis-core.tgz")], core);
   cpSync(join(root, "scripts/fixtures/consumer"), consumer, { recursive: true });
   cpSync(join(core, "bench/budgets.ts"), join(consumer, "budgets.ts"));
-  writeFileSync(join(consumer, "package.json"), JSON.stringify({
-    name: "basis-external-consumer",
-    private: true,
-    type: "module",
-    dependencies: {
-      "@basis/core": "file:./basis-core.tgz",
-      effect: manifest.dependencies.effect,
-    },
-    devDependencies: {
-      typescript: manifest.devDependencies.typescript,
-      "@types/node": manifest.devDependencies["@types/node"],
-    },
-  }, null, 2));
+  writeFileSync(
+    join(consumer, "package.json"),
+    JSON.stringify(
+      {
+        name: "basis-external-consumer",
+        private: true,
+        type: "module",
+        dependencies: {
+          "@basis/core": "file:./basis-core.tgz",
+          effect: manifest.dependencies.effect,
+        },
+        devDependencies: {
+          typescript: manifest.devDependencies.typescript,
+          "@types/node": manifest.devDependencies["@types/node"],
+        },
+      },
+      null,
+      2,
+    ),
+  );
   // This directory has no workspace links or source aliases.
   run("pnpm", ["install", "--ignore-workspace", "--ignore-scripts"]);
   run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconfig.json"]);

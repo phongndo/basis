@@ -22,7 +22,7 @@ All fields are optional.
             "api": "openai-completions",
             "baseUrl": "http://localhost:11434/v1",
             "compat": { "supportsDeveloperRole": false, "supportsReasoningEffort": false },
-            "models": [{ "id": "qwen3:8b", "reasoning": true }]
+            "models": [{ "id": "qwen3:8b", "reasoning": true }],
           },
           // Authenticated proxy: key from the environment (or `"value"`), or stored via /login.
           {
@@ -32,12 +32,12 @@ All fields are optional.
             "baseUrl": "https://llm.example.com/v1",
             "apiKey": { "env": "GATEWAY_API_KEY" },
             "headers": { "X-Team": "agents" },
-            "models": [{ "id": "gpt-5", "input": ["text", "image"], "contextWindow": 400000, "maxTokens": 128000 }]
-          }
-        ]
-      }
-    }
-  }
+            "models": [{ "id": "gpt-5", "input": ["text", "image"], "contextWindow": 400000, "maxTokens": 128000 }],
+          },
+        ],
+      },
+    },
+  },
 }
 ```
 

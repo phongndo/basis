@@ -61,7 +61,11 @@ export const Usage = Schema.Struct({
 export type Usage = typeof Usage.Type;
 
 export const emptyUsage: Usage = {
-  input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
@@ -218,14 +222,17 @@ export class LlmError extends Data.TaggedError("LlmError")<{
 /** Wraps every model request: logging, retries, routing, and gates can be plugins. The terminal is the provider. */
 export const LlmRequestHook = Hook.make<LlmRequest, Stream.Stream<StreamEvent, LlmError>, LlmError>("basis/llm.request");
 
-export class Llm extends Context.Tag("basis/Llm")<Llm, {
-  readonly providers: Effect.Effect<readonly ProviderInfo[]>;
-  /** Every known model, or only those whose provider is configured. */
-  readonly models: (options?: { readonly available?: boolean }) => Effect.Effect<readonly ModelInfo[]>;
-  readonly model: (ref: ModelRef) => Effect.Effect<ModelInfo, LlmError>;
-  /** Runs `LlmRequestHook`; interrupting the stream aborts the provider request. */
-  readonly stream: (request: LlmRequest) => Stream.Stream<StreamEvent, LlmError>;
-  /** Runs the provider's login flow through `Interaction` and stores the credential. */
-  readonly login: (provider: string, type: AuthType) => Effect.Effect<void, LlmError>;
-  readonly logout: (provider: string) => Effect.Effect<void, LlmError>;
-}>() {}
+export class Llm extends Context.Tag("basis/Llm")<
+  Llm,
+  {
+    readonly providers: Effect.Effect<readonly ProviderInfo[]>;
+    /** Every known model, or only those whose provider is configured. */
+    readonly models: (options?: { readonly available?: boolean }) => Effect.Effect<readonly ModelInfo[]>;
+    readonly model: (ref: ModelRef) => Effect.Effect<ModelInfo, LlmError>;
+    /** Runs `LlmRequestHook`; interrupting the stream aborts the provider request. */
+    readonly stream: (request: LlmRequest) => Stream.Stream<StreamEvent, LlmError>;
+    /** Runs the provider's login flow through `Interaction` and stores the credential. */
+    readonly login: (provider: string, type: AuthType) => Effect.Effect<void, LlmError>;
+    readonly logout: (provider: string) => Effect.Effect<void, LlmError>;
+  }
+>() {}

@@ -4,19 +4,19 @@ Provides `Agent` (`@basis/contracts`): the turn loop. Requires `Sessions`, `Llm`
 `Tools`, and `HostControl`.
 
 ```ts
-const agent = yield* Agent;
-yield* agent.prompt(sessionId, [{ type: "text", text: "Fix the failing test" }]);
-yield* agent.cancel(sessionId);
+const agent = yield * Agent;
+yield * agent.prompt(sessionId, [{ type: "text", text: "Fix the failing test" }]);
+yield * agent.cancel(sessionId);
 ```
 
 ## Config
 
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `defaultModel` | first of `Llm.models({ available: true })` | `<provider>/<model>` for turns that name none. |
-| `systemPrompt` | pi-style base prompt | Replaces the base section; the environment section is still added. |
-| `maxSteps` | `200` | Model calls per turn before it ends with `max-steps`. |
-| `cli` | set by `apps/host` to this checkout's CLI | Shell command for the `basis` CLI, named in the environment section so the agent can inspect itself. |
+| Key            | Default                                    | Meaning                                                                                              |
+| -------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `defaultModel` | first of `Llm.models({ available: true })` | `<provider>/<model>` for turns that name none.                                                       |
+| `systemPrompt` | pi-style base prompt                       | Replaces the base section; the environment section is still added.                                   |
+| `maxSteps`     | `200`                                      | Model calls per turn before it ends with `max-steps`.                                                |
+| `cli`          | set by `apps/host` to this checkout's CLI  | Shell command for the `basis` CLI, named in the environment section so the agent can inspect itself. |
 
 ## A turn
 

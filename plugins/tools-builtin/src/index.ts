@@ -23,13 +23,14 @@ export { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead, truncateTail } from
  * because the registry rejects duplicate names: a reload must unregister the
  * old tool before the new one registers.
  */
-const toolPlugin = (tool: Tool<any>) => definePlugin({
-  id: tool.name,
-  version: "0.1.0",
-  requires: [Tools],
-  exclusive: true,
-  layer: Layer.scopedDiscard(Effect.flatMap(Tools, (registry) => registry.register(tool))),
-});
+const toolPlugin = (tool: Tool<any>) =>
+  definePlugin({
+    id: tool.name,
+    version: "0.1.0",
+    requires: [Tools],
+    exclusive: true,
+    layer: Layer.scopedDiscard(Effect.flatMap(Tools, (registry) => registry.register(tool))),
+  });
 
 export const read = toolPlugin(readTool);
 export const write = toolPlugin(writeTool);

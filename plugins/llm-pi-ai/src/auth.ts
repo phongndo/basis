@@ -28,8 +28,7 @@ export type Run = ReturnType<typeof runner>;
 export function credentialStore(credentials: CredentialsService, run: Run): Pi.CredentialStore {
   return {
     read: (provider, options) => run(credentials.read(provider), options?.signal) as Promise<Pi.Credential | undefined>,
-    list: async (options) =>
-      (await run(credentials.list, options?.signal)).map(({ provider, type }) => ({ providerId: provider, type })),
+    list: async (options) => (await run(credentials.list, options?.signal)).map(({ provider, type }) => ({ providerId: provider, type })),
     modify: (provider, update, options) =>
       run(
         credentials.modify(provider, (current) =>
@@ -37,7 +36,8 @@ export function credentialStore(credentials: CredentialsService, run: Run): Pi.C
             try: () => update(current as Pi.Credential | undefined) as Promise<Credential | undefined>,
             // Rejections from `update` propagate unchanged, as pi-ai expects.
             catch: (error) => error,
-          })),
+          }),
+        ),
         options?.signal,
       ) as Promise<Pi.Credential | undefined>,
     delete: (provider, options) => run(credentials.remove(provider), options?.signal),
@@ -49,12 +49,7 @@ export function credentialStore(credentials: CredentialsService, run: Run): Pi.C
  * callback server that won the race against a paste-the-code prompt) and the
  * login's signal both withdraw the pending question by interrupting it.
  */
-export function authInteraction(
-  interaction: InteractionService,
-  run: Run,
-  signal: AbortSignal,
-  notify: (event: Pi.AuthEvent) => void,
-): Pi.AuthInteraction {
+export function authInteraction(interaction: InteractionService, run: Run, signal: AbortSignal, notify: (event: Pi.AuthEvent) => void): Pi.AuthInteraction {
   return {
     signal,
     notify,
@@ -63,11 +58,14 @@ export function authInteraction(
       switch (prompt.type) {
         case "select":
           return run(
-            interaction.select(prompt.message, prompt.options.map((option) => ({
-              value: option.id,
-              label: option.label,
-              ...(option.description === undefined ? {} : { description: option.description }),
-            }))),
+            interaction.select(
+              prompt.message,
+              prompt.options.map((option) => ({
+                value: option.id,
+                label: option.label,
+                ...(option.description === undefined ? {} : { description: option.description }),
+              })),
+            ),
             withdraw,
           );
         case "secret":
@@ -105,9 +103,11 @@ export function toNotice(event: Pi.AuthEvent, providerName: string): NoticePaylo
       return {
         ...base,
         message: event.message,
-        ...(event.links === undefined ? {} : {
-          links: event.links.map((link) => ({ url: link.url, ...(link.label === undefined ? {} : { label: link.label }) })),
-        }),
+        ...(event.links === undefined
+          ? {}
+          : {
+              links: event.links.map((link) => ({ url: link.url, ...(link.label === undefined ? {} : { label: link.label }) })),
+            }),
       };
     case "progress":
       return { ...base, message: event.message };

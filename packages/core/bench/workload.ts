@@ -15,44 +15,60 @@ const Point = Hook.make<number, number>("stress/operation");
 const live = new Set<object>();
 let crash!: Deferred.Deferred<void>;
 let owner!: typeof PluginContext.Service;
-const plugin = definePlugin({ id: "resource", provides: [Value], config: Schema.Struct({ value: Schema.Number }), layer: ({ value }) =>
-  Layer.scoped(Value, Effect.gen(function* () {
-    const resource = {};
-    live.add(resource);
-    yield* Effect.addFinalizer(() => Effect.sync(() => { live.delete(resource); }));
-    owner = yield* PluginContext;
-    yield* owner.on(Point, (input, next) => next(input + value));
-    crash = yield* Deferred.make<void>();
-    yield* owner.background("connection", Deferred.await(crash).pipe(Effect.zipRight(Effect.fail("lost"))), { required: true });
-    return value;
-  })) });
+const plugin = definePlugin({
+  id: "resource",
+  provides: [Value],
+  config: Schema.Struct({ value: Schema.Number }),
+  layer: ({ value }) =>
+    Layer.scoped(
+      Value,
+      Effect.gen(function* () {
+        const resource = {};
+        live.add(resource);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            live.delete(resource);
+          }),
+        );
+        owner = yield* PluginContext;
+        yield* owner.on(Point, (input, next) => next(input + value));
+        crash = yield* Deferred.make<void>();
+        yield* owner.background("connection", Deferred.await(crash).pipe(Effect.zipRight(Effect.fail("lost"))), { required: true });
+        return value;
+      }),
+    ),
+});
 const composition = (value: number) => ({ plugins: { resource: { config: { value } } } });
 const latency: number[] = [];
 
 async function cycle(measure: boolean) {
-  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const loader = yield* makeLoader({ source: { resolve: () => Effect.succeed(plugin) }, composition: composition(0) });
-    // A diagnostic subscriber that never advances exercises bounded retention.
-    yield* Effect.forkScoped(Stream.runForEach(loader.core.faults, () => Effect.never));
-    yield* Effect.yieldNow();
-    for (let n = 0; n < 300; n++) yield* owner.background("noise", Effect.fail(n));
-    for (let version = 1; version <= 3; version++) {
-      yield* loader.apply(composition(version));
-      assert.equal(live.size, 1);
-      const operation = loader.core.run(Effect.flatMap(Hooks, (hooks) => hooks.invoke(Point, 1, Effect.succeed)));
-      const started = performance.now();
-      assert.equal(yield* operation, version + 1);
-      if (measure) latency.push((performance.now() - started) * 1000);
-    }
-    yield* Deferred.succeed(crash, undefined);
-    yield* loader.core.inspect.pipe(Effect.repeat({ until: (snapshot) => snapshot.plugins[0]?.state === "failed" }), Effect.timeout("2 seconds"));
-    assert.equal(live.size, 0);
-    yield* loader.core.restart("resource");
-    assert.equal(live.size, 1);
-    const snapshot = yield* loader.core.inspect;
-    assert.equal(snapshot.hooks[0]?.handlers.length, 1);
-    assert.equal(yield* loader.core.run(Value), 3);
-  })));
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loader = yield* makeLoader({ source: { resolve: () => Effect.succeed(plugin) }, composition: composition(0) });
+        // A diagnostic subscriber that never advances exercises bounded retention.
+        yield* Effect.forkScoped(Stream.runForEach(loader.core.faults, () => Effect.never));
+        yield* Effect.yieldNow();
+        for (let n = 0; n < 300; n++) yield* owner.background("noise", Effect.fail(n));
+        for (let version = 1; version <= 3; version++) {
+          yield* loader.apply(composition(version));
+          assert.equal(live.size, 1);
+          const operation = loader.core.run(Effect.flatMap(Hooks, (hooks) => hooks.invoke(Point, 1, Effect.succeed)));
+          const started = performance.now();
+          assert.equal(yield* operation, version + 1);
+          if (measure) latency.push((performance.now() - started) * 1000);
+        }
+        yield* Deferred.succeed(crash, undefined);
+        yield* loader.core.inspect.pipe(Effect.repeat({ until: (snapshot) => snapshot.plugins[0]?.state === "failed" }), Effect.timeout("2 seconds"));
+        assert.equal(live.size, 0);
+        yield* loader.core.restart("resource");
+        assert.equal(live.size, 1);
+        const snapshot = yield* loader.core.inspect;
+        assert.equal(snapshot.hooks[0]?.handlers.length, 1);
+        assert.equal(yield* loader.core.run(Value), 3);
+      }),
+    ),
+  );
   assert.equal(live.size, 0);
 }
 
@@ -85,6 +101,6 @@ record("operationP95Us", latency[Math.ceil(latency.length * 0.95) - 1]!);
 record("operationP99Us", latency[Math.ceil(latency.length * 0.99) - 1]!);
 record("heapGrowthBytes", Math.max(0, memory.at(-1)!.heap - initial.heapUsed));
 record("rssGrowthBytes", Math.max(0, memory.at(-1)!.rss - initial.rss));
-record("lifecycleCyclesPerSecond", cycles * 1000 / elapsed);
+record("lifecycleCyclesPerSecond", (cycles * 1000) / elapsed);
 console.log(JSON.stringify({ cycles, warmupCycles: 20, faultsPerCycle: 300, reloadsPerCycle: 3, gcEveryCycles: 20, coldStartupSamplesMs: cold, memory }));
 finish("workload");

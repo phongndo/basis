@@ -50,28 +50,35 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
     const project = trusted ? yield* readConfig(paths.projectConfig) : yield* skipConfig(paths.projectConfig);
     const diagnostics = [...user.diagnostics, ...project.diagnostics];
     if (!trusted && (project.found || (yield* exists(projectPluginsDir(paths))))) {
-      diagnostics.push(new Diagnostic({
-        severity: "warning",
-        message: `${dirname(paths.projectConfig)}: project config and plugins are ignored because ${paths.cwd} is not trusted`,
-        suggestion: `If you trust this project, add "${paths.cwd}" to "trustedProjects" in ${paths.userConfig}`,
-      }));
+      diagnostics.push(
+        new Diagnostic({
+          severity: "warning",
+          message: `${dirname(paths.projectConfig)}: project config and plugins are ignored because ${paths.cwd} is not trusted`,
+          suggestion: `If you trust this project, add "${paths.cwd}" to "trustedProjects" in ${paths.userConfig}`,
+        }),
+      );
     }
     if (project.trustedProjects.length > 0) {
-      diagnostics.push(new Diagnostic({
-        severity: "warning",
-        message: `${paths.projectConfig}: "trustedProjects" is ignored; only ${paths.userConfig} can grant trust`,
-        suggestion: `Remove "trustedProjects" from the project file`,
-      }));
+      diagnostics.push(
+        new Diagnostic({
+          severity: "warning",
+          message: `${paths.projectConfig}: "trustedProjects" is ignored; only ${paths.userConfig} can grant trust`,
+          suggestion: `Remove "trustedProjects" from the project file`,
+        }),
+      );
     }
     const plugins: Record<string, PluginEntry> = {};
     for (const file of [user, project]) {
       for (const [id, row] of Object.entries(file.plugins)) {
         if (id === HOST_PLUGIN_ID) {
-          diagnostics.push(new Diagnostic({
-            severity: "warning", pluginId: id,
-            message: `${file.path}: the "${HOST_PLUGIN_ID}" row is ignored; the host plugin is always loaded with the resolved paths`,
-            suggestion: `Remove the "${HOST_PLUGIN_ID}" row`,
-          }));
+          diagnostics.push(
+            new Diagnostic({
+              severity: "warning",
+              pluginId: id,
+              message: `${file.path}: the "${HOST_PLUGIN_ID}" row is ignored; the host plugin is always loaded with the resolved paths`,
+              suggestion: `Remove the "${HOST_PLUGIN_ID}" row`,
+            }),
+          );
           continue;
         }
         // JSON cannot express undefined, so decoded rows only carry the keys the file wrote.
@@ -82,7 +89,10 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
     return {
       composition: { plugins },
       diagnostics,
-      files: [{ path: user.path, found: user.found }, { path: project.path, found: project.found }],
+      files: [
+        { path: user.path, found: user.found },
+        { path: project.path, found: project.found },
+      ],
       trusted,
     };
   });
@@ -97,7 +107,12 @@ interface ReadConfig {
 }
 
 const exists = (path: string): Effect.Effect<boolean> =>
-  Effect.promise(() => access(path).then(() => true, () => false));
+  Effect.promise(() =>
+    access(path).then(
+      () => true,
+      () => false,
+    ),
+  );
 
 /** An untrusted project's file: only whether it exists, never its contents. */
 const skipConfig = (path: string): Effect.Effect<ReadConfig> =>
@@ -109,7 +124,13 @@ const readConfig = (path: string): Effect.Effect<ReadConfig> =>
     const text = yield* Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: (cause) => cause as NodeJS.ErrnoException }).pipe(Effect.either);
     if (Either.isLeft(text)) {
       if (text.left.code === "ENOENT") return empty(false);
-      return empty(true, [new Diagnostic({ severity: "error", message: `${path}: cannot read config: ${text.left.message}`, suggestion: "Fix the file's permissions or remove it" })]);
+      return empty(true, [
+        new Diagnostic({
+          severity: "error",
+          message: `${path}: cannot read config: ${text.left.message}`,
+          suggestion: "Fix the file's permissions or remove it",
+        }),
+      ]);
     }
     const parsed = parseConfig(path, text.right);
     if (Either.isLeft(parsed)) return empty(true, [parsed.left]);
@@ -123,23 +144,27 @@ function parseConfig(path: string, text: string): Either.Either<ConfigFile, Diag
   if (errors.length) {
     const first = errors[0]!;
     const { line, column } = position(text, first.offset);
-    return Either.left(new Diagnostic({
-      severity: "error",
-      message: `${path}:${line}:${column}: ${printParseErrorCode(first.error)}`,
-      suggestion: "Fix the JSONC syntax (comments and trailing commas are allowed)",
-    }));
+    return Either.left(
+      new Diagnostic({
+        severity: "error",
+        message: `${path}:${line}:${column}: ${printParseErrorCode(first.error)}`,
+        suggestion: "Fix the JSONC syntax (comments and trailing commas are allowed)",
+      }),
+    );
   }
   const decoded = Schema.decodeUnknownEither(ConfigFile)(value);
   if (Either.isLeft(decoded)) {
     const issue = ParseResult.ArrayFormatter.formatErrorSync(decoded.left)[0];
     const at = issue?.path.filter((segment): segment is string | number => typeof segment !== "symbol") ?? [];
-    return Either.left(new Diagnostic({
-      severity: "error",
-      ...(typeof at[1] === "string" ? { pluginId: at[1] } : {}),
-      path: at,
-      message: `${path}: invalid config at ${at.length ? at.join(".") : "root"}: ${issue?.message ?? ParseResult.TreeFormatter.formatErrorSync(decoded.left)}`,
-      suggestion: `Expected { "trustedProjects"?: string[], "plugins"?: { "<id>": { "enabled"?: boolean, "config"?: unknown } } }`,
-    }));
+    return Either.left(
+      new Diagnostic({
+        severity: "error",
+        ...(typeof at[1] === "string" ? { pluginId: at[1] } : {}),
+        path: at,
+        message: `${path}: invalid config at ${at.length ? at.join(".") : "root"}: ${issue?.message ?? ParseResult.TreeFormatter.formatErrorSync(decoded.left)}`,
+        suggestion: `Expected { "trustedProjects"?: string[], "plugins"?: { "<id>": { "enabled"?: boolean, "config"?: unknown } } }`,
+      }),
+    );
   }
   return Either.right(decoded.right);
 }

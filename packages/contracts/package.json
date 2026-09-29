@@ -1,8 +1,8 @@
 {
   "name": "@basis/contracts",
   "version": "0.1.0",
-  "description": "Capability contracts shared by the Basis harness plugins and clients",
   "private": true,
+  "description": "Capability contracts shared by the Basis harness plugins and clients",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@basis/core": "workspace:*",
-    "@effect/rpc": "0.76.2",
     "@effect/platform": "0.97.2",
+    "@effect/rpc": "0.76.2",
     "effect": "3.22.2"
   },
   "devDependencies": {

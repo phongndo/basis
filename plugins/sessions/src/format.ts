@@ -59,8 +59,7 @@ export const eventId = (): string => randomBytes(6).toString("base64url");
 /** Directory for a working directory, pi-style: `/home/me/app` → `--home-me-app--`. The header's `cwd` stays authoritative. */
 export const encodeCwd = (cwd: string): string => `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 
-export const fileName = (createdAt: number, id: string): string =>
-  `${new Date(createdAt).toISOString().replace(/[:.]/g, "-")}_${id}.jsonl`;
+export const fileName = (createdAt: number, id: string): string => `${new Date(createdAt).toISOString().replace(/[:.]/g, "-")}_${id}.jsonl`;
 
 /** Session id from a file name, or undefined for files that are not sessions. */
 export function idFromFileName(name: string): string | undefined {
@@ -68,5 +67,4 @@ export function idFromFileName(name: string): string | undefined {
   return match?.[1];
 }
 
-export const sessionFile = (root: string, cwd: string, createdAt: number, id: string): string =>
-  path.join(root, encodeCwd(cwd), fileName(createdAt, id));
+export const sessionFile = (root: string, cwd: string, createdAt: number, id: string): string => path.join(root, encodeCwd(cwd), fileName(createdAt, id));

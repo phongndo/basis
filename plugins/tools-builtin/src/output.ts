@@ -86,7 +86,7 @@ export class OutputAccumulator {
     const truncation: Truncation = {
       ...tail,
       truncated,
-      truncatedBy: truncated ? tail.truncatedBy ?? (this.decodedBytes > this.maxBytes ? "bytes" : "lines") : null,
+      truncatedBy: truncated ? (tail.truncatedBy ?? (this.decodedBytes > this.maxBytes ? "bytes" : "lines")) : null,
       totalLines: this.totalLines,
       totalBytes: this.decodedBytes,
     };

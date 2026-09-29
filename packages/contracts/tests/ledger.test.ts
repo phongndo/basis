@@ -8,10 +8,22 @@ import { ledger, ledgerSpans, lineDiff, parseLedgerFilter, promptDiff, recordSum
 const log = (...items: EventData[]): SessionEvent[] =>
   items.map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: 1000 * (i + 1), data }));
 const section = (label: string, text: string): Contribution => ({ source: "agent", kind: "system", label, chars: text.length });
-const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"]): AssistantMessage =>
-  ({ role: "assistant", content, api: "x", provider: "p", model: "m", usage: emptyUsage, stopReason, timestamp: 0 });
+const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"]): AssistantMessage => ({
+  role: "assistant",
+  content,
+  api: "x",
+  provider: "p",
+  model: "m",
+  usage: emptyUsage,
+  stopReason,
+  timestamp: 0,
+});
 const request = (turnId: string, stepId: string, env: string, withSystem: boolean): EventData => ({
-  type: "request", turnId, stepId, model: "p/m", composition: "c",
+  type: "request",
+  turnId,
+  stepId,
+  model: "p/m",
+  composition: "c",
   ...(withSystem ? { system: `BASE\n\n${env}` } : {}),
   contributions: [section("base", "BASE"), section("environment", env)],
 });
@@ -21,8 +33,20 @@ const events = log(
   { type: "message", turnId: "t1", message: { role: "user", content: [{ type: "text", text: "list" }], timestamp: 0 } },
   { type: "step-start", turnId: "t1", stepId: "s1" },
   request("t1", "s1", "day 1", true),
-  { type: "message", turnId: "t1", stepId: "s1", timing: { startedAt: 5000, firstTokenAt: 5500, endedAt: 6000 }, message: assistant([{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }], "toolUse") },
-  { type: "message", turnId: "t1", stepId: "s1", timing: { startedAt: 6000, endedAt: 6100 }, message: { role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "a" }], isError: true, timestamp: 0 } },
+  {
+    type: "message",
+    turnId: "t1",
+    stepId: "s1",
+    timing: { startedAt: 5000, firstTokenAt: 5500, endedAt: 6000 },
+    message: assistant([{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }], "toolUse"),
+  },
+  {
+    type: "message",
+    turnId: "t1",
+    stepId: "s1",
+    timing: { startedAt: 6000, endedAt: 6100 },
+    message: { role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "a" }], isError: true, timestamp: 0 },
+  },
   { type: "step-end", turnId: "t1", stepId: "s1" },
   { type: "step-start", turnId: "t1", stepId: "s2" },
   request("t1", "s2", "day 1", false),
@@ -42,10 +66,20 @@ const records = ledger(trajectory(events));
 describe("ledger", () => {
   it("orders user, system, model, and tool records, numbering every request", () => {
     expect(records.map((record) => [record.kind, record.turnStart])).toEqual([
-      ["user", true], ["system", false], ["assistant", false], ["tool", false], ["assistant", false],
-      ["user", true], ["system", false], ["assistant", false],
+      ["user", true],
+      ["system", false],
+      ["assistant", false],
+      ["tool", false],
+      ["assistant", false],
+      ["user", true],
+      ["system", false],
+      ["assistant", false],
     ]);
-    expect(records.flatMap((record) => (record.kind === "assistant" ? [[record.requestNumber, record.failed]] : []))).toEqual([[1, false], [2, false], [3, true]]);
+    expect(records.flatMap((record) => (record.kind === "assistant" ? [[record.requestNumber, record.failed]] : []))).toEqual([
+      [1, false],
+      [2, false],
+      [3, true],
+    ]);
   });
 
   it("adds a system record only when the prompt is first sent or changes, with the previous texts for the diff", () => {
@@ -71,7 +105,10 @@ describe("ledger", () => {
 describe("lineDiff", () => {
   it("marks kept, removed, and added lines", () => {
     expect(lineDiff("a\nb\nc", "a\nx\nc")).toEqual([
-      { kind: "same", text: "a" }, { kind: "del", text: "b" }, { kind: "add", text: "x" }, { kind: "same", text: "c" },
+      { kind: "same", text: "a" },
+      { kind: "del", text: "b" },
+      { kind: "add", text: "x" },
+      { kind: "same", text: "c" },
     ]);
   });
 });
@@ -102,7 +139,17 @@ describe("recordSummary", () => {
   it("flattens a record to serializable data without its turn", () => {
     const summaries = records.map((record) => recordSummary(record));
     expect(() => JSON.stringify(summaries)).not.toThrow();
-    expect(summaries[3]).toMatchObject({ kind: "tool", turn: 1, step: 1, tool: "bash", arguments: { command: "ls" }, result: "a", status: "error", error: true, duration: 100 });
+    expect(summaries[3]).toMatchObject({
+      kind: "tool",
+      turn: 1,
+      step: 1,
+      tool: "bash",
+      arguments: { command: "ls" },
+      result: "a",
+      status: "error",
+      error: true,
+      duration: 100,
+    });
     expect(summaries[2]).toMatchObject({ kind: "assistant", request: 1, ttft: 500, duration: 1000, toolCalls: ["bash"], status: "tool use" });
     expect(JSON.stringify(summaries).length).toBeLessThan(4000);
   });
@@ -114,14 +161,25 @@ describe("promptDiff", () => {
   it("reports changed sections with their lines, and nothing for an unchanged prompt", () => {
     expect(promptDiff(requests[0], requests[1]!)).toEqual([]);
     expect(promptDiff(requests[1], requests[2]!)).toEqual([
-      { id: "environment", source: "agent", status: "changed", lines: [{ kind: "del", text: "day 1" }, { kind: "add", text: "day 2" }] },
+      {
+        id: "environment",
+        source: "agent",
+        status: "changed",
+        lines: [
+          { kind: "del", text: "day 1" },
+          { kind: "add", text: "day 2" },
+        ],
+      },
     ]);
   });
 
   it("marks sections added and removed", () => {
     const [first] = requests;
     const without = { ...first!, sections: first!.sections.filter((section) => section.id === "base") };
-    expect(promptDiff(undefined, first!).map((section) => [section.id, section.status])).toEqual([["base", "added"], ["environment", "added"]]);
+    expect(promptDiff(undefined, first!).map((section) => [section.id, section.status])).toEqual([
+      ["base", "added"],
+      ["environment", "added"],
+    ]);
     expect(promptDiff(first, without).map((section) => [section.id, section.status])).toEqual([["environment", "removed"]]);
   });
 });

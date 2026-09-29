@@ -47,10 +47,13 @@ export interface ToolRecord extends Base {
 }
 
 export type LedgerRecord = SystemRecord | UserRecord | AssistantRecord | ToolRecord;
-type Draft = LedgerRecord extends infer R ? R extends LedgerRecord ? Omit<R, "turn" | "turnStart"> : never : never;
+type Draft = LedgerRecord extends infer R ? (R extends LedgerRecord ? Omit<R, "turn" | "turnStart"> : never) : never;
 
 export const contentText = (content: readonly { readonly type: string; readonly text?: string }[]): string =>
-  content.filter((part): part is TextContent => part.type === "text").map((part) => part.text).join("\n");
+  content
+    .filter((part): part is TextContent => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
 
 export function ledger(turns: readonly TrajectoryTurn[]): LedgerRecord[] {
   const records: LedgerRecord[] = [];
@@ -82,7 +85,12 @@ export function ledger(turns: readonly TrajectoryTurn[]): LedgerRecord[] {
       if (step.response !== undefined) {
         const response = step.response;
         push({
-          kind: "assistant", id: response.eventId, step, requestNumber, message: response.message, failed: false,
+          kind: "assistant",
+          id: response.eventId,
+          step,
+          requestNumber,
+          message: response.message,
+          failed: false,
           ...(response.timing === undefined ? {} : { timing: response.timing }),
         });
       }
@@ -120,7 +128,10 @@ export function ledgerSpans(records: readonly LedgerRecord[]): LedgerSpan[] {
       const timing = record.timing;
       const start = timing?.startedAt ?? record.step.request?.at ?? record.step.startedAt;
       out.push({
-        record, lane: 1, start, ...(timing === undefined ? {} : { end: timing.endedAt }),
+        record,
+        lane: 1,
+        start,
+        ...(timing === undefined ? {} : { end: timing.endedAt }),
         ...(timing?.firstTokenAt === undefined ? {} : { ttft: timing.firstTokenAt - timing.startedAt }),
         error: record.failed,
       });
@@ -136,7 +147,7 @@ export function ledgerSpans(records: readonly LedgerRecord[]): LedgerSpan[] {
 export function lineDiff(before: string, after: string): { readonly kind: "same" | "del" | "add"; readonly text: string }[] {
   const a = before.split("\n");
   const b = after.split("\n");
-  const table: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  const table: number[][] = Array.from({ length: a.length + 1 }, () => Array.from({ length: b.length + 1 }, () => 0));
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
       table[i]![j] = a[i] === b[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
@@ -146,9 +157,17 @@ export function lineDiff(before: string, after: string): { readonly kind: "same"
   let i = 0;
   let j = 0;
   while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) { out.push({ kind: "same", text: a[i]! }); i++; j++; }
-    else if (i < a.length && (j >= b.length || table[i + 1]![j]! >= table[i]![j + 1]!)) { out.push({ kind: "del", text: a[i]! }); i++; }
-    else { out.push({ kind: "add", text: b[j]! }); j++; }
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      out.push({ kind: "same", text: a[i]! });
+      i++;
+      j++;
+    } else if (i < a.length && (j >= b.length || table[i + 1]![j]! >= table[i]![j + 1]!)) {
+      out.push({ kind: "del", text: a[i]! });
+      i++;
+    } else {
+      out.push({ kind: "add", text: b[j]! });
+      j++;
+    }
   }
   return out;
 }
@@ -156,16 +175,21 @@ export function lineDiff(before: string, after: string): { readonly kind: "same"
 /** Record text the search box matches against. */
 export const recordText = (record: LedgerRecord): string => {
   switch (record.kind) {
-    case "system": return record.request.sections.map((section) => `${section.id} ${section.source} ${section.text ?? ""}`).join(" ");
-    case "user": return contentText(record.message.content);
-    case "assistant": return contentText(record.message.content as readonly { type: string; text?: string }[]) + (record.message.errorMessage ?? "");
-    case "tool": return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)} ${record.run.result === undefined ? "" : contentText(record.run.result.content)}`;
+    case "system":
+      return record.request.sections.map((section) => `${section.id} ${section.source} ${section.text ?? ""}`).join(" ");
+    case "user":
+      return contentText(record.message.content);
+    case "assistant":
+      return contentText(record.message.content as readonly { type: string; text?: string }[]) + (record.message.errorMessage ?? "");
+    case "tool":
+      return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)} ${record.run.result === undefined ? "" : contentText(record.run.result.content)}`;
   }
 };
 
 export const RECORD_KIND_LABEL = { system: "system", user: "user", assistant: "model", tool: "tool" } as const;
 
-export const recordFailed = (record: LedgerRecord) => (record.kind === "assistant" && record.failed) || (record.kind === "tool" && record.run.result?.isError === true);
+export const recordFailed = (record: LedgerRecord) =>
+  (record.kind === "assistant" && record.failed) || (record.kind === "tool" && record.run.result?.isError === true);
 export const recordDuration = (record: LedgerRecord): number | undefined => {
   if (record.kind === "assistant") return record.timing === undefined ? undefined : record.timing.endedAt - record.timing.startedAt;
   if (record.kind === "tool") return record.run.timing === undefined ? undefined : record.run.timing.endedAt - record.run.timing.startedAt;
@@ -177,55 +201,89 @@ export const recordDuration = (record: LedgerRecord): number | undefined => {
  * `tool:bash`, `turn:2`, `req:5`, plain text, and `-term` to negate any of them.
  */
 export const parseLedgerFilter = (input: string) => {
-  const terms = input.trim().split(/\s+/).filter(Boolean).map((raw) => {
-    const negate = raw.startsWith("-") && raw.length > 1;
-    const term = (negate ? raw.slice(1) : raw).toLowerCase();
-    const [key, value] = term.includes(":") ? [term.slice(0, term.indexOf(":")), term.slice(term.indexOf(":") + 1)] : ["", term];
-    const test = (record: LedgerRecord): boolean => {
-      switch (key) {
-        case "is": return value === "error" ? recordFailed(record) : value === "running" ? recordDuration(record) === undefined && (record.kind === "tool" || record.kind === "assistant") : false;
-        case "kind": case "type": return RECORD_KIND_LABEL[record.kind].startsWith(value) || record.kind.startsWith(value);
-        case "tool": return record.kind === "tool" && record.run.call.name.toLowerCase().includes(value);
-        case "turn": return String(record.turn.index) === value;
-        case "req": return record.kind !== "user" && String(record.kind === "system" ? record.requestNumber : record.kind === "assistant" ? record.requestNumber : "") === value;
-        default: return recordText(record).toLowerCase().includes(term);
-      }
-    };
-    return { negate, test };
-  });
+  const terms = input
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((raw) => {
+      const negate = raw.startsWith("-") && raw.length > 1;
+      const term = (negate ? raw.slice(1) : raw).toLowerCase();
+      const [key, value] = term.includes(":") ? [term.slice(0, term.indexOf(":")), term.slice(term.indexOf(":") + 1)] : ["", term];
+      const test = (record: LedgerRecord): boolean => {
+        switch (key) {
+          case "is":
+            return value === "error"
+              ? recordFailed(record)
+              : value === "running"
+                ? recordDuration(record) === undefined && (record.kind === "tool" || record.kind === "assistant")
+                : false;
+          case "kind":
+          case "type":
+            return RECORD_KIND_LABEL[record.kind].startsWith(value) || record.kind.startsWith(value);
+          case "tool":
+            return record.kind === "tool" && record.run.call.name.toLowerCase().includes(value);
+          case "turn":
+            return String(record.turn.index) === value;
+          case "req":
+            return (
+              record.kind !== "user" &&
+              String(record.kind === "system" ? record.requestNumber : record.kind === "assistant" ? record.requestNumber : "") === value
+            );
+          default:
+            return recordText(record).toLowerCase().includes(term);
+        }
+      };
+      return { negate, test };
+    });
   return (record: LedgerRecord) => terms.every((term) => term.test(record) !== term.negate);
 };
 
-
-const firstLine = (text: string) => text.trim().split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+const firstLine = (text: string) =>
+  text
+    .trim()
+    .split("\n")
+    .find((line) => line.trim() !== "")
+    ?.trim() ?? "";
 const thinkingText = (message: AssistantMessage) => message.content.flatMap((part) => (part.type === "thinking" ? [part.thinking] : [])).join("\n\n");
 const toolCallNames = (message: AssistantMessage) => message.content.flatMap((part) => (part.type === "toolCall" ? [part.name] : []));
 
 /** When the record began: the prompt, the request, the model call, or the tool run. */
 export const recordStart = (record: LedgerRecord): number => {
   switch (record.kind) {
-    case "user": return record.at;
-    case "system": return record.request.at;
-    case "assistant": return record.timing?.startedAt ?? record.step.request?.at ?? record.step.startedAt;
-    case "tool": return record.run.timing?.startedAt ?? record.step.startedAt;
+    case "user":
+      return record.at;
+    case "system":
+      return record.request.at;
+    case "assistant":
+      return record.timing?.startedAt ?? record.step.request?.at ?? record.step.startedAt;
+    case "tool":
+      return record.run.timing?.startedAt ?? record.step.startedAt;
   }
 };
 
 /** A one-word outcome; a tool with no result is `running` while its turn runs. */
 export const recordStatus = (record: LedgerRecord, running = false): string => {
   switch (record.kind) {
-    case "user": return "sent";
-    case "system": return record.previous === undefined ? "initial" : "changed";
-    case "assistant": return record.message.stopReason === "toolUse" && !record.failed ? "tool use" : record.message.stopReason;
-    case "tool": return record.run.result === undefined ? (running ? "running" : "no result") : record.run.result.isError ? "error" : "ok";
+    case "user":
+      return "sent";
+    case "system":
+      return record.previous === undefined ? "initial" : "changed";
+    case "assistant":
+      return record.message.stopReason === "toolUse" && !record.failed ? "tool use" : record.message.stopReason;
+    case "tool":
+      return record.run.result === undefined ? (running ? "running" : "no result") : record.run.result.isError ? "error" : "ok";
   }
 };
 
 /** The record in one line: prompt or reply text, the error, the tool call, or what changed in the system prompt. */
 export const recordName = (record: LedgerRecord): string => {
   switch (record.kind) {
-    case "user": return firstLine(contentText(record.message.content)) || "[image]";
-    case "system": return record.previous === undefined ? "initial system prompt" : `system prompt changed: ${[...record.request.sections.filter((s) => s.changed).map((s) => s.id), ...record.request.removed].join(", ")}`;
+    case "user":
+      return firstLine(contentText(record.message.content)) || "[image]";
+    case "system":
+      return record.previous === undefined
+        ? "initial system prompt"
+        : `system prompt changed: ${[...record.request.sections.filter((s) => s.changed).map((s) => s.id), ...record.request.removed].join(", ")}`;
     case "assistant": {
       if (record.failed) return record.message.errorMessage ?? `model call ${record.message.stopReason}`;
       const text = firstLine(contentText(record.message.content));
@@ -234,34 +292,57 @@ export const recordName = (record: LedgerRecord): string => {
       if (thinking) return thinking;
       return toolCallNames(record.message).length ? `→ ${toolCallNames(record.message).join(", ")}` : "(no output)";
     }
-    case "tool": return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)}`;
+    case "tool":
+      return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)}`;
   }
 };
 
 /** A record as flat, serializable data (records themselves point at their whole turn): for `--json` and exports. */
 export const recordSummary = (record: LedgerRecord, running = false) => {
   const base = {
-    id: record.id, kind: record.kind, turn: record.turn.index, start: recordStart(record),
-    status: recordStatus(record, running), name: recordName(record), error: recordFailed(record),
+    id: record.id,
+    kind: record.kind,
+    turn: record.turn.index,
+    start: recordStart(record),
+    status: recordStatus(record, running),
+    name: recordName(record),
+    error: recordFailed(record),
   };
   switch (record.kind) {
-    case "user": return { ...base, text: contentText(record.message.content) };
-    case "system": return {
-      ...base, request: record.requestNumber, requestEvent: record.request.eventId,
-      sections: record.request.sections.map((s) => ({ id: s.id, source: s.source, chars: s.chars, changed: s.changed })),
-      removed: record.request.removed,
-    };
-    case "assistant": return {
-      ...base, step: record.step.index, request: record.requestNumber, requestEvent: record.step.request?.eventId,
-      model: `${record.message.provider}/${record.message.model}`, usage: record.message.usage,
-      duration: recordDuration(record), ttft: record.timing?.firstTokenAt === undefined ? undefined : record.timing.firstTokenAt - record.timing.startedAt,
-      text: contentText(record.message.content), toolCalls: toolCallNames(record.message),
-      ...(record.message.errorMessage === undefined ? {} : { errorMessage: record.message.errorMessage }),
-    };
-    case "tool": return {
-      ...base, step: record.step.index, tool: record.run.call.name, callId: record.run.call.id, arguments: record.run.call.arguments,
-      duration: recordDuration(record), result: record.run.result === undefined ? undefined : contentText(record.run.result.content),
-    };
+    case "user":
+      return { ...base, text: contentText(record.message.content) };
+    case "system":
+      return {
+        ...base,
+        request: record.requestNumber,
+        requestEvent: record.request.eventId,
+        sections: record.request.sections.map((s) => ({ id: s.id, source: s.source, chars: s.chars, changed: s.changed })),
+        removed: record.request.removed,
+      };
+    case "assistant":
+      return {
+        ...base,
+        step: record.step.index,
+        request: record.requestNumber,
+        requestEvent: record.step.request?.eventId,
+        model: `${record.message.provider}/${record.message.model}`,
+        usage: record.message.usage,
+        duration: recordDuration(record),
+        ttft: record.timing?.firstTokenAt === undefined ? undefined : record.timing.firstTokenAt - record.timing.startedAt,
+        text: contentText(record.message.content),
+        toolCalls: toolCallNames(record.message),
+        ...(record.message.errorMessage === undefined ? {} : { errorMessage: record.message.errorMessage }),
+      };
+    case "tool":
+      return {
+        ...base,
+        step: record.step.index,
+        tool: record.run.call.name,
+        callId: record.run.call.id,
+        arguments: record.run.call.arguments,
+        duration: recordDuration(record),
+        result: record.run.result === undefined ? undefined : contentText(record.run.result.content),
+      };
   }
 };
 
@@ -287,18 +368,25 @@ export function promptDiff(previous: TrajectoryRequest | undefined, current: Tra
 }
 
 export const LEDGER_SORTS = ["time", "name", "status", "type", "tokens", "duration"] as const;
-export type LedgerSort = typeof LEDGER_SORTS[number];
+export type LedgerSort = (typeof LEDGER_SORTS)[number];
 
 /** Records ordered by a column, as the web table's header and `basis inspect --sort` do; `time` is log order. */
 export function sortRecords(records: readonly LedgerRecord[], key: LedgerSort, desc = false, running = false): LedgerRecord[] {
   if (key === "time") return desc ? [...records].reverse() : [...records];
   const value = (record: LedgerRecord): string | number => {
     switch (key) {
-      case "name": return recordName(record).toLowerCase();
-      case "status": return recordStatus(record, running);
-      case "type": return RECORD_KIND_LABEL[record.kind];
-      case "tokens": return record.kind === "assistant" ? record.message.usage.input + record.message.usage.cacheRead + record.message.usage.cacheWrite + record.message.usage.output : -1;
-      case "duration": return recordDuration(record) ?? -1;
+      case "name":
+        return recordName(record).toLowerCase();
+      case "status":
+        return recordStatus(record, running);
+      case "type":
+        return RECORD_KIND_LABEL[record.kind];
+      case "tokens":
+        return record.kind === "assistant"
+          ? record.message.usage.input + record.message.usage.cacheRead + record.message.usage.cacheWrite + record.message.usage.output
+          : -1;
+      case "duration":
+        return recordDuration(record) ?? -1;
     }
   };
   return [...records].sort((a, b) => {
@@ -314,7 +402,10 @@ export function recordsBetween(records: readonly LedgerRecord[], from: number, t
   const spans = new Map(ledgerSpans(records).map((span) => [span.record.id, span]));
   return records.filter((record) => {
     const span = spans.get(record.id);
-    if (span === undefined) { const at = recordStart(record); return at >= from && at <= to; }
+    if (span === undefined) {
+      const at = recordStart(record);
+      return at >= from && at <= to;
+    }
     return (span.end ?? now) >= from && span.start <= to;
   });
 }

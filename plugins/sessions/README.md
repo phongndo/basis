@@ -4,11 +4,11 @@ Provides `Sessions` (`@basis/contracts`): each session is an append-only tree of
 `SessionEvent`s stored as one JSONL file. Requires `Paths`. No config.
 
 ```ts
-const store = yield* Sessions;
-const { id } = yield* store.create({ cwd });
-const event = yield* store.append(id, { type: "title", title: "Fix the build" });
-const branch = yield* store.branch(id);          // root → leaf
-yield* store.checkout(id, event.id);             // later appends branch from here
+const store = yield * Sessions;
+const { id } = yield * store.create({ cwd });
+const event = yield * store.append(id, { type: "title", title: "Fix the build" });
+const branch = yield * store.branch(id); // root → leaf
+yield * store.checkout(id, event.id); // later appends branch from here
 ```
 
 ## Storage
@@ -16,11 +16,11 @@ yield* store.checkout(id, event.id);             // later appends branch from he
 `<Paths.sessions>/<encoded cwd>/<createdAt ISO>_<id>.jsonl`. The cwd is encoded
 pi-style (`/home/me/app` → `--home-me-app--`); the header's `cwd` is authoritative.
 
-| Line | Shape |
-| --- | --- |
-| 1 | `{ "type": "session", "version": 1, id, cwd, createdAt }` |
-| event | a `SessionEvent` (`seq`, `id`, `parent`, `at`, `data`); no top-level `type` |
-| checkout | `{ "type": "checkout", "leaf": eventId, "at" }` |
+| Line     | Shape                                                                       |
+| -------- | --------------------------------------------------------------------------- |
+| 1        | `{ "type": "session", "version": 1, id, cwd, createdAt }`                   |
+| event    | a `SessionEvent` (`seq`, `id`, `parent`, `at`, `data`); no top-level `type` |
+| checkout | `{ "type": "checkout", "leaf": eventId, "at" }`                             |
 
 `seq` counts events only (checkout lines do not advance it). The leaf is the last
 event appended or the last checkout, whichever is later. The title is the latest
@@ -35,7 +35,7 @@ event appended or the last checkout, whichever is later. The title is the latest
 - **Crash tolerance.** Bytes after the last newline are a torn write: they are
   ignored when reading and cut off before the next append. A write that fails at
   runtime (full disk, failed sync) fails the append, and the next write first
-  truncates the file back to the last confirmed line. Any *complete* line
+  truncates the file back to the last confirmed line. Any _complete_ line
   that does not decode, an unknown parent, a seq gap, or a checkout to nowhere
   makes the session `Corrupt`. Skipping such a line would silently change what the
   model saw.

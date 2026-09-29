@@ -32,13 +32,15 @@ export function toContext(request: LlmRequest): Pi.Context {
     ...(request.system === undefined ? {} : { systemPrompt: request.system }),
     // Structurally pi-ai messages; pi-ai does not mutate its input.
     messages: request.messages as unknown as Pi.Message[],
-    ...(request.tools === undefined ? {} : {
-      tools: request.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters as unknown as Pi.TSchema,
-      })),
-    }),
+    ...(request.tools === undefined
+      ? {}
+      : {
+          tools: request.tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters as unknown as Pi.TSchema,
+          })),
+        }),
   };
 }
 
@@ -200,9 +202,7 @@ export function makeEventMapper(model: Pi.Model<Pi.Api>, provider: { readonly id
     /** Call when pi's stream ends or throws; closes a stream that ended without a terminal. */
     end(cause?: unknown): StreamEvent[] {
       if (finished) return [];
-      const reason = cause === undefined
-        ? "The provider stream ended without a result"
-        : cause instanceof Error ? cause.message : String(cause);
+      const reason = cause === undefined ? "The provider stream ended without a result" : cause instanceof Error ? cause.message : String(cause);
       return terminal({ ...(latest ?? emptyMessage(model)), stopReason: "error", errorMessage: reason });
     },
   };

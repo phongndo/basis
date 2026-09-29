@@ -18,9 +18,7 @@ export const expandPath = (path: string, home: string = homedir()): string => {
   return isAbsolute(expanded) ? resolve(expanded) : expanded;
 };
 
-type GitResult =
-  | { readonly ok: true; readonly stdout: string }
-  | { readonly ok: false; readonly message: string };
+type GitResult = { readonly ok: true; readonly stdout: string } | { readonly ok: false; readonly message: string };
 
 /**
  * Never prompts, never takes optional locks (so reads leave the index alone),
@@ -68,7 +66,11 @@ export const matchName = (name: string, needle: string): { readonly score: numbe
 /** Entries returned by `browse`; more are reported as `truncated`. */
 export const BROWSE_LIMIT = 200;
 
-const isDirectory = (path: string): Promise<boolean> => stat(path).then((info) => info.isDirectory(), () => false);
+const isDirectory = (path: string): Promise<boolean> =>
+  stat(path).then(
+    (info) => info.isDirectory(),
+    () => false,
+  );
 
 /**
  * Parses `git status --porcelain=v2 --branch -z`. Every record is
@@ -122,8 +124,7 @@ export const parseBranches = (output: string): GitBranch[] => {
       const current = head === "*";
       // The current branch lives in this worktree; others checked out elsewhere report where.
       local.push({ name: ref.slice("refs/heads/".length), current, remote: false, updatedAt, ...(current || worktree === "" ? {} : { worktree }) });
-    }
-    else if (ref.startsWith("refs/remotes/")) remote.push({ name: ref.slice("refs/remotes/".length), current: false, remote: true, updatedAt });
+    } else if (ref.startsWith("refs/remotes/")) remote.push({ name: ref.slice("refs/remotes/".length), current: false, remote: true, updatedAt });
   }
   const names = new Set(local.map((branch) => branch.name));
   return [...local, ...remote.filter((branch) => !names.has(branch.name.slice(branch.name.indexOf("/") + 1)))];
@@ -137,8 +138,7 @@ export interface WorkspaceOptions {
 }
 
 /** The work tree owning a common git dir: `/repo/.git` → `/repo`; a bare repository has none. */
-const mainWorkTree = (commonDir: string): string | undefined =>
-  basename(commonDir) === ".git" ? dirname(commonDir) : undefined;
+const mainWorkTree = (commonDir: string): string | undefined => (basename(commonDir) === ".git" ? dirname(commonDir) : undefined);
 
 /** A branch name as a single path segment: `feat/x` → `feat-x`. */
 const folderName = (branch: string) => branch.replace(/[/\\]+/g, "-");
@@ -172,120 +172,157 @@ export const makeWorkspace = (options: WorkspaceOptions = {}): Context.Tag.Servi
     };
   };
 
-  const status = (path: string): Effect.Effect<WorkspaceStatus> => Effect.promise(async () => {
-    const dir = expandPath(path, home);
-    if (!isAbsolute(dir) || !(await isDirectory(dir))) return { path: dir, exists: false };
-    const state = await gitStatus(dir);
-    return { path: dir, exists: true, ...(state === undefined ? {} : { git: state }) };
-  });
-
-  const browse = (partialPath: string): Effect.Effect<DirectoryListing> => Effect.promise(async () => {
-    const typed = partialPath.trim() === "" ? "~/" : partialPath.trim();
-    const expanded = expandPath(typed, home);
-    // `~/code/` lists `~/code`; `~/code/ba` lists `~/code` filtered by `ba`.
-    const endsWithSlash = typed.endsWith("/") || typed === "~";
-    const parent = endsWithSlash ? resolve(expanded) : dirname(resolve(expanded));
-    const needle = endsWithSlash ? "" : basename(expanded).toLowerCase();
-    if (!isAbsolute(expanded)) return { parent, entries: [], truncated: false };
-    const dirents = await readdir(parent, { withFileTypes: true }).catch(() => []);
-    const matches = dirents
-      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-      .filter((entry) => (entry.name.startsWith(".") ? needle.startsWith(".") : true))
-      .flatMap((entry) => {
-        const match = matchName(entry.name.toLowerCase(), needle);
-        return match === undefined ? [] : [{ name: entry.name, ...match }];
-      })
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-    const entries: DirectoryEntry[] = [];
-    for (const match of matches.slice(0, BROWSE_LIMIT)) {
-      const path = join(parent, match.name);
-      // Symlinks count only when they point at a directory.
-      if (!(await isDirectory(path))) continue;
-      entries.push({ name: match.name, path, git: await stat(join(path, ".git")).then(() => true, () => false), matches: match.matches });
-    }
-    return { parent, entries, truncated: matches.length > BROWSE_LIMIT };
-  });
-
-  const createDirectory = (path: string): Effect.Effect<WorkspaceStatus, WorkspaceError> => Effect.gen(function* () {
-    const dir = expandPath(path, home);
-    if (!isAbsolute(dir)) return yield* new WorkspaceError({ path: dir, reason: "NotFound", message: `"${path}" is not an absolute path` });
-    if (yield* Effect.promise(() => stat(dir).then(() => true, () => false))) {
-      return yield* new WorkspaceError({ path: dir, reason: "Exists", message: `${dir} already exists` });
-    }
-    yield* Effect.tryPromise({
-      try: () => mkdir(dir, { recursive: true }),
-      catch: (cause) => new WorkspaceError({ path: dir, reason: "Failed", message: cause instanceof Error ? cause.message : String(cause), cause }),
+  const status = (path: string): Effect.Effect<WorkspaceStatus> =>
+    Effect.promise(async () => {
+      const dir = expandPath(path, home);
+      if (!isAbsolute(dir) || !(await isDirectory(dir))) return { path: dir, exists: false };
+      const state = await gitStatus(dir);
+      return { path: dir, exists: true, ...(state === undefined ? {} : { git: state }) };
     });
-    return yield* status(dir);
-  });
+
+  const browse = (partialPath: string): Effect.Effect<DirectoryListing> =>
+    Effect.promise(async () => {
+      const typed = partialPath.trim() === "" ? "~/" : partialPath.trim();
+      const expanded = expandPath(typed, home);
+      // `~/code/` lists `~/code`; `~/code/ba` lists `~/code` filtered by `ba`.
+      const endsWithSlash = typed.endsWith("/") || typed === "~";
+      const parent = endsWithSlash ? resolve(expanded) : dirname(resolve(expanded));
+      const needle = endsWithSlash ? "" : basename(expanded).toLowerCase();
+      if (!isAbsolute(expanded)) return { parent, entries: [], truncated: false };
+      const dirents = await readdir(parent, { withFileTypes: true }).catch(() => []);
+      const matches = dirents
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+        .filter((entry) => (entry.name.startsWith(".") ? needle.startsWith(".") : true))
+        .flatMap((entry) => {
+          const match = matchName(entry.name.toLowerCase(), needle);
+          return match === undefined ? [] : [{ name: entry.name, ...match }];
+        })
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+      const entries: DirectoryEntry[] = [];
+      for (const match of matches.slice(0, BROWSE_LIMIT)) {
+        const path = join(parent, match.name);
+        // Symlinks count only when they point at a directory.
+        if (!(await isDirectory(path))) continue;
+        entries.push({
+          name: match.name,
+          path,
+          git: await stat(join(path, ".git")).then(
+            () => true,
+            () => false,
+          ),
+          matches: match.matches,
+        });
+      }
+      return { parent, entries, truncated: matches.length > BROWSE_LIMIT };
+    });
+
+  const createDirectory = (path: string): Effect.Effect<WorkspaceStatus, WorkspaceError> =>
+    Effect.gen(function* () {
+      const dir = expandPath(path, home);
+      if (!isAbsolute(dir)) return yield* new WorkspaceError({ path: dir, reason: "NotFound", message: `"${path}" is not an absolute path` });
+      if (
+        yield* Effect.promise(() =>
+          stat(dir).then(
+            () => true,
+            () => false,
+          ),
+        )
+      ) {
+        return yield* new WorkspaceError({ path: dir, reason: "Exists", message: `${dir} already exists` });
+      }
+      yield* Effect.tryPromise({
+        try: () => mkdir(dir, { recursive: true }),
+        catch: (cause) => new WorkspaceError({ path: dir, reason: "Failed", message: cause instanceof Error ? cause.message : String(cause), cause }),
+      });
+      return yield* status(dir);
+    });
 
   /** The expanded path of an existing directory inside a work tree. */
-  const repository = (path: string): Effect.Effect<string, WorkspaceError> => Effect.gen(function* () {
-    const dir = expandPath(path, home);
-    if (!isAbsolute(dir) || !(yield* Effect.promise(() => isDirectory(dir)))) {
-      return yield* new WorkspaceError({ path: dir, reason: "NotFound", message: `"${dir}" is not a directory` });
-    }
-    const root = yield* Effect.promise(() => git(dir, ["rev-parse", "--show-toplevel"]));
-    if (!root.ok) return yield* new WorkspaceError({ path: dir, reason: "NotRepository", message: `"${dir}" is not in a git work tree` });
-    return dir;
-  });
+  const repository = (path: string): Effect.Effect<string, WorkspaceError> =>
+    Effect.gen(function* () {
+      const dir = expandPath(path, home);
+      if (!isAbsolute(dir) || !(yield* Effect.promise(() => isDirectory(dir)))) {
+        return yield* new WorkspaceError({ path: dir, reason: "NotFound", message: `"${dir}" is not a directory` });
+      }
+      const root = yield* Effect.promise(() => git(dir, ["rev-parse", "--show-toplevel"]));
+      if (!root.ok) return yield* new WorkspaceError({ path: dir, reason: "NotRepository", message: `"${dir}" is not in a git work tree` });
+      return dir;
+    });
 
   const run = (dir: string, args: readonly string[], timeout?: number): Effect.Effect<string, WorkspaceError> =>
-    Effect.flatMap(Effect.promise(() => git(dir, args, timeout)), (result) => result.ok
-      ? Effect.succeed(result.stdout)
-      : Effect.fail(new WorkspaceError({ path: dir, reason: "Failed", message: result.message })));
+    Effect.flatMap(
+      Effect.promise(() => git(dir, args, timeout)),
+      (result) => (result.ok ? Effect.succeed(result.stdout) : Effect.fail(new WorkspaceError({ path: dir, reason: "Failed", message: result.message }))),
+    );
 
   const exists = (dir: string, ref: string) =>
-    Effect.map(Effect.promise(() => git(dir, ["show-ref", "--verify", "--quiet", ref])), (result) => result.ok);
+    Effect.map(
+      Effect.promise(() => git(dir, ["show-ref", "--verify", "--quiet", ref])),
+      (result) => result.ok,
+    );
 
-  const branches = (path: string) => Effect.gen(function* () {
-    const dir = yield* repository(path);
-    const output = yield* run(dir, ["for-each-ref", "--sort=-committerdate", `--format=${REF_FORMAT}`, "refs/heads", "refs/remotes"]);
-    return parseBranches(output);
-  });
-
-  const checkout = (path: string, branch: string, options?: { readonly create?: boolean }) => Effect.gen(function* () {
-    const dir = yield* repository(path);
-    yield* validBranch(dir, branch);
-    let args: readonly string[];
-    if (options?.create === true) args = ["switch", "-c", branch];
-    else if (yield* exists(dir, `refs/heads/${branch}`)) args = ["switch", branch];
-    else if (branch.includes("/") && (yield* exists(dir, `refs/remotes/${branch}`))) {
-      // A remote-tracking ref: switch to its local counterpart, creating it with tracking when missing.
-      const local = branch.slice(branch.indexOf("/") + 1);
-      args = (yield* exists(dir, `refs/heads/${local}`)) ? ["switch", local] : ["switch", "-c", local, "--track", branch];
-    } else args = ["switch", branch];
-    yield* run(dir, args, CHECKOUT_TIMEOUT_MS);
-    return yield* status(dir);
-  });
-
-  const validBranch = (dir: string, branch: string) => Effect.gen(function* () {
-    // `--branch` also expands `@{-1}`; only a name that is already literal is accepted, and never one git would read as an option.
-    const valid = branch.startsWith("-") ? undefined : yield* Effect.promise(() => git(dir, ["check-ref-format", "--branch", branch]));
-    if (valid === undefined || !valid.ok || valid.stdout.trim() !== branch) {
-      return yield* new WorkspaceError({ path: dir, reason: "InvalidName", message: `"${branch}" is not a valid branch name` });
-    }
-  });
-
-  const createWorktree = (path: string, options: { readonly branch: string; readonly base?: string }) => Effect.gen(function* () {
-    const dir = yield* repository(path);
-    yield* validBranch(dir, options.branch);
-    const common = (yield* run(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim();
-    const repoName = basename(mainWorkTree(common) ?? common.replace(/\.git$/, ""));
-    // Take the first free name: `x`, then `x-2`, `x-3`, … for both the branch and its folder.
-    let branch = options.branch;
-    let target = join(worktrees, repoName, folderName(branch));
-    for (let n = 2; (yield* exists(dir, `refs/heads/${branch}`)) || (yield* Effect.promise(() => stat(target).then(() => true, () => false))); n++) {
-      branch = `${options.branch}-${n}`;
-      target = join(worktrees, repoName, folderName(branch));
-    }
-    yield* Effect.tryPromise({
-      try: () => mkdir(dirname(target), { recursive: true }),
-      catch: (cause) => new WorkspaceError({ path: target, reason: "Failed", message: cause instanceof Error ? cause.message : String(cause), cause }),
+  const branches = (path: string) =>
+    Effect.gen(function* () {
+      const dir = yield* repository(path);
+      const output = yield* run(dir, ["for-each-ref", "--sort=-committerdate", `--format=${REF_FORMAT}`, "refs/heads", "refs/remotes"]);
+      return parseBranches(output);
     });
-    yield* run(dir, ["worktree", "add", "-b", branch, "--", target, options.base ?? "HEAD"], CHECKOUT_TIMEOUT_MS);
-    return yield* status(target);
-  });
+
+  const checkout = (path: string, branch: string, options?: { readonly create?: boolean }) =>
+    Effect.gen(function* () {
+      const dir = yield* repository(path);
+      yield* validBranch(dir, branch);
+      let args: readonly string[];
+      if (options?.create === true) args = ["switch", "-c", branch];
+      else if (yield* exists(dir, `refs/heads/${branch}`)) args = ["switch", branch];
+      else if (branch.includes("/") && (yield* exists(dir, `refs/remotes/${branch}`))) {
+        // A remote-tracking ref: switch to its local counterpart, creating it with tracking when missing.
+        const local = branch.slice(branch.indexOf("/") + 1);
+        args = (yield* exists(dir, `refs/heads/${local}`)) ? ["switch", local] : ["switch", "-c", local, "--track", branch];
+      } else args = ["switch", branch];
+      yield* run(dir, args, CHECKOUT_TIMEOUT_MS);
+      return yield* status(dir);
+    });
+
+  const validBranch = (dir: string, branch: string) =>
+    Effect.gen(function* () {
+      // `--branch` also expands `@{-1}`; only a name that is already literal is accepted, and never one git would read as an option.
+      const valid = branch.startsWith("-") ? undefined : yield* Effect.promise(() => git(dir, ["check-ref-format", "--branch", branch]));
+      if (valid === undefined || !valid.ok || valid.stdout.trim() !== branch) {
+        return yield* new WorkspaceError({ path: dir, reason: "InvalidName", message: `"${branch}" is not a valid branch name` });
+      }
+    });
+
+  const createWorktree = (path: string, options: { readonly branch: string; readonly base?: string }) =>
+    Effect.gen(function* () {
+      const dir = yield* repository(path);
+      yield* validBranch(dir, options.branch);
+      const common = (yield* run(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim();
+      const repoName = basename(mainWorkTree(common) ?? common.replace(/\.git$/, ""));
+      // Take the first free name: `x`, then `x-2`, `x-3`, … for both the branch and its folder.
+      let branch = options.branch;
+      let target = join(worktrees, repoName, folderName(branch));
+      for (
+        let n = 2;
+        (yield* exists(dir, `refs/heads/${branch}`)) ||
+        (yield* Effect.promise(() =>
+          stat(target).then(
+            () => true,
+            () => false,
+          ),
+        ));
+        n++
+      ) {
+        branch = `${options.branch}-${n}`;
+        target = join(worktrees, repoName, folderName(branch));
+      }
+      yield* Effect.tryPromise({
+        try: () => mkdir(dirname(target), { recursive: true }),
+        catch: (cause) => new WorkspaceError({ path: target, reason: "Failed", message: cause instanceof Error ? cause.message : String(cause), cause }),
+      });
+      yield* run(dir, ["worktree", "add", "-b", branch, "--", target, options.base ?? "HEAD"], CHECKOUT_TIMEOUT_MS);
+      return yield* status(target);
+    });
 
   return { status, browse, createDirectory, createWorktree, branches, checkout };
 };
@@ -301,5 +338,9 @@ export default definePlugin({
   config: WorkspaceConfig,
   provides: [Workspace],
   requires: [Paths],
-  layer: (config) => Layer.effect(Workspace, Effect.map(Paths, (paths) => makeWorkspace({ worktrees: config.worktrees ?? join(paths.home, "worktrees") }))),
+  layer: (config) =>
+    Layer.effect(
+      Workspace,
+      Effect.map(Paths, (paths) => makeWorkspace({ worktrees: config.worktrees ?? join(paths.home, "worktrees") })),
+    ),
 });

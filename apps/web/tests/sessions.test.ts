@@ -8,7 +8,10 @@ const ev = (id: string, parent: string | null, seq: number): SessionEvent => ({ 
 describe("groupSessions", () => {
   it("groups by cwd with newest groups and sessions first", () => {
     const groups = groupSessions([info("a", "/x", 1), info("b", "/y", 5), info("c", "/x", 9), info("d", "/y", 2)]);
-    expect(groups.map((g) => [g.cwd, g.sessions.map((s) => s.id)])).toEqual([["/x", ["c", "a"]], ["/y", ["b", "d"]]]);
+    expect(groups.map((g) => [g.cwd, g.sessions.map((s) => s.id)])).toEqual([
+      ["/x", ["c", "a"]],
+      ["/y", ["b", "d"]],
+    ]);
   });
 });
 

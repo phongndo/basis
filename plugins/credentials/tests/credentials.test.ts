@@ -23,10 +23,12 @@ beforeEach(async () => {
 });
 afterEach(() => rm(root, { recursive: true, force: true }));
 
-const pathsPlugin = () => definePlugin({
-  id: "paths", provides: [Paths],
-  layer: Layer.sync(Paths, () => ({ home, userConfig: "", projectConfig: "", auth, sessions: "", cwd: root })),
-});
+const pathsPlugin = () =>
+  definePlugin({
+    id: "paths",
+    provides: [Paths],
+    layer: Layer.sync(Paths, () => ({ home, userConfig: "", projectConfig: "", auth, sessions: "", cwd: root })),
+  });
 
 const run = <A, E>(body: Effect.Effect<A, E, Credentials>) =>
   Effect.runPromise(Effect.scoped(Effect.flatMap(makeCore([pathsPlugin(), credentials]), (core) => core.run(body))));
@@ -38,18 +40,23 @@ const increment = (current: Credential | undefined): Effect.Effect<Credential> =
 
 describe("credentials", () => {
   test("modify writes atomically with 0600/0700, and read, list, and remove see it", async () => {
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      expect(yield* service.read("anthropic")).toBeUndefined();
-      expect(yield* service.list).toEqual([]);
-      expect(yield* service.modify("anthropic", set({ type: "api_key", key: "sk-1" }))).toEqual({ type: "api_key", key: "sk-1" });
-      yield* service.modify("openai", set({ type: "oauth", access: "a", refresh: "r", expires: 1 }));
-      expect(yield* service.list).toEqual([{ provider: "anthropic", type: "api_key" }, { provider: "openai", type: "oauth" }]);
-      expect(yield* service.read("anthropic")).toEqual({ type: "api_key", key: "sk-1" });
-      yield* service.remove("openai");
-      yield* service.remove("never-there");
-      expect(yield* service.list).toEqual([{ provider: "anthropic", type: "api_key" }]);
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        expect(yield* service.read("anthropic")).toBeUndefined();
+        expect(yield* service.list).toEqual([]);
+        expect(yield* service.modify("anthropic", set({ type: "api_key", key: "sk-1" }))).toEqual({ type: "api_key", key: "sk-1" });
+        yield* service.modify("openai", set({ type: "oauth", access: "a", refresh: "r", expires: 1 }));
+        expect(yield* service.list).toEqual([
+          { provider: "anthropic", type: "api_key" },
+          { provider: "openai", type: "oauth" },
+        ]);
+        expect(yield* service.read("anthropic")).toEqual({ type: "api_key", key: "sk-1" });
+        yield* service.remove("openai");
+        yield* service.remove("never-there");
+        expect(yield* service.list).toEqual([{ provider: "anthropic", type: "api_key" }]);
+      }),
+    );
     expect((await stat(auth)).mode & 0o777).toBe(0o600);
     expect((await stat(home)).mode & 0o777).toBe(0o700);
     expect(await stored()).toEqual({ anthropic: { type: "api_key", key: "sk-1" } });
@@ -58,45 +65,52 @@ describe("credentials", () => {
   });
 
   test("an update returning undefined leaves the entry unchanged; a failing update writes nothing", async () => {
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      yield* service.modify("p", set({ type: "api_key", key: "k" }));
-      const before = (yield* Effect.promise(() => stat(auth))).mtimeMs;
-      expect(yield* service.modify("p", () => Effect.succeed(undefined))).toEqual({ type: "api_key", key: "k" });
-      expect(yield* service.modify("q", () => Effect.succeed(undefined))).toBeUndefined();
-      expect(yield* service.modify("p", () => Effect.fail("nope" as const)).pipe(Effect.flip)).toBe("nope");
-      expect((yield* Effect.promise(() => stat(auth))).mtimeMs).toBe(before);
-      expect(yield* service.list).toEqual([{ provider: "p", type: "api_key" }]);
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        yield* service.modify("p", set({ type: "api_key", key: "k" }));
+        const before = (yield* Effect.promise(() => stat(auth))).mtimeMs;
+        expect(yield* service.modify("p", () => Effect.succeed(undefined))).toEqual({ type: "api_key", key: "k" });
+        expect(yield* service.modify("q", () => Effect.succeed(undefined))).toBeUndefined();
+        expect(yield* service.modify("p", () => Effect.fail("nope" as const)).pipe(Effect.flip)).toBe("nope");
+        expect((yield* Effect.promise(() => stat(auth))).mtimeMs).toBe(before);
+        expect(yield* service.list).toEqual([{ provider: "p", type: "api_key" }]);
+      }),
+    );
   });
 
   test("preserves unknown OAuth fields and every other entry verbatim", async () => {
     await mkdir(home, { mode: 0o700 });
     const foreign = { type: "api_key", key: "k", note: "kept" };
     await writeFile(auth, JSON.stringify({ other: foreign }), { mode: 0o600 });
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      yield* service.modify("codex", set({ type: "oauth", access: "a", refresh: "r", expires: 1, accountId: "acct", extra: { deep: true } }));
-      // A refresh keeps the provider's own fields.
-      const refreshed = yield* service.modify("codex", (current) =>
-        Effect.succeed(current?.type === "oauth" ? { ...current, access: "a2", expires: 2 } : undefined));
-      expect(refreshed).toEqual({ type: "oauth", access: "a2", refresh: "r", expires: 2, accountId: "acct", extra: { deep: true } });
-      expect(yield* service.read("codex")).toEqual(refreshed);
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        yield* service.modify("codex", set({ type: "oauth", access: "a", refresh: "r", expires: 1, accountId: "acct", extra: { deep: true } }));
+        // A refresh keeps the provider's own fields.
+        const refreshed = yield* service.modify("codex", (current) =>
+          Effect.succeed(current?.type === "oauth" ? { ...current, access: "a2", expires: 2 } : undefined),
+        );
+        expect(refreshed).toEqual({ type: "oauth", access: "a2", refresh: "r", expires: 2, accountId: "acct", extra: { deep: true } });
+        expect(yield* service.read("codex")).toEqual(refreshed);
+      }),
+    );
     expect((await stored()).other).toEqual(foreign);
   });
 
   test("a corrupt file is a Corrupt error and is never overwritten", async () => {
     await mkdir(home, { mode: 0o700 });
     await writeFile(auth, "{ not json", { mode: 0o600 });
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      expect(yield* service.list.pipe(Effect.flip)).toMatchObject({ reason: "Corrupt" });
-      expect(yield* service.read("p").pipe(Effect.flip)).toMatchObject({ reason: "Corrupt", provider: "p" });
-      const error = yield* service.modify("p", set({ type: "api_key", key: "k" })).pipe(Effect.flip);
-      expect(error).toMatchObject({ reason: "Corrupt", provider: "p" });
-      expect(error.message).toContain(auth);
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        expect(yield* service.list.pipe(Effect.flip)).toMatchObject({ reason: "Corrupt" });
+        expect(yield* service.read("p").pipe(Effect.flip)).toMatchObject({ reason: "Corrupt", provider: "p" });
+        const error = yield* service.modify("p", set({ type: "api_key", key: "k" })).pipe(Effect.flip);
+        expect(error).toMatchObject({ reason: "Corrupt", provider: "p" });
+        expect(error.message).toContain(auth);
+      }),
+    );
     expect(await readFile(auth, "utf8")).toBe("{ not json");
 
     await writeFile(auth, JSON.stringify({ p: { type: "password", value: "x" } }));
@@ -105,25 +119,35 @@ describe("credentials", () => {
   });
 
   test("concurrent modifies of one provider serialize in-process", async () => {
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      yield* Effect.all(Array.from({ length: 25 }, () => service.modify("counter", increment)), { concurrency: "unbounded" });
-      yield* Effect.all(Array.from({ length: 5 }, (_, i) => service.modify(`p${i}`, increment)), { concurrency: "unbounded" });
-      expect(yield* service.read("counter")).toEqual({ type: "api_key", key: "25" });
-      expect((yield* service.list).length).toBe(6);
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        yield* Effect.all(
+          Array.from({ length: 25 }, () => service.modify("counter", increment)),
+          { concurrency: "unbounded" },
+        );
+        yield* Effect.all(
+          Array.from({ length: 5 }, (_, i) => service.modify(`p${i}`, increment)),
+          { concurrency: "unbounded" },
+        );
+        expect(yield* service.read("counter")).toEqual({ type: "api_key", key: "25" });
+        expect((yield* service.list).length).toBe(6);
+      }),
+    );
   });
 
   test("concurrent modifies from several processes do not lose updates", async () => {
     const fixture = fileURLToPath(new URL("./fixtures/increment.ts", import.meta.url));
     const child = () => promisify(execFile)(process.execPath, ["--conditions=source", fixture, auth, "counter", "10"]);
-    await run(Effect.gen(function* () {
-      const service = yield* Credentials;
-      const children = Effect.promise(() => Promise.all([child(), child(), child()]));
-      const local = Effect.forEach(Array.from({ length: 10 }), () => service.modify("counter", increment));
-      yield* Effect.all([children, local], { concurrency: "unbounded" });
-      expect(yield* service.read("counter")).toEqual({ type: "api_key", key: "40" });
-    }));
+    await run(
+      Effect.gen(function* () {
+        const service = yield* Credentials;
+        const children = Effect.promise(() => Promise.all([child(), child(), child()]));
+        const local = Effect.forEach(Array.from({ length: 10 }), () => service.modify("counter", increment));
+        yield* Effect.all([children, local], { concurrency: "unbounded" });
+        expect(yield* service.read("counter")).toEqual({ type: "api_key", key: "40" });
+      }),
+    );
     expect(await readdir(home)).toEqual(["auth.json"]);
   }, 30_000);
 });
@@ -173,10 +197,16 @@ describe("file lock", () => {
   });
 
   test("the holder keeps a long-held lock fresh", async () => {
-    await Effect.runPromise(withFileLock(auth, Effect.gen(function* () {
-      yield* Effect.sleep("250 millis");
-      const age = Date.now() - (yield* Effect.promise(() => stat(`${auth}.lock`))).mtimeMs;
-      expect(age).toBeLessThan(150);
-    }), { staleMs: 150 }));
+    await Effect.runPromise(
+      withFileLock(
+        auth,
+        Effect.gen(function* () {
+          yield* Effect.sleep("250 millis");
+          const age = Date.now() - (yield* Effect.promise(() => stat(`${auth}.lock`))).mtimeMs;
+          expect(age).toBeLessThan(150);
+        }),
+        { staleMs: 150 },
+      ),
+    );
   });
 });

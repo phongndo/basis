@@ -49,24 +49,32 @@ export function environment(facts: EnvironmentFacts, now: Date = new Date()): st
     `Current date: ${date}`,
     `Platform: ${os.platform()} (${os.arch()})`,
     `Basis session: ${facts.sessionId}`,
-    ...(facts.cli === undefined ? [] : [
-      `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
-    ]),
+    ...(facts.cli === undefined
+      ? []
+      : [
+          `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
+        ]),
     "</environment>",
   ].join("\n");
 }
 
-export const baseSection = (source: string, toolNames: ReadonlySet<string>, override?: string): SystemSection =>
-  ({ id: "base", source, text: override ?? basePrompt(toolNames) });
+export const baseSection = (source: string, toolNames: ReadonlySet<string>, override?: string): SystemSection => ({
+  id: "base",
+  source,
+  text: override ?? basePrompt(toolNames),
+});
 
-export const environmentSection = (source: string, facts: EnvironmentFacts): SystemSection =>
-  ({ id: "environment", source, text: environment(facts) });
+export const environmentSection = (source: string, facts: EnvironmentFacts): SystemSection => ({ id: "environment", source, text: environment(facts) });
 
 const TITLE_CHARS = 60;
 
 /** A session title from the first prompt: its text, whitespace collapsed, cut at a word near 60 characters. */
 export function titleFrom(content: PromptContent): string | undefined {
-  const text = content.flatMap((part) => part.type === "text" ? [part.text] : []).join(" ").replace(/\s+/g, " ").trim();
+  const text = content
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (text === "") return undefined;
   if (text.length <= TITLE_CHARS) return text;
   const cut = text.slice(0, TITLE_CHARS);

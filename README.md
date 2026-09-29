@@ -11,26 +11,26 @@ The library lives in [`packages/core`](packages/core/README.md). Its only runtim
 dependency is Effect 3.22.2. Effect supplies lifecycle and cancellation machinery;
 capability contracts can expose ordinary values, functions, and promises.
 
-| Path | Responsibility |
-| --- | --- |
-| [`packages/core/src`](packages/core/src/index.ts) | Public interface and runtime implementation |
-| [`packages/core/tests`](packages/core/tests) | Contract, lifecycle, failure, and property tests |
+| Path                                                        | Responsibility                                      |
+| ----------------------------------------------------------- | --------------------------------------------------- |
+| [`packages/core/src`](packages/core/src/index.ts)           | Public interface and runtime implementation         |
+| [`packages/core/tests`](packages/core/tests)                | Contract, lifecycle, failure, and property tests    |
 | [`packages/core/examples`](packages/core/examples/hello.ts) | A capability extended through a plugin-defined hook |
-| [`packages/core/bench`](packages/core/bench/core.ts) | Framework microbenchmarks |
-| [`docs/kernel.md`](docs/kernel.md) | Design rationale and limits |
+| [`packages/core/bench`](packages/core/bench/core.ts)        | Framework microbenchmarks                           |
+| [`docs/kernel.md`](docs/kernel.md)                          | Design rationale and limits                         |
 
 ## Harness
 
 The rest of the workspace is a coding-agent harness built on Basis: every part
 of it, including the agent loop, is a plugin that can be replaced by id.
 
-| Path | Responsibility |
-| --- | --- |
+| Path                                                    | Responsibility                                                                           |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
-| [`plugins/*`](plugins) | The default plugins, one README each |
-| [`apps/host`](apps/host/src/main.ts) | Reads config, loads plugins, hot-reloads on config change |
-| [`apps/web`](apps/web) | The web client, served by the `transport` plugin |
-| [`apps/cli`](apps/cli/README.md) | The `basis` command: everything the web app does, from a shell, for people and agents |
+| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                     |
+| [`apps/host`](apps/host/src/main.ts)                    | Reads config, loads plugins, hot-reloads on config change                                |
+| [`apps/web`](apps/web)                                  | The web client, served by the `transport` plugin                                         |
+| [`apps/cli`](apps/cli/README.md)                        | The `basis` command: everything the web app does, from a shell, for people and agents    |
 
 ```sh
 nix develop -c pnpm start          # build the web app, start the host, print its URL
@@ -63,6 +63,8 @@ sources directly through type stripping, so source must use erasable syntax only
 nix develop -c pnpm install --frozen-lockfile
 nix develop -c pnpm check          # build JavaScript/declarations and type-check
 nix develop -c pnpm test           # core tests (Vitest), including lifecycle regressions
+nix develop -c pnpm lint           # oxlint; warnings fail (also run by pnpm check)
+nix develop -c pnpm format         # oxfmt writes the formatting pnpm check expects
 nix develop -c pnpm example        # compose plugins and invoke a hook
 nix develop -c pnpm package:check  # install the packed library into a temporary consumer
 nix develop -c pnpm core:bench     # warm framework microbenchmarks

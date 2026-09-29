@@ -17,10 +17,7 @@ export const mergeEvents = (events: readonly SessionEvent[], incoming: readonly 
  * rest (which sit beyond a gap). `seq` is 1-based, so a complete log starts
  * after 0.
  */
-export const splitContiguous = (
-  sorted: readonly SessionEvent[],
-  after: number,
-): { readonly contiguous: SessionEvent[]; readonly ahead: SessionEvent[] } => {
+export const splitContiguous = (sorted: readonly SessionEvent[], after: number): { readonly contiguous: SessionEvent[]; readonly ahead: SessionEvent[] } => {
   const contiguous: SessionEvent[] = [];
   let next = after + 1;
   let i = 0;
@@ -77,14 +74,22 @@ export class SessionLog {
     this.#fetch = options.fetch;
   }
 
-  get snapshot(): SessionLogSnapshot { return this.#snapshot; }
-  get events(): readonly SessionEvent[] { return this.#events; }
-  get lastSeq(): number { return this.#events.at(-1)?.seq ?? 0; }
+  get snapshot(): SessionLogSnapshot {
+    return this.#snapshot;
+  }
+  get events(): readonly SessionEvent[] {
+    return this.#events;
+  }
+  get lastSeq(): number {
+    return this.#events.at(-1)?.seq ?? 0;
+  }
 
   subscribe(listener: (snapshot: SessionLogSnapshot) => void): () => void {
     this.#listeners.add(listener);
     listener(this.#snapshot);
-    return () => { this.#listeners.delete(listener); };
+    return () => {
+      this.#listeners.delete(listener);
+    };
   }
 
   /** Applies a `session-appended` event. Starts a repair when it lands beyond a gap. */

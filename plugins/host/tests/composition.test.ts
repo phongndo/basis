@@ -12,10 +12,7 @@ describe("compositionInfo", () => {
 
   test("is stable across plugin order and config key order", () => {
     const one = compositionInfo(composition, [{ id: "a" }, { id: "b", version: "2.0.0" }]);
-    const reordered = compositionInfo(
-      { plugins: { b: {}, a: { config: { y: [1, 2], x: 1 } } } },
-      [{ id: "b", version: "2.0.0" }, { id: "a" }],
-    );
+    const reordered = compositionInfo({ plugins: { b: {}, a: { config: { y: [1, 2], x: 1 } } } }, [{ id: "b", version: "2.0.0" }, { id: "a" }]);
     expect(reordered.id).toBe(one.id);
   });
 
@@ -25,7 +22,6 @@ describe("compositionInfo", () => {
     expect(compositionInfo(composition, [{ id: "a", version: "1" }, { id: "b" }]).id).not.toBe(base);
     expect(compositionInfo(composition, [{ id: "a" }]).id).not.toBe(base);
     // Ids and configs cannot be confused by concatenation.
-    expect(compositionInfo({ plugins: { ab: {} } }, [{ id: "ab" }]).id)
-      .not.toBe(compositionInfo({ plugins: { a: { config: "b" } } }, [{ id: "a" }]).id);
+    expect(compositionInfo({ plugins: { ab: {} } }, [{ id: "ab" }]).id).not.toBe(compositionInfo({ plugins: { a: { config: "b" } } }, [{ id: "a" }]).id);
   });
 });

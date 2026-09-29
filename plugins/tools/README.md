@@ -8,19 +8,23 @@ const greet = definePlugin({
   id: "greet",
   requires: [Tools],
   exclusive: true, // the registry rejects duplicate names; see below
-  layer: Layer.scopedDiscard(Effect.flatMap(Tools, (tools) => tools.register({
-    name: "greet",
-    description: "Greets someone by name.",
-    input: Schema.Struct({ name: Schema.String }),
-    execute: async ({ name }, { signal }) => new ToolResult({ content: [{ type: "text", text: `Hello, ${name}` }] }),
-  }))),
+  layer: Layer.scopedDiscard(
+    Effect.flatMap(Tools, (tools) =>
+      tools.register({
+        name: "greet",
+        description: "Greets someone by name.",
+        input: Schema.Struct({ name: Schema.String }),
+        execute: async ({ name }, { signal }) => new ToolResult({ content: [{ type: "text", text: `Hello, ${name}` }] }),
+      }),
+    ),
+  ),
 });
 ```
 
 ## Config
 
-| Key | Default | Meaning |
-| --- | --- | --- |
+| Key              | Default  | Meaning                                                                                                                                                                          |
+| ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `maxResultChars` | `100000` | Text characters one result may carry to the model. Longer text is cut with a marker; images are kept. A safety net for third-party tools; builtin tools truncate far below this. |
 
 ## Behavior

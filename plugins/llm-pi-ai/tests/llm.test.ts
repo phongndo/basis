@@ -17,7 +17,10 @@ const user = (text: string) => ({ role: "user" as const, content: [{ type: "text
 function setup(options: { providers?: () => readonly Provider[]; env?: Record<string, string> } = {}) {
   const faux = fauxProvider({
     provider: "faux",
-    models: [{ id: "plain", reasoning: false }, { id: "thinker", reasoning: true }],
+    models: [
+      { id: "plain", reasoning: false },
+      { id: "thinker", reasoning: true },
+    ],
   });
   const credentials = fakeCredentials();
   const interaction = fakeInteraction(() => Effect.succeed("sk-test"));
@@ -25,26 +28,32 @@ function setup(options: { providers?: () => readonly Provider[]; env?: Record<st
   return { faux, credentials, interaction, plugins: [credentials.plugin, interaction.plugin, llm] as const };
 }
 
-const collect = (request: LlmRequest) =>
-  Effect.flatMap(Llm, (llm) => Stream.runCollect(llm.stream(request))).pipe(Effect.map(Chunk.toArray));
+const collect = (request: LlmRequest) => Effect.flatMap(Llm, (llm) => Stream.runCollect(llm.stream(request))).pipe(Effect.map(Chunk.toArray));
 
 describe("stream", () => {
   it("maps text and tool calls to schema-conformant events", async () => {
     const { faux, plugins } = setup();
-    faux.setResponses([fauxAssistantMessage(
-      [fauxText("Hello there"), fauxToolCall("echo", { text: "x" }, { id: "call-1" })],
-      { stopReason: "toolUse" },
-    )]);
-    const events = await runWith(plugins, collect(new LlmRequest({
-      model: "faux/plain",
-      system: "Be brief",
-      messages: [user("hi")],
-      tools: [{ name: "echo", description: "Echo", parameters: { type: "object", properties: { text: { type: "string" } } } }],
-    })));
+    faux.setResponses([fauxAssistantMessage([fauxText("Hello there"), fauxToolCall("echo", { text: "x" }, { id: "call-1" })], { stopReason: "toolUse" })]);
+    const events = await runWith(
+      plugins,
+      collect(
+        new LlmRequest({
+          model: "faux/plain",
+          system: "Be brief",
+          messages: [user("hi")],
+          tools: [{ name: "echo", description: "Echo", parameters: { type: "object", properties: { text: { type: "string" } } } }],
+        }),
+      ),
+    );
 
     events.forEach((event) => decodeEvent(event));
     expect(events[0]).toEqual({ type: "start" });
-    expect(events.filter((e) => e.type === "text-delta").map((e) => e.delta).join("")).toBe("Hello there");
+    expect(
+      events
+        .filter((e) => e.type === "text-delta")
+        .map((e) => e.delta)
+        .join(""),
+    ).toBe("Hello there");
     expect(events.find((e) => e.type === "toolcall-start")).toMatchObject({ index: 1, id: "call-1", name: "echo" });
     expect(events.find((e) => e.type === "toolcall-end")).toMatchObject({
       toolCall: { type: "toolCall", id: "call-1", name: "echo", arguments: { text: "x" } },
@@ -66,12 +75,25 @@ describe("stream", () => {
       return fauxAssistantMessage([fauxThinking("Let me think"), fauxText("42")]);
     };
     faux.setResponses([reply, reply]);
-    const events = await runWith(plugins, collect(new LlmRequest({
-      model: "faux/thinker", messages: [user("q")], thinking: "high", sessionId: "s1",
-    })));
+    const events = await runWith(
+      plugins,
+      collect(
+        new LlmRequest({
+          model: "faux/thinker",
+          messages: [user("q")],
+          thinking: "high",
+          sessionId: "s1",
+        }),
+      ),
+    );
     await runWith(plugins, collect(new LlmRequest({ model: "faux/thinker", messages: [user("q")], thinking: "off" })));
 
-    expect(events.filter((e) => e.type === "thinking-delta").map((e) => e.delta).join("")).toBe("Let me think");
+    expect(
+      events
+        .filter((e) => e.type === "thinking-delta")
+        .map((e) => e.delta)
+        .join(""),
+    ).toBe("Let me think");
     expect(seen[0]).toMatchObject({ reasoning: "high", sessionId: "s1" });
     expect(seen[1]?.reasoning).toBeUndefined();
   });
@@ -80,12 +102,18 @@ describe("stream", () => {
     const faux = fauxProvider({ provider: "slow", tokensPerSecond: 20 });
     const { plugins } = setup({ providers: () => [faux.provider] });
     let signal: AbortSignal | undefined;
-    faux.setResponses([(_, options) => {
-      signal = options?.signal;
-      return fauxAssistantMessage("a long answer ".repeat(50));
-    }]);
-    const events = await runWith(plugins, Effect.flatMap(Llm, (llm) =>
-      Stream.runCollect(llm.stream(new LlmRequest({ model: `slow/${faux.getModel().id}`, messages: [user("go")] })).pipe(Stream.take(2)))));
+    faux.setResponses([
+      (_, options) => {
+        signal = options?.signal;
+        return fauxAssistantMessage("a long answer ".repeat(50));
+      },
+    ]);
+    const events = await runWith(
+      plugins,
+      Effect.flatMap(Llm, (llm) =>
+        Stream.runCollect(llm.stream(new LlmRequest({ model: `slow/${faux.getModel().id}`, messages: [user("go")] })).pipe(Stream.take(2))),
+      ),
+    );
 
     expect(Chunk.size(events)).toBe(2);
     expect(signal?.aborted).toBe(true);
@@ -113,11 +141,14 @@ describe("stream", () => {
     const { faux, plugins } = setup();
     const router = definePlugin({
       id: "router",
-      layer: Layer.effectDiscard(Effect.gen(function* () {
-        const context = yield* PluginContext;
-        yield* context.on(LlmRequestHook, (request, next) =>
-          request.model === "alias/default" ? next(new LlmRequest({ ...request, model: "faux/plain" })) : next(request));
-      })),
+      layer: Layer.effectDiscard(
+        Effect.gen(function* () {
+          const context = yield* PluginContext;
+          yield* context.on(LlmRequestHook, (request, next) =>
+            request.model === "alias/default" ? next(new LlmRequest({ ...request, model: "faux/plain" })) : next(request),
+          );
+        }),
+      ),
     });
     faux.setResponses([fauxAssistantMessage("routed")]);
     const events = await runWith([...plugins, router], collect(new LlmRequest({ model: "alias/default", messages: [user("hi")] })));
@@ -127,7 +158,9 @@ describe("stream", () => {
 
   it("tells the user to log in when a provider has no credentials", async () => {
     const { plugins } = setup({ providers: () => [] });
-    const config = { providers: [{ id: "gateway", api: "openai-completions", baseUrl: "http://127.0.0.1:9/v1", apiKey: { env: "GATEWAY_KEY" }, models: [{ id: "m" }] }] };
+    const config = {
+      providers: [{ id: "gateway", api: "openai-completions", baseUrl: "http://127.0.0.1:9/v1", apiKey: { env: "GATEWAY_KEY" }, models: [{ id: "m" }] }],
+    };
     const events = await runWith(plugins, collect(new LlmRequest({ model: "gateway/m", messages: [user("hi")] })), { llm: config });
     events.forEach((event) => decodeEvent(event));
     expect(events.map((e) => e.type)).toEqual(["start", "error"]);
@@ -161,16 +194,37 @@ describe("catalog", () => {
     const { plugins } = setup({ providers: () => [] });
     const config = {
       providers: [
-        { id: "ollama", name: "Ollama", api: "openai-completions", baseUrl: "http://localhost:11434/v1", compat: { supportsDeveloperRole: false }, models: [{ id: "qwen3:8b", reasoning: true }] },
-        { id: "keyed", api: "openai-responses", baseUrl: "https://example.test/v1", apiKey: { env: "KEYED_KEY" }, models: [{ id: "big", contextWindow: 200000 }] },
+        {
+          id: "ollama",
+          name: "Ollama",
+          api: "openai-completions",
+          baseUrl: "http://localhost:11434/v1",
+          compat: { supportsDeveloperRole: false },
+          models: [{ id: "qwen3:8b", reasoning: true }],
+        },
+        {
+          id: "keyed",
+          api: "openai-responses",
+          baseUrl: "https://example.test/v1",
+          apiKey: { env: "KEYED_KEY" },
+          models: [{ id: "big", contextWindow: 200000 }],
+        },
       ],
     };
-    const result = await runWith(plugins, Effect.flatMap(Llm, (llm) =>
-      Effect.all({ all: llm.models(), available: llm.models({ available: true }), providers: llm.providers })), { llm: config });
+    const result = await runWith(
+      plugins,
+      Effect.flatMap(Llm, (llm) => Effect.all({ all: llm.models(), available: llm.models({ available: true }), providers: llm.providers })),
+      { llm: config },
+    );
 
     expect(result.all.map((m) => m.ref)).toEqual(["ollama/qwen3:8b", "keyed/big"]);
     expect(result.all[0]).toMatchObject({
-      name: "qwen3:8b", api: "openai-completions", reasoning: true, input: ["text"], contextWindow: 128000, maxTokens: 16384,
+      name: "qwen3:8b",
+      api: "openai-completions",
+      reasoning: true,
+      input: ["text"],
+      contextWindow: 128000,
+      maxTokens: 16384,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     });
     expect(result.all[0]!.thinkingLevels).toContain("high");
@@ -185,7 +239,10 @@ describe("catalog", () => {
     // Default built-ins: the plugin's real provider list.
     const llm = makeLlmPlugin({ authContext: envContext({ ANTHROPIC_API_KEY: "sk-ant" }) });
     const plugins = [fakeCredentials().plugin, fakeInteraction(() => Effect.succeed("")).plugin, llm];
-    const providers = await runWith(plugins, Effect.flatMap(Llm, (l) => l.providers));
+    const providers = await runWith(
+      plugins,
+      Effect.flatMap(Llm, (l) => l.providers),
+    );
     const anthropic = providers.find((p) => p.id === "anthropic")!;
     expect(anthropic.auth.map((a) => a.type)).toEqual(["api_key"]);
     expect(anthropic).toMatchObject({ configured: true, source: "ANTHROPIC_API_KEY" });
@@ -195,30 +252,48 @@ describe("catalog", () => {
 
   it("filters built-ins with include and exclude", async () => {
     const { plugins } = setup({ providers: () => [anthropicProvider(), fauxProvider({ provider: "faux" }).provider] });
-    const ids = await runWith(plugins, Effect.map(Effect.flatMap(Llm, (l) => l.providers), (ps) => ps.map((p) => p.id)), {
-      llm: { include: ["anthropic", "faux"], exclude: ["faux"] },
-    });
+    const ids = await runWith(
+      plugins,
+      Effect.map(
+        Effect.flatMap(Llm, (l) => l.providers),
+        (ps) => ps.map((p) => p.id),
+      ),
+      {
+        llm: { include: ["anthropic", "faux"], exclude: ["faux"] },
+      },
+    );
     expect(ids).toEqual(["anthropic"]);
   });
 });
 
 describe("login", () => {
-  const gateway = { providers: [{ id: "gateway", name: "Gateway", api: "openai-completions", baseUrl: "http://127.0.0.1:9/v1", apiKey: { env: "GATEWAY_KEY" }, models: [{ id: "m" }] }] };
+  const gateway = {
+    providers: [
+      { id: "gateway", name: "Gateway", api: "openai-completions", baseUrl: "http://127.0.0.1:9/v1", apiKey: { env: "GATEWAY_KEY" }, models: [{ id: "m" }] },
+    ],
+  };
 
   it("asks for an API key through Interaction and stores it", async () => {
     const { plugins, credentials, interaction } = setup({ providers: () => [] });
-    const after = await runWith(plugins, Effect.gen(function* () {
-      const llm = yield* Llm;
-      yield* llm.login("gateway", "api_key");
-      return yield* llm.providers;
-    }), { llm: gateway });
+    const after = await runWith(
+      plugins,
+      Effect.gen(function* () {
+        const llm = yield* Llm;
+        yield* llm.login("gateway", "api_key");
+        return yield* llm.providers;
+      }),
+      { llm: gateway },
+    );
 
     expect(interaction.asked).toEqual([{ type: "ask", title: "Enter the Gateway API key", secret: true }]);
     expect(credentials.store.get("gateway")).toEqual({ type: "api_key", key: "sk-test" });
     expect(after[0]).toMatchObject({ configured: true, source: "stored credential" });
 
-
-    await runWith(plugins, Effect.flatMap(Llm, (l) => l.logout("gateway")), { llm: gateway });
+    await runWith(
+      plugins,
+      Effect.flatMap(Llm, (l) => l.logout("gateway")),
+      { llm: gateway },
+    );
     expect(credentials.store.has("gateway")).toBe(false);
   });
 
@@ -237,9 +312,17 @@ describe("login", () => {
   it("publishes auth events as notices and withdraws prompts the flow abandons", async () => {
     let withdrawn = false;
     const credentials = fakeCredentials();
-    const interaction = fakeInteraction((question) => question.title === "Paste the code"
-      ? Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => { withdrawn = true; })))
-      : Effect.succeed("unused"));
+    const interaction = fakeInteraction((question) =>
+      question.title === "Paste the code"
+        ? Effect.never.pipe(
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                withdrawn = true;
+              }),
+            ),
+          )
+        : Effect.succeed("unused"),
+    );
     const recorder = noticeRecorder();
     const oauthProvider = createProvider({
       id: "sso",
@@ -266,12 +349,15 @@ describe("login", () => {
       api: openAICompletionsApi(),
     });
     const plugins = [credentials.plugin, interaction.plugin, recorder.plugin, makeLlmPlugin({ providers: () => [oauthProvider], authContext: envContext() })];
-    const info = await runWith(plugins, Effect.gen(function* () {
-      const llm = yield* Llm;
-      yield* llm.login("sso", "oauth");
-      yield* Effect.sleep("20 millis");
-      return yield* llm.providers;
-    }));
+    const info = await runWith(
+      plugins,
+      Effect.gen(function* () {
+        const llm = yield* Llm;
+        yield* llm.login("sso", "oauth");
+        yield* Effect.sleep("20 millis");
+        return yield* llm.providers;
+      }),
+    );
 
     expect(withdrawn).toBe(true);
     expect(credentials.store.get("sso")).toMatchObject({ type: "oauth", access: "token", accountId: "acct" });
@@ -279,8 +365,11 @@ describe("login", () => {
     expect(recorder.notices).toEqual([
       { level: "info", source: "llm", message: "Open the link to sign in to SSO.", links: [{ url: "https://sso.test/authorize", label: "Sign in to SSO" }] },
       {
-        level: "info", source: "llm", message: "Enter code ABCD-1234 at https://sso.test/device to sign in to SSO.",
-        code: "ABCD-1234", links: [{ url: "https://sso.test/device", label: "Enter code" }],
+        level: "info",
+        source: "llm",
+        message: "Enter code ABCD-1234 at https://sso.test/device to sign in to SSO.",
+        code: "ABCD-1234",
+        links: [{ url: "https://sso.test/device", label: "Enter code" }],
       },
       { level: "info", source: "llm", message: "Waiting for the browser" },
       // Success is announced to every client after the flow's own notices.
@@ -300,7 +389,11 @@ describe("credential store adapter", () => {
     expect(await adapter.read("x")).toEqual(oauth);
     expect(await adapter.list()).toEqual([{ providerId: "x", type: "oauth" }]);
     const failure = new Error("refresh failed");
-    await expect(adapter.modify("x", async () => { throw failure; })).rejects.toBe(failure);
+    await expect(
+      adapter.modify("x", async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
     expect(store.get("x")).toEqual(oauth);
     await adapter.delete("x");
     expect(await adapter.read("x")).toBeUndefined();

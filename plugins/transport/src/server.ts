@@ -41,20 +41,27 @@ const under = (path: string, prefix: string) => path === prefix || path.startsWi
  * paths fall back to `index.html` for client-side routing. Paths cannot
  * escape `root`.
  */
-const serveStatic = (root: string, pathname: string) => Effect.gen(function* () {
-  const notFound = HttpServerResponse.text("Not found", { status: 404 });
-  const decoded = yield* Effect.try(() => decodeURIComponent(pathname)).pipe(Effect.orElseSucceed(() => undefined));
-  if (decoded === undefined || decoded.includes("\0")) return notFound;
-  const target = resolve(root, `.${decoded}`);
-  const inside = relative(root, target);
-  if (inside.startsWith("..") || inside.startsWith(sep)) return notFound;
-  const isFile = (path: string) => Effect.promise(() => stat(path).then((info) => info.isFile(), () => false));
-  if (yield* isFile(target)) return yield* HttpServerResponse.file(target);
-  const last = decoded.slice(decoded.lastIndexOf("/") + 1);
-  const index = join(root, "index.html");
-  if (last.includes(".") || !(yield* isFile(index))) return notFound;
-  return yield* HttpServerResponse.file(index, { headers: { "cache-control": "no-cache" } });
-}).pipe(Effect.catchAll(() => Effect.succeed(HttpServerResponse.text("Cannot read file", { status: 500 }))));
+const serveStatic = (root: string, pathname: string) =>
+  Effect.gen(function* () {
+    const notFound = HttpServerResponse.text("Not found", { status: 404 });
+    const decoded = yield* Effect.try(() => decodeURIComponent(pathname)).pipe(Effect.orElseSucceed(() => undefined));
+    if (decoded === undefined || decoded.includes("\0")) return notFound;
+    const target = resolve(root, `.${decoded}`);
+    const inside = relative(root, target);
+    if (inside.startsWith("..") || inside.startsWith(sep)) return notFound;
+    const isFile = (path: string) =>
+      Effect.promise(() =>
+        stat(path).then(
+          (info) => info.isFile(),
+          () => false,
+        ),
+      );
+    if (yield* isFile(target)) return yield* HttpServerResponse.file(target);
+    const last = decoded.slice(decoded.lastIndexOf("/") + 1);
+    const index = join(root, "index.html");
+    if (last.includes(".") || !(yield* isFile(index))) return notFound;
+    return yield* HttpServerResponse.file(index, { headers: { "cache-control": "no-cache" } });
+  }).pipe(Effect.catchAll(() => Effect.succeed(HttpServerResponse.text("Cannot read file", { status: 500 }))));
 
 /**
  * Binds the address and serves until the scope closes. `/rpc` (WebSocket,
@@ -75,10 +82,12 @@ export const startServer = (options: ServerOptions, handlers: HostHandlers): Eff
       socket.once("close", () => sockets.delete(socket));
     });
     const inner = yield* Scope.fork(yield* Effect.scope, ExecutionStrategy.sequential);
-    yield* Effect.addFinalizer(() => Effect.sync(() => {
-      node.close();
-      for (const socket of sockets) socket.destroy();
-    }));
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        node.close();
+        for (const socket of sockets) socket.destroy();
+      }),
+    );
     return yield* serve(options, handlers, node).pipe(Scope.extend(inner));
   });
 

@@ -7,19 +7,19 @@ follow pi's tools.
 ```ts
 import builtin, { bash, edit, read, write } from "@basis/plugin-tools-builtin";
 
-makeCore([tools, ...builtin]);            // default export: all four, as an array
+makeCore([tools, ...builtin]); // default export: all four, as an array
 makeCore([tools, read, write, edit, myBash]); // replace one by leaving it out
 ```
 
 The tools themselves (`readTool`, …) and helpers (`applyEdits`, `unifiedPatch`,
 `truncateHead`/`truncateTail`) are exported for reuse. No config.
 
-| Tool | Input | Behavior |
-| --- | --- | --- |
-| `read` | `path`, `offset?` (1-based), `limit?` | Raw text, cut at 2000 lines or 50KB with a `Use offset=N to continue` notice. PNG/JPEG/GIF/WebP (by magic bytes) come back as an image part; images over 3.75MB are described instead. |
-| `write` | `path`, `content` | Creates parent directories; overwrites. |
-| `edit` | `path`, `edits: [{ oldText, newText }]` | Every `oldText` must match exactly once in the original file; overlapping edits, no match, several matches, and no-op edits are errors that leave the file unchanged. `details.patch` is a unified diff, `details.firstChangedLine` the first changed line. |
-| `bash` | `command`, `timeout?` (seconds) | `bash -c` in the session cwd, stdout+stderr combined, tail-truncated to 2000 lines or 50KB; the full output goes to a temp file named in the result. Non-zero exit, timeout, and abort are error results; `details.exitCode` carries the code. |
+| Tool    | Input                                   | Behavior                                                                                                                                                                                                                                                    |
+| ------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read`  | `path`, `offset?` (1-based), `limit?`   | Raw text, cut at 2000 lines or 50KB with a `Use offset=N to continue` notice. PNG/JPEG/GIF/WebP (by magic bytes) come back as an image part; images over 3.75MB are described instead.                                                                      |
+| `write` | `path`, `content`                       | Creates parent directories; overwrites.                                                                                                                                                                                                                     |
+| `edit`  | `path`, `edits: [{ oldText, newText }]` | Every `oldText` must match exactly once in the original file; overlapping edits, no match, several matches, and no-op edits are errors that leave the file unchanged. `details.patch` is a unified diff, `details.firstChangedLine` the first changed line. |
+| `bash`  | `command`, `timeout?` (seconds)         | `bash -c` in the session cwd, stdout+stderr combined, tail-truncated to 2000 lines or 50KB; the full output goes to a temp file named in the result. Non-zero exit, timeout, and abort are error results; `details.exitCode` carries the code.              |
 
 Paths resolve against the session cwd; `~` expands and a leading `@` is dropped.
 

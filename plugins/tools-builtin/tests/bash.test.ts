@@ -6,10 +6,21 @@ import type { BashDetails } from "../src/index.ts";
 import { call, context, tempDir, textOf } from "./support.ts";
 
 let dir: string;
-beforeEach(async () => { dir = await tempDir(); });
-afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => {
+  dir = await tempDir();
+});
+afterEach(async () => {
+  await fs.rm(dir, { recursive: true, force: true });
+});
 
-const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 describe("bash", () => {
   it("runs in cwd and combines stdout and stderr", async () => {

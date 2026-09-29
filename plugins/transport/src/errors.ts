@@ -15,8 +15,7 @@ interface Tagged {
   readonly diagnostics?: readonly Diagnostic[];
 }
 
-const isTagged = (error: unknown): error is Tagged =>
-  typeof error === "object" && error !== null && typeof (error as Tagged)._tag === "string";
+const isTagged = (error: unknown): error is Tagged => typeof error === "object" && error !== null && typeof (error as Tagged)._tag === "string";
 
 const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
 
@@ -36,7 +35,7 @@ export const toHostError = (error: unknown): HostError => {
   if (!isTagged(error)) return new HostError({ code: "Unknown", message: error instanceof Error ? error.message : String(error) });
   const code = text(error.reason) ?? error._tag;
   const subject = text(error.sessionId) ?? text(error.provider) ?? text(error.pluginId) ?? text(error.tool) ?? text(error.path);
-  const message = error.diagnostics?.length ? error.diagnostics.map(formatDiagnostic).join("\n") : text(error.message) ?? code;
+  const message = error.diagnostics?.length ? error.diagnostics.map(formatDiagnostic).join("\n") : (text(error.message) ?? code);
   return new HostError({ code, message, ...(subject === undefined ? {} : { subject }) });
 };
 
@@ -47,13 +46,15 @@ export const toPluginStatus = (snapshot: PluginSnapshot): PluginStatus => {
     id: snapshot.id,
     ...(snapshot.version === undefined ? {} : { version: snapshot.version }),
     state: snapshot.state,
-    ...(fault === undefined ? {} : {
-      fault: {
-        phase: fault.phase,
-        ...(fault.operation === undefined ? {} : { operation: fault.operation }),
-        message: `${fault.message}: ${cause instanceof Error ? cause.message : String(cause)}`,
-      },
-    }),
+    ...(fault === undefined
+      ? {}
+      : {
+          fault: {
+            phase: fault.phase,
+            ...(fault.operation === undefined ? {} : { operation: fault.operation }),
+            message: `${fault.message}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          },
+        }),
     ...(snapshot.haltedBy === undefined ? {} : { haltedBy: snapshot.haltedBy }),
   };
 };

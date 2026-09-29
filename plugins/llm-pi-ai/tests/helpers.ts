@@ -11,11 +11,14 @@ export function fakeCredentials(initial: Record<string, Credential> = {}) {
   const service: typeof Credentials.Service = {
     read: (provider) => Effect.sync(() => store.get(provider)),
     list: Effect.sync(() => [...store].map(([provider, credential]) => ({ provider, type: credential.type }))),
-    modify: (provider, update) => lock.withPermits(1)(Effect.gen(function* () {
-      const next = yield* update(store.get(provider));
-      if (next !== undefined) store.set(provider, next);
-      return store.get(provider);
-    })),
+    modify: (provider, update) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          const next = yield* update(store.get(provider));
+          if (next !== undefined) store.set(provider, next);
+          return store.get(provider);
+        }),
+      ),
     remove: (provider) => Effect.sync(() => void store.delete(provider)),
   };
   const plugin = definePlugin({ id: "credentials", provides: [Credentials], layer: Layer.succeed(Credentials, service) });
@@ -29,15 +32,15 @@ export type Question =
 /** Answers questions with `answer`; every question is recorded. */
 export function fakeInteraction(answer: (question: Question) => Effect.Effect<string, InteractionError>) {
   const asked: Question[] = [];
-  const respond = (question: Question) => Effect.suspend(() => {
-    asked.push(question);
-    return answer(question);
-  });
+  const respond = (question: Question) =>
+    Effect.suspend(() => {
+      asked.push(question);
+      return answer(question);
+    });
   const service: typeof Interaction.Service = {
     confirm: () => Effect.succeed(true),
     ask: (title, options) => respond({ type: "ask", title, ...options }),
-    select: (title, options) =>
-      respond({ type: "select", title, options: options.map((option) => option.value) }) as Effect.Effect<never, InteractionError>,
+    select: (title, options) => respond({ type: "select", title, options: options.map((option) => option.value) }) as Effect.Effect<never, InteractionError>,
   };
   const plugin = definePlugin({ id: "interaction", provides: [Interaction], layer: Layer.succeed(Interaction, service) });
   return { asked, plugin };
@@ -48,10 +51,12 @@ export function noticeRecorder() {
   const notices: NoticePayload[] = [];
   const plugin = definePlugin({
     id: "notices",
-    layer: Layer.effectDiscard(Effect.gen(function* () {
-      const context = yield* PluginContext;
-      yield* context.observe(Notice, (notice) => Effect.sync(() => void notices.push(notice)), { overflow: "suspend" });
-    })),
+    layer: Layer.effectDiscard(
+      Effect.gen(function* () {
+        const context = yield* PluginContext;
+        yield* context.observe(Notice, (notice) => Effect.sync(() => void notices.push(notice)), { overflow: "suspend" });
+      }),
+    ),
   });
   return { notices, plugin };
 }
@@ -61,12 +66,12 @@ export const envContext = (env: Record<string, string> = {}): AuthContext => ({
   fileExists: async () => false,
 });
 
-export const runWith = <A, E>(
-  plugins: readonly Plugin[],
-  body: Effect.Effect<A, E, Llm>,
-  configs: Record<string, unknown> = {},
-): Promise<A> =>
-  Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const core = yield* makeCore(plugins, { configs });
-    return yield* (core.run(body) as Effect.Effect<A, E | unknown>);
-  })) as Effect.Effect<A>);
+export const runWith = <A, E>(plugins: readonly Plugin[], body: Effect.Effect<A, E, Llm>, configs: Record<string, unknown> = {}): Promise<A> =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = yield* makeCore(plugins, { configs });
+        return yield* core.run(body) as Effect.Effect<A, E | unknown>;
+      }),
+    ) as Effect.Effect<A>,
+  );

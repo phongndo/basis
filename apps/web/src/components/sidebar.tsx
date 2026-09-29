@@ -28,12 +28,19 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
             class="session-row"
             classList={{ active: active() }}
             aria-current={active() ? "page" : undefined}
-           
-            onClick={() => { void selectSession(props.session.id); props.onPick(); }}
+
+            onClick={() => {
+              void selectSession(props.session.id);
+              props.onPick();
+            }}
             onDblClick={() => setEditing(true)}
           >
-            <Show when={running()}><span class="running-dot" data-tip="Running" /></Show>
-            <span class="session-title" classList={{ untitled: props.session.title === undefined }}>{sessionTitle(props.session)}</span>
+            <Show when={running()}>
+              <span class="running-dot" data-tip="Running" />
+            </Show>
+            <span class="session-title" classList={{ untitled: props.session.title === undefined }}>
+              {sessionTitle(props.session)}
+            </span>
             <span class="session-time">{relativeTime(props.session.updatedAt, now())}</span>
           </button>
         }
@@ -42,10 +49,18 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
           class="session-rename"
           value={props.session.title ?? ""}
           aria-label="Session title"
-          ref={(el) => queueMicrotask(() => { el.focus(); el.select(); })}
+          ref={(el) =>
+            queueMicrotask(() => {
+              el.focus();
+              el.select();
+            })
+          }
           onKeyDown={(event) => {
             if (event.key === "Enter") commit(event.currentTarget.value);
-            else if (event.key === "Escape") { event.stopPropagation(); setEditing(false); }
+            else if (event.key === "Escape") {
+              event.stopPropagation();
+              setEditing(false);
+            }
           }}
           onBlur={(event) => commit(event.currentTarget.value)}
         />
@@ -77,7 +92,10 @@ export function Sidebar(props: { onPick: () => void }) {
     const slash = path.lastIndexOf("/");
     return { name: slash === -1 ? path : path.slice(slash + 1) || path, parent: slash <= 0 ? "" : path.slice(0, slash + 1) };
   };
-  const newChatIn = (cwd?: string) => { newChat(cwd === hostCwd() ? undefined : cwd); props.onPick(); };
+  const newChatIn = (cwd?: string) => {
+    newChat(cwd === hostCwd() ? undefined : cwd);
+    props.onPick();
+  };
   const onKey = (event: KeyboardEvent) => {
     // Arrow keys move between session rows.
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -98,24 +116,60 @@ export function Sidebar(props: { onPick: () => void }) {
             aria-label="Search sessions"
             value={query()}
             onInput={(event) => setQuery(event.currentTarget.value)}
-            onKeyDown={(event) => { if (event.key === "Escape" && query() !== "") { event.stopPropagation(); setQuery(""); } }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && query() !== "") {
+                event.stopPropagation();
+                setQuery("");
+              }
+            }}
           />
           <Show when={query() !== ""}>
-            <button class="icon-button search-clear" aria-label="Clear search" onClick={() => setQuery("")}><XIcon /></button>
+            <button class="icon-button search-clear" aria-label="Clear search" onClick={() => setQuery("")}>
+              <XIcon />
+            </button>
           </Show>
         </label>
         <div class="sidebar-actions">
-          <Popover label={scope() === undefined ? "Projects" : `Project: ${tildePath(scope()!, home())}`} trigger={<FolderIcon />} triggerClass={scope() === undefined ? "icon-button" : "icon-button active"}>
+          <Popover
+            label={scope() === undefined ? "Projects" : `Project: ${tildePath(scope()!, home())}`}
+            trigger={<FolderIcon />}
+            triggerClass={scope() === undefined ? "icon-button" : "icon-button active"}
+          >
             {(close) => (
               <>
-                <button class="menu-item" role="menuitemradio" aria-checked={scope() === undefined} onClick={() => { setScope(undefined); close(); }}>
-                  <span class="menu-check"><Show when={scope() === undefined}><CheckIcon /></Show></span>
+                <button
+                  class="menu-item"
+                  role="menuitemradio"
+                  aria-checked={scope() === undefined}
+                  onClick={() => {
+                    setScope(undefined);
+                    close();
+                  }}
+                >
+                  <span class="menu-check">
+                    <Show when={scope() === undefined}>
+                      <CheckIcon />
+                    </Show>
+                  </span>
                   All projects
                 </button>
                 <For each={allGroups()}>
                   {(group) => (
-                    <button class="menu-item" role="menuitemradio" aria-checked={scope() === group.cwd} data-tip={group.cwd} onClick={() => { setScope(group.cwd); close(); }}>
-                      <span class="menu-check"><Show when={scope() === group.cwd}><CheckIcon /></Show></span>
+                    <button
+                      class="menu-item"
+                      role="menuitemradio"
+                      aria-checked={scope() === group.cwd}
+                      data-tip={group.cwd}
+                      onClick={() => {
+                        setScope(group.cwd);
+                        close();
+                      }}
+                    >
+                      <span class="menu-check">
+                        <Show when={scope() === group.cwd}>
+                          <CheckIcon />
+                        </Show>
+                      </span>
                       <span class="menu-label">{cwdLabel(group.cwd).name}</span>
                       <span class="menu-hint">{cwdLabel(group.cwd).parent}</span>
                     </button>
@@ -124,7 +178,15 @@ export function Sidebar(props: { onPick: () => void }) {
               </>
             )}
           </Popover>
-          <button class="icon-button" aria-label="Add project" data-tip="Add project" onClick={() => { openDialog("add-project"); props.onPick(); }}>
+          <button
+            class="icon-button"
+            aria-label="Add project"
+            data-tip="Add project"
+            onClick={() => {
+              openDialog("add-project");
+              props.onPick();
+            }}
+          >
             <FolderPlusIcon />
           </button>
           <button
@@ -172,18 +234,41 @@ export function Sidebar(props: { onPick: () => void }) {
       <div class="sidebar-foot">
         <Popover
           label="Settings"
-          trigger={<><GearIcon /><Show when={failed() > 0}><span class="count-badge">{failed()}</span></Show></>}
+          trigger={
+            <>
+              <GearIcon />
+              <Show when={failed() > 0}>
+                <span class="count-badge">{failed()}</span>
+              </Show>
+            </>
+          }
           triggerClass="icon-button with-badge"
           placement="top-start"
         >
           {(close) => (
             <>
-              <button class="menu-item" role="menuitem" onClick={() => { close(); openDialog("providers"); }}>
+              <button
+                class="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  openDialog("providers");
+                }}
+              >
                 <KeyIcon /> Providers & login
               </button>
-              <button class="menu-item" role="menuitem" onClick={() => { close(); openDialog("plugins"); }}>
+              <button
+                class="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  openDialog("plugins");
+                }}
+              >
                 <PuzzleIcon /> Plugins
-                <Show when={failed() > 0}><span class="menu-hint menu-hint-err">{failed()} failed</span></Show>
+                <Show when={failed() > 0}>
+                  <span class="menu-hint menu-hint-err">{failed()} failed</span>
+                </Show>
               </button>
             </>
           )}

@@ -29,14 +29,10 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Session.List": ({ cwd }) => sessions.list(cwdOption(cwd)).pipe(Effect.mapError(toHostError)),
     "Session.Get": ({ sessionId }) => sessions.get(sessionId).pipe(Effect.mapError(toHostError)),
     "Session.Create": ({ cwd }) => sessions.create({ cwd: cwd ?? paths.cwd }).pipe(Effect.mapError(toHostError)),
-    "Session.Events": ({ sessionId, after }) =>
-      sessions.events(sessionId, after === undefined ? undefined : { after }).pipe(Effect.mapError(toHostError)),
+    "Session.Events": ({ sessionId, after }) => sessions.events(sessionId, after === undefined ? undefined : { after }).pipe(Effect.mapError(toHostError)),
     "Session.Checkout": ({ sessionId, eventId }) => sessions.checkout(sessionId, eventId).pipe(Effect.mapError(toHostError)),
     "Session.SetTitle": ({ sessionId, title }) =>
-      sessions.append(sessionId, { type: "title", title }).pipe(
-        Effect.zipRight(sessions.get(sessionId)),
-        Effect.mapError(toHostError),
-      ),
+      sessions.append(sessionId, { type: "title", title }).pipe(Effect.zipRight(sessions.get(sessionId)), Effect.mapError(toHostError)),
 
     // The agent owns the turn's lifetime; this call only waits for it.
     "Agent.Prompt": ({ sessionId, content, options }) => agent.prompt(sessionId, content, options).pipe(Effect.mapError(toHostError)),
@@ -65,8 +61,9 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Host.Events": () => hub.events,
     "Host.Plugins": () => Effect.map(control.plugins, (plugins) => plugins.map(toPluginStatus)),
     "Host.RestartPlugin": ({ pluginId }) => control.restart(pluginId).pipe(Effect.mapError(toHostError)),
-    "Host.Reload": () => control.reload.pipe(
-      Effect.map((report) => ({ started: report.started, restarted: report.restarted, stopped: report.stopped })),
-      Effect.mapError(toHostError),
-    ),
+    "Host.Reload": () =>
+      control.reload.pipe(
+        Effect.map((report) => ({ started: report.started, restarted: report.restarted, stopped: report.stopped })),
+        Effect.mapError(toHostError),
+      ),
   });

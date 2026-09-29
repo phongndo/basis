@@ -13,7 +13,7 @@ export interface ContextFile {
   readonly content: string;
 }
 
-const stripBom = (text: string) => text.startsWith("﻿") ? text.slice(1) : text;
+const stripBom = (text: string) => (text.startsWith("﻿") ? text.slice(1) : text);
 
 /**
  * Finds context files and caches their contents by path, size, and mtime, so
@@ -69,10 +69,11 @@ export function makeLoader(home: string) {
   };
 }
 
-export const renderSection = (files: readonly ContextFile[]): string => [
-  "Project-specific instructions and guidelines:",
-  ...files.map(({ path: file, content }) => `<project_instructions path="${file}">\n${content}\n</project_instructions>`),
-].join("\n\n");
+export const renderSection = (files: readonly ContextFile[]): string =>
+  [
+    "Project-specific instructions and guidelines:",
+    ...files.map(({ path: file, content }) => `<project_instructions path="${file}">\n${content}\n</project_instructions>`),
+  ].join("\n\n");
 
 /** Places the section before the agent's `environment` section, whose date changes daily, to keep the stable prefix long. */
 const insert = (sections: readonly SystemSection[], section: SystemSection): SystemSection[] => {
@@ -84,15 +85,24 @@ export default definePlugin({
   id: "project-context",
   version: "0.1.0",
   requires: [Paths],
-  layer: Layer.effectDiscard(Effect.gen(function* () {
-    const owner = yield* PluginContext;
-    const load = makeLoader((yield* Paths).home);
-    yield* owner.on(AgentRequestHook, (draft, next) => Effect.flatMap(
-      Effect.promise(() => load(draft.cwd)),
-      (files) => next(files.length === 0 ? draft : {
-        ...draft,
-        sections: insert(draft.sections, { id: "project-context", source: owner.id, text: renderSection(files) }),
-      }),
-    ));
-  })),
+  layer: Layer.effectDiscard(
+    Effect.gen(function* () {
+      const owner = yield* PluginContext;
+      const load = makeLoader((yield* Paths).home);
+      yield* owner.on(AgentRequestHook, (draft, next) =>
+        Effect.flatMap(
+          Effect.promise(() => load(draft.cwd)),
+          (files) =>
+            next(
+              files.length === 0
+                ? draft
+                : {
+                    ...draft,
+                    sections: insert(draft.sections, { id: "project-context", source: owner.id, text: renderSection(files) }),
+                  },
+            ),
+        ),
+      );
+    }),
+  ),
 });

@@ -22,7 +22,9 @@ export interface StartedPrompt {
 export function startPrompt(host: Pick<Host, "agent" | "onEvent">, sessionId: string, content: PromptContent, options?: TurnOptions): StartedPrompt {
   let stop = () => {};
   const started = new Promise<void>((resolve) => {
-    stop = host.onEvent((event) => { if (event.type === "turn-started" && event.sessionId === sessionId) resolve(); });
+    stop = host.onEvent((event) => {
+      if (event.type === "turn-started" && event.sessionId === sessionId) resolve();
+    });
   });
   const done = host.agent.prompt(sessionId, content, options);
   const accepted = Promise.race([started, done]);

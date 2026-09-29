@@ -75,11 +75,14 @@ export function makeLoader(options: LoaderOptions): Effect.Effect<Loader, Reload
             const diagnostic = resolved.left;
             diagnostics.push(diagnostic.pluginId === undefined ? new Diagnostic({ ...diagnostic, pluginId: id }) : diagnostic);
           } else if (resolved.right.id !== id) {
-            diagnostics.push(new Diagnostic({
-              severity: "error", pluginId: id,
-              message: `Source resolved "${id}" to a plugin whose id is "${resolved.right.id}"`,
-              suggestion: `Fix the source mapping or the plugin's id`,
-            }));
+            diagnostics.push(
+              new Diagnostic({
+                severity: "error",
+                pluginId: id,
+                message: `Source resolved "${id}" to a plugin whose id is "${resolved.right.id}"`,
+                suggestion: `Fix the source mapping or the plugin's id`,
+              }),
+            );
           } else {
             members.push({ plugin: resolved.right, ...(entry.config === undefined ? {} : { config: entry.config }) });
           }
@@ -91,7 +94,11 @@ export function makeLoader(options: LoaderOptions): Effect.Effect<Loader, Reload
     const apply = (next: Composition): Effect.Effect<ReloadReport, ReloadError> =>
       Effect.gen(function* () {
         const members = yield* resolve(next);
-        const report = yield* runtime.apply(members, () => { current = next; }).pipe(Effect.mapError(toReloadError));
+        const report = yield* runtime
+          .apply(members, () => {
+            current = next;
+          })
+          .pipe(Effect.mapError(toReloadError));
         return report;
       });
 

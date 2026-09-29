@@ -1,7 +1,21 @@
 import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@basis/contracts";
 import type {
-  DirectoryListing, GitBranch, HostInfo, InteractionRequest, LedgerRecord, ModelInfo, PluginStatus, ProviderInfo, SectionDiff, SessionEvent, SessionInfo,
-  TrajectoryRequest, TrajectoryStep, TrajectoryTurn, Usage, WorkspaceStatus,
+  DirectoryListing,
+  GitBranch,
+  HostInfo,
+  InteractionRequest,
+  LedgerRecord,
+  ModelInfo,
+  PluginStatus,
+  ProviderInfo,
+  SectionDiff,
+  SessionEvent,
+  SessionInfo,
+  TrajectoryRequest,
+  TrajectoryStep,
+  TrajectoryTurn,
+  Usage,
+  WorkspaceStatus,
 } from "@basis/contracts";
 import type { TurnResult } from "./live.ts";
 import type { Discovery } from "@basis/plugin-transport";
@@ -10,7 +24,14 @@ import type { Discovery } from "@basis/plugin-transport";
 
 const pad = (rows: readonly (readonly string[])[]): string => {
   const widths = rows.reduce<number[]>((acc, row) => row.map((cell, i) => Math.max(acc[i] ?? 0, cell.length)), []);
-  return rows.map((row) => row.map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i]!))).join("  ").trimEnd()).join("\n");
+  return rows
+    .map((row) =>
+      row
+        .map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i]!)))
+        .join("  ")
+        .trimEnd(),
+    )
+    .join("\n");
 };
 
 const time = (ms: number): string => {
@@ -36,16 +57,24 @@ export const formatStatus = (discovery: Discovery, info: HostInfo, plugins: read
   ]);
 
 export const formatPlugins = (plugins: readonly PluginStatus[]): string =>
-  pad(plugins.map((plugin) => [
-    plugin.id,
-    plugin.version ?? "",
-    plugin.state,
-    plugin.fault !== undefined
-      ? `${plugin.fault.phase}${plugin.fault.operation === undefined ? "" : ` ${plugin.fault.operation}`}: ${plugin.fault.message}`
-      : plugin.haltedBy !== undefined ? `halted by ${plugin.haltedBy}` : "",
-  ]));
+  pad(
+    plugins.map((plugin) => [
+      plugin.id,
+      plugin.version ?? "",
+      plugin.state,
+      plugin.fault !== undefined
+        ? `${plugin.fault.phase}${plugin.fault.operation === undefined ? "" : ` ${plugin.fault.operation}`}: ${plugin.fault.message}`
+        : plugin.haltedBy !== undefined
+          ? `halted by ${plugin.haltedBy}`
+          : "",
+    ]),
+  );
 
-export const formatReload = (report: { readonly started: readonly string[]; readonly restarted: readonly string[]; readonly stopped: readonly string[] }): string => {
+export const formatReload = (report: {
+  readonly started: readonly string[];
+  readonly restarted: readonly string[];
+  readonly stopped: readonly string[];
+}): string => {
   const parts = [
     report.started.length ? `started ${report.started.join(", ")}` : "",
     report.restarted.length ? `restarted ${report.restarted.join(", ")}` : "",
@@ -66,7 +95,7 @@ const clip = (text: string): string => {
 };
 
 const texts = (content: readonly { readonly type: string; readonly text?: string }[]): string =>
-  content.map((part) => (part.type === "text" ? part.text ?? "" : `[${part.type}]`)).join("\n");
+  content.map((part) => (part.type === "text" ? (part.text ?? "") : `[${part.type}]`)).join("\n");
 
 const eventLines = (event: SessionEvent): string[] => {
   const data = event.data;
@@ -133,7 +162,11 @@ const stepLine = (step: TrajectoryStep): string[] => {
     step.stepId,
     request === undefined ? "(no request)" : `${shortModel(request.model)}${request.thinking === undefined ? "" : ` (${request.thinking})`}`,
     request === undefined ? "" : `${request.messages} msg${request.messages === 1 ? "" : "s"}`,
-    response === undefined ? step.attempts.length ? `failed: ${step.attempts.at(-1)!.message.errorMessage ?? step.attempts.at(-1)!.message.stopReason}` : "running" : usageText(response.message.usage),
+    response === undefined
+      ? step.attempts.length
+        ? `failed: ${step.attempts.at(-1)!.message.errorMessage ?? step.attempts.at(-1)!.message.stopReason}`
+        : "running"
+      : usageText(response.message.usage),
     timing?.firstTokenAt === undefined ? "" : `ttft ${seconds(timing.firstTokenAt - timing.startedAt)}`,
     timing === undefined ? "" : seconds(timing.endedAt - timing.startedAt),
     calls.length ? `→ ${calls.join(", ")}` : "",
@@ -148,25 +181,31 @@ const firstLine = (text: string, max = 80): string => {
 /** One line per step under a header per turn; `inspect --step` has the detail. */
 export const formatTrajectory = (turns: readonly TrajectoryTurn[]): string => {
   if (turns.length === 0) return "No turns on the current branch.";
-  return turns.map((turn) => {
-    const prompt = turn.prompt?.content.map((part) => (part.type === "text" ? part.text : "[image]")).join(" ") ?? "";
-    const header = [
-      `Turn ${turn.index}`,
-      turn.end?.reason ?? "running",
-      `${turn.steps.length} step${turn.steps.length === 1 ? "" : "s"}`,
-      usageText(turn.usage),
-      ...(turn.endedAt === undefined ? [] : [seconds(turn.endedAt - turn.startedAt)]),
-    ].join(" · ");
-    return [
-      header,
-      ...(prompt ? [`  "${firstLine(prompt)}"`] : []),
-      ...(turn.end?.error === undefined ? [] : [`  error: ${turn.end.error}`]),
-      pad(turn.steps.map(stepLine)),
-    ].join("\n");
-  }).join("\n\n");
+  return turns
+    .map((turn) => {
+      const prompt = turn.prompt?.content.map((part) => (part.type === "text" ? part.text : "[image]")).join(" ") ?? "";
+      const header = [
+        `Turn ${turn.index}`,
+        turn.end?.reason ?? "running",
+        `${turn.steps.length} step${turn.steps.length === 1 ? "" : "s"}`,
+        usageText(turn.usage),
+        ...(turn.endedAt === undefined ? [] : [seconds(turn.endedAt - turn.startedAt)]),
+      ].join(" · ");
+      return [
+        header,
+        ...(prompt ? [`  "${firstLine(prompt)}"`] : []),
+        ...(turn.end?.error === undefined ? [] : [`  error: ${turn.end.error}`]),
+        pad(turn.steps.map(stepLine)),
+      ].join("\n");
+    })
+    .join("\n\n");
 };
 
-const indent = (text: string, prefix = "    "): string => text.split("\n").map((line) => `${prefix}${line}`).join("\n");
+const indent = (text: string, prefix = "    "): string =>
+  text
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
 
 /** Everything about one step: the request as sent and who contributed each part, the response, and the tool runs. */
 export const formatStep = (turn: TrajectoryTurn, step: TrajectoryStep): string => {
@@ -177,12 +216,15 @@ export const formatStep = (turn: TrajectoryTurn, step: TrajectoryStep): string =
   } else {
     const sectionChars = request.sections.reduce((sum, section) => sum + section.chars, 0);
     const toolChars = request.tools.reduce((sum, tool) => sum + tool.chars, 0);
-    lines.push("", pad([
-      ["request", request.eventId],
-      ["model", `${request.model}${request.thinking === undefined ? "" : `, thinking ${request.thinking}`}`],
-      ["composition", request.composition],
-      ["history", `${request.messages} messages`],
-    ]));
+    lines.push(
+      "",
+      pad([
+        ["request", request.eventId],
+        ["model", `${request.model}${request.thinking === undefined ? "" : `, thinking ${request.thinking}`}`],
+        ["composition", request.composition],
+        ["history", `${request.messages} messages`],
+      ]),
+    );
     lines.push("", `System prompt: ${count(sectionChars)} chars in ${request.sections.length} section${request.sections.length === 1 ? "" : "s"}`);
     for (const section of request.sections) {
       lines.push(`  ${section.id} from ${section.source}, ${count(section.chars)} chars${section.changed ? " (changed)" : ""}`);
@@ -198,28 +240,41 @@ export const formatStep = (turn: TrajectoryTurn, step: TrajectoryStep): string =
     if (request.removed.length) lines.push("", `Removed since the previous request: ${request.removed.join(", ")}`);
   }
   for (const attempt of step.attempts) {
-    lines.push("", `Failed call (${attempt.message.stopReason}) after ${seconds(attempt.timing.endedAt - attempt.timing.startedAt)}: ${attempt.message.errorMessage ?? ""}`.trimEnd());
+    lines.push(
+      "",
+      `Failed call (${attempt.message.stopReason}) after ${seconds(attempt.timing.endedAt - attempt.timing.startedAt)}: ${attempt.message.errorMessage ?? ""}`.trimEnd(),
+    );
   }
   const response = step.response;
   if (response !== undefined) {
     const timing = response.timing;
-    lines.push("", [
-      `Response: ${response.message.stopReason}`,
-      usageText(response.message.usage),
-      ...(timing?.firstTokenAt === undefined ? [] : [`ttft ${seconds(timing.firstTokenAt - timing.startedAt)}`]),
-      ...(timing === undefined ? [] : [seconds(timing.endedAt - timing.startedAt)]),
-    ].join(" · "));
-    const text = response.message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
+    lines.push(
+      "",
+      [
+        `Response: ${response.message.stopReason}`,
+        usageText(response.message.usage),
+        ...(timing?.firstTokenAt === undefined ? [] : [`ttft ${seconds(timing.firstTokenAt - timing.startedAt)}`]),
+        ...(timing === undefined ? [] : [seconds(timing.endedAt - timing.startedAt)]),
+      ].join(" · "),
+    );
+    const text = response.message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
     if (text) lines.push(indent(clip(text)));
   }
   if (step.tools.length) {
     lines.push("", "Tool runs:");
-    lines.push(pad(step.tools.map((run) => [
-      `  ${run.call.name}`,
-      run.result === undefined ? "no result" : run.result.isError ? "error" : "ok",
-      run.timing === undefined ? "" : seconds(run.timing.endedAt - run.timing.startedAt),
-      firstLine(JSON.stringify(run.call.arguments), 60),
-    ])));
+    lines.push(
+      pad(
+        step.tools.map((run) => [
+          `  ${run.call.name}`,
+          run.result === undefined ? "no result" : run.result.isError ? "error" : "ok",
+          run.timing === undefined ? "" : seconds(run.timing.endedAt - run.timing.startedAt),
+          firstLine(JSON.stringify(run.call.arguments), 60),
+        ]),
+      ),
+    );
   }
   return lines.join("\n");
 };
@@ -236,7 +291,10 @@ export const formatRecords = (records: readonly LedgerRecord[], running: boolean
     const usage = record.kind === "assistant" ? record.message.usage : undefined;
     const name = recordName(record).replace(/\s+/g, " ");
     return [
-      step, request, RECORD_KIND_LABEL[record.kind], recordStatus(record, running),
+      step,
+      request,
+      RECORD_KIND_LABEL[record.kind],
+      recordStatus(record, running),
       duration === undefined ? "" : seconds(duration),
       usage === undefined ? "" : `${tokens(usage.input + usage.cacheRead + usage.cacheWrite)}/${tokens(usage.output)}`,
       name.length > NAME_CHARS ? `${name.slice(0, NAME_CHARS - 1)}…` : name,
@@ -248,7 +306,11 @@ export const formatRecords = (records: readonly LedgerRecord[], running: boolean
 /** Every system section in full, headed by the plugin that contributed it. */
 export const formatSystem = (request: TrajectoryRequest): string => {
   const blocks = request.sections.map((section) =>
-    [`── ${section.id} from ${section.source}, ${count(section.chars)} chars${section.changed ? " (changed)" : ""}`, section.text ?? "(not recoverable from the log)"].join("\n"));
+    [
+      `── ${section.id} from ${section.source}, ${count(section.chars)} chars${section.changed ? " (changed)" : ""}`,
+      section.text ?? "(not recoverable from the log)",
+    ].join("\n"),
+  );
   if (request.sections.every((section) => section.text === undefined) && request.system !== undefined) {
     blocks.push(["── whole prompt (the logged prompt does not split by the recorded sizes)", request.system].join("\n"));
   }
@@ -257,42 +319,70 @@ export const formatSystem = (request: TrajectoryRequest): string => {
 
 /** Every tool definition, headed by the plugin that contributed it. */
 export const formatTools = (request: TrajectoryRequest): string =>
-  request.tools.map((tool) => [
-    `── ${tool.name} from ${tool.source}, ${count(tool.chars)} chars${tool.changed ? " (changed)" : ""}`,
-    ...(tool.spec === undefined ? [] : [tool.spec.description, JSON.stringify(tool.spec.parameters, null, 2)]),
-  ].join("\n")).join("\n\n") || "No tools.";
+  request.tools
+    .map((tool) =>
+      [
+        `── ${tool.name} from ${tool.source}, ${count(tool.chars)} chars${tool.changed ? " (changed)" : ""}`,
+        ...(tool.spec === undefined ? [] : [tool.spec.description, JSON.stringify(tool.spec.parameters, null, 2)]),
+      ].join("\n"),
+    )
+    .join("\n\n") || "No tools.";
 
 /** Section-by-section changes to the system prompt, as unified-style lines. */
 export const formatDiff = (diff: readonly SectionDiff[], first: boolean): string => {
   if (first) return "This is the first request; everything in it is new. Use --system to read it.";
   if (diff.length === 0) return "The system prompt is unchanged from the request before.";
-  return diff.map((section) => [
-    `── ${section.id} from ${section.source} (${section.status})`,
-    ...section.lines.map((line) => `${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "} ${line.text}`),
-  ].join("\n")).join("\n\n");
+  return diff
+    .map((section) =>
+      [
+        `── ${section.id} from ${section.source} (${section.status})`,
+        ...section.lines.map((line) => `${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "} ${line.text}`),
+      ].join("\n"),
+    )
+    .join("\n\n");
 };
 
 export const formatModels = (models: readonly ModelInfo[]): string =>
-  models.length === 0 ? "No models. Log in to a provider (basis providers, basis login <provider>), or use --all." : pad([
-    ["model", "name", "context", "thinking", "input", "$/M in/out"],
-    ...models.map((model) => [
-      model.ref, model.name, tokens(model.contextWindow), model.reasoning ? model.thinkingLevels.join(",") : "no", model.input.join(","),
-      model.cost.input === 0 && model.cost.output === 0 ? "" : `${model.cost.input}/${model.cost.output}`,
-    ]),
-  ]);
+  models.length === 0
+    ? "No models. Log in to a provider (basis providers, basis login <provider>), or use --all."
+    : pad([
+        ["model", "name", "context", "thinking", "input", "$/M in/out"],
+        ...models.map((model) => [
+          model.ref,
+          model.name,
+          tokens(model.contextWindow),
+          model.reasoning ? model.thinkingLevels.join(",") : "no",
+          model.input.join(","),
+          model.cost.input === 0 && model.cost.output === 0 ? "" : `${model.cost.input}/${model.cost.output}`,
+        ]),
+      ]);
 
 export const formatProviders = (providers: readonly ProviderInfo[]): string =>
   pad([
     ["provider", "name", "configured", "from", "login"],
-    ...providers.map((provider) => [provider.id, provider.name, provider.configured ? "yes" : "no", provider.source ?? "", provider.auth.map((auth) => auth.type).join(", ")]),
+    ...providers.map((provider) => [
+      provider.id,
+      provider.name,
+      provider.configured ? "yes" : "no",
+      provider.source ?? "",
+      provider.auth.map((auth) => auth.type).join(", "),
+    ]),
   ]);
 
 export const formatQuestions = (questions: readonly InteractionRequest[]): string =>
-  questions.length === 0 ? "No open questions." : questions.map((question) => [
-    `${question.id}  ${question.type}  ${question.title}`,
-    ...(question.type === "select" ? question.options.map((option, i) => `    ${i + 1}. ${option.value}${option.label === option.value ? "" : ` (${option.label})`}`) : []),
-    ...(question.type === "confirm" && question.detail !== undefined ? [`    ${question.detail}`] : []),
-  ].join("\n")).join("\n");
+  questions.length === 0
+    ? "No open questions."
+    : questions
+        .map((question) =>
+          [
+            `${question.id}  ${question.type}  ${question.title}`,
+            ...(question.type === "select"
+              ? question.options.map((option, i) => `    ${i + 1}. ${option.value}${option.label === option.value ? "" : ` (${option.label})`}`)
+              : []),
+            ...(question.type === "confirm" && question.detail !== undefined ? [`    ${question.detail}`] : []),
+          ].join("\n"),
+        )
+        .join("\n");
 
 /** The reply (unless it was streamed) and a one-line summary of how the turn ended. */
 export const formatTurnResult = (turn: TurnResult, withText: boolean): string => {
@@ -304,11 +394,9 @@ export const formatTurnResult = (turn: TurnResult, withText: boolean): string =>
     ...(turn.duration === undefined ? [] : [seconds(turn.duration)]),
     `session ${turn.session}`,
   ].join(" · ");
-  return [
-    ...(withText && turn.text ? [turn.text.trimEnd(), ""] : []),
-    `── ${summary}`,
-    ...(turn.error === undefined ? [] : [`error: ${turn.error}`]),
-  ].join("\n");
+  return [...(withText && turn.text ? [turn.text.trimEnd(), ""] : []), `── ${summary}`, ...(turn.error === undefined ? [] : [`error: ${turn.error}`])].join(
+    "\n",
+  );
 };
 
 export const formatWorkspace = (status: WorkspaceStatus): string => {
@@ -326,9 +414,17 @@ export const formatWorkspace = (status: WorkspaceStatus): string => {
 };
 
 export const formatBranches = (branches: readonly GitBranch[]): string =>
-  branches.length === 0 ? "No branches." : pad(branches.map((branch) => [
-    branch.current ? "*" : " ", branch.name, branch.remote ? "remote" : "", time(branch.updatedAt), branch.worktree === undefined ? "" : `in ${branch.worktree}`,
-  ]));
+  branches.length === 0
+    ? "No branches."
+    : pad(
+        branches.map((branch) => [
+          branch.current ? "*" : " ",
+          branch.name,
+          branch.remote ? "remote" : "",
+          time(branch.updatedAt),
+          branch.worktree === undefined ? "" : `in ${branch.worktree}`,
+        ]),
+      );
 
 export const formatListing = (listing: DirectoryListing): string =>
   [listing.parent, ...listing.entries.map((entry) => `  ${entry.name}/${entry.git ? "  (git)" : ""}`), ...(listing.truncated ? ["  …"] : [])].join("\n");

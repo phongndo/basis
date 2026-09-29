@@ -11,7 +11,7 @@ holds the rationale and constraints.
 
 1. **Resolve once, at composition time.** Dependencies, config, and handler order are checked when a composition is planned. At call time a capability is a captured value and a hook with no handlers calls straight through. No proxies, no per-call graph walks, no meta-events.
 2. **Typed dependencies.** A plugin declares `requires` and `provides` as Effect tags; the Layer's requirements must match at compile time, and actual exports are checked at activation. Planning rejects missing dependencies. Runtime failures can revoke capabilities, so callers must still handle the resulting failure or interruption.
-3. **Two extension primitives, with explicit failure rules.** *Hooks* (interceptors) wrap an operation and fail closed. *Events* notify and are isolated. See below.
+3. **Two extension primitives, with explicit failure rules.** _Hooks_ (interceptors) wrap an operation and fail closed. _Events_ notify and are isolated. See below.
 4. **Failure domains.** A required background task failing stops its plugin and dependents while unrelated plugins keep running. Optional tasks and observers report faults without failing their plugin. There is no automatic restart unless the plugin declares a `restart` schedule, and that schedule persists across failures so a broken plugin can exhaust it. An explicit restart retries the named plugin and its halted dependents.
 5. **Staged change.** Replacements activate before the old composition is swapped out. A staging failure preserves the old instances, except for exclusive resources, which require a documented interruption gap.
 6. **Bounded waiting.** Activation, disposal, and the shutdown caller have cooperative deadlines. Event and diagnostic backlogs are bounded; stream delivery can lose entries. A lifecycle deadline is a fault, never a clean stop.
@@ -20,14 +20,14 @@ holds the rationale and constraints.
 
 ## Primitives
 
-| Primitive | Declared by | Contract |
-| --- | --- | --- |
-| Capability | `Context.Tag` | A named, replaceable service. One provider per composition. |
-| Plugin | `definePlugin` | Manifest (`id`, `config` schema, `provides`, `requires`, `exclusive`, `restart`, `deadlines`) plus a `Layer` that receives decoded config and owns resources through its `Scope`. |
-| Hook | `Hook.make` | Around middleware on the critical path. Sequential, ordered, awaited. A handler may call `next` at most once. A handler failure fails the operation. |
-| Event | `Event.make` | Notification with isolated observer failures. Bounded queue, default drop-oldest without waiting; explicit `suspend` applies backpressure. |
-| Background work | `PluginContext.background` | Supervised work owned by the plugin scope; its exit is reported. `required` work failing fails the plugin. |
-| Loader | `makeLoader` | Runs a composition described by data (`Composition`) and changes it at runtime. |
+| Primitive       | Declared by                | Contract                                                                                                                                                                          |
+| --------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability      | `Context.Tag`              | A named, replaceable service. One provider per composition.                                                                                                                       |
+| Plugin          | `definePlugin`             | Manifest (`id`, `config` schema, `provides`, `requires`, `exclusive`, `restart`, `deadlines`) plus a `Layer` that receives decoded config and owns resources through its `Scope`. |
+| Hook            | `Hook.make`                | Around middleware on the critical path. Sequential, ordered, awaited. A handler may call `next` at most once. A handler failure fails the operation.                              |
+| Event           | `Event.make`               | Notification with isolated observer failures. Bounded queue, default drop-oldest without waiting; explicit `suspend` applies backpressure.                                        |
+| Background work | `PluginContext.background` | Supervised work owned by the plugin scope; its exit is reported. `required` work failing fails the plugin.                                                                        |
+| Loader          | `makeLoader`               | Runs a composition described by data (`Composition`) and changes it at runtime.                                                                                                   |
 
 **Rule for choosing hook versus event:** if the caller must learn when it fails, use a hook or a direct capability call. Events carry only information that is safe to lose. Applications own authoritative state and recovery after missed notifications.
 

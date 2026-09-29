@@ -40,13 +40,16 @@ export class CredentialError extends Data.TaggedError("CredentialError")<{
  * refresh and a concurrent login cannot overwrite each other. Returning
  * `undefined` leaves the entry unchanged.
  */
-export class Credentials extends Context.Tag("basis/Credentials")<Credentials, {
-  readonly read: (provider: string) => Effect.Effect<Credential | undefined, CredentialError>;
-  /** Provider ids and credential types; never secrets. */
-  readonly list: Effect.Effect<readonly { readonly provider: string; readonly type: Credential["type"] }[], CredentialError>;
-  readonly modify: <E>(
-    provider: string,
-    update: (current: Credential | undefined) => Effect.Effect<Credential | undefined, E>,
-  ) => Effect.Effect<Credential | undefined, CredentialError | E>;
-  readonly remove: (provider: string) => Effect.Effect<void, CredentialError>;
-}>() {}
+export class Credentials extends Context.Tag("basis/Credentials")<
+  Credentials,
+  {
+    readonly read: (provider: string) => Effect.Effect<Credential | undefined, CredentialError>;
+    /** Provider ids and credential types; never secrets. */
+    readonly list: Effect.Effect<readonly { readonly provider: string; readonly type: Credential["type"] }[], CredentialError>;
+    readonly modify: <E>(
+      provider: string,
+      update: (current: Credential | undefined) => Effect.Effect<Credential | undefined, E>,
+    ) => Effect.Effect<Credential | undefined, CredentialError | E>;
+    readonly remove: (provider: string) => Effect.Effect<void, CredentialError>;
+  }
+>() {}

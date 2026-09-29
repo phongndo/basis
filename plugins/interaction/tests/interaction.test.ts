@@ -10,17 +10,26 @@ function answerer(answer: (request: InteractionRequest) => Effect.Effect<Interac
   const seen: InteractionRequest[] = [];
   const plugin = definePlugin({
     id: "ui",
-    layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) =>
-      owner.on(InteractionHook, (request) => { seen.push(request); return answer(request); }))),
+    layer: Layer.effectDiscard(
+      Effect.flatMap(PluginContext, (owner) =>
+        owner.on(InteractionHook, (request) => {
+          seen.push(request);
+          return answer(request);
+        }),
+      ),
+    ),
   });
   return { plugin, seen };
 }
 
 const scripted = (request: InteractionRequest): Effect.Effect<InteractionAnswer> => {
   switch (request.type) {
-    case "confirm": return Effect.succeed({ type: "confirm", value: true });
-    case "ask": return Effect.succeed({ type: "ask", value: request.secret ? "sk-secret" : "plain" });
-    case "select": return Effect.succeed({ type: "select", value: request.options[1]!.value });
+    case "confirm":
+      return Effect.succeed({ type: "confirm", value: true });
+    case "ask":
+      return Effect.succeed({ type: "ask", value: request.secret ? "sk-secret" : "plain" });
+    case "select":
+      return Effect.succeed({ type: "select", value: request.options[1]!.value });
   }
 };
 
@@ -30,14 +39,20 @@ const run = <A, E>(plugins: Parameters<typeof makeCore>[0], body: Effect.Effect<
 describe("interaction", () => {
   test("routes each question through InteractionHook with a unique id and returns the typed answer", async () => {
     const ui = answerer(scripted);
-    await run([interaction, ui.plugin], Effect.gen(function* () {
-      const ask = yield* Interaction;
-      expect(yield* ask.confirm("Delete?", "Everything")).toBe(true);
-      expect(yield* ask.ask("Key", { secret: true })).toBe("sk-secret");
-      expect(yield* ask.ask("Name", { placeholder: "you" })).toBe("plain");
-      const picked: "a" | "b" = yield* ask.select("Model", [{ value: "a", label: "A" }, { value: "b", label: "B" }]);
-      expect(picked).toBe("b");
-    }));
+    await run(
+      [interaction, ui.plugin],
+      Effect.gen(function* () {
+        const ask = yield* Interaction;
+        expect(yield* ask.confirm("Delete?", "Everything")).toBe(true);
+        expect(yield* ask.ask("Key", { secret: true })).toBe("sk-secret");
+        expect(yield* ask.ask("Name", { placeholder: "you" })).toBe("plain");
+        const picked: "a" | "b" = yield* ask.select("Model", [
+          { value: "a", label: "A" },
+          { value: "b", label: "B" },
+        ]);
+        expect(picked).toBe("b");
+      }),
+    );
     expect(ui.seen.map((request) => request.type)).toEqual(["confirm", "ask", "ask", "select"]);
     expect(new Set(ui.seen.map((request) => request.id)).size).toBe(4);
     expect(ui.seen[0]).toEqual({ type: "confirm", id: ui.seen[0]!.id, title: "Delete?", detail: "Everything" });
@@ -64,7 +79,10 @@ describe("interaction", () => {
     expect(mismatch.message).toContain("confirm");
 
     const unknownOption = answerer(() => Effect.succeed({ type: "select", value: "z" }));
-    const rejected = await run([interaction, unknownOption.plugin], Effect.flatMap(Interaction, (ask) => ask.select("Pick", [{ value: "a", label: "A" }])).pipe(Effect.flip));
+    const rejected = await run(
+      [interaction, unknownOption.plugin],
+      Effect.flatMap(Interaction, (ask) => ask.select("Pick", [{ value: "a", label: "A" }])).pipe(Effect.flip),
+    );
     expect(rejected).toMatchObject({ reason: "Unavailable" });
     expect(rejected.message).toContain('"z"');
   });
@@ -72,16 +90,21 @@ describe("interaction", () => {
   test("interrupting the asker interrupts the answerer", async () => {
     const withdrawn = Effect.runSync(Deferred.make<void>());
     const asked = Effect.runSync(Deferred.make<void>());
-    const ui = answerer(() => Deferred.succeed(asked, undefined).pipe(
-      Effect.zipRight(Effect.never),
-      Effect.onInterrupt(() => Deferred.succeed(withdrawn, undefined)),
-    ));
-    await run([interaction, ui.plugin], Effect.gen(function* () {
-      const ask = yield* Interaction;
-      const fiber = yield* Effect.fork(ask.ask("Paste the code"));
-      yield* Deferred.await(asked);
-      expect(Exit.isInterrupted(yield* Fiber.interrupt(fiber))).toBe(true);
-      yield* Deferred.await(withdrawn);
-    }));
+    const ui = answerer(() =>
+      Deferred.succeed(asked, undefined).pipe(
+        Effect.zipRight(Effect.never),
+        Effect.onInterrupt(() => Deferred.succeed(withdrawn, undefined)),
+      ),
+    );
+    await run(
+      [interaction, ui.plugin],
+      Effect.gen(function* () {
+        const ask = yield* Interaction;
+        const fiber = yield* Effect.fork(ask.ask("Paste the code"));
+        yield* Deferred.await(asked);
+        expect(Exit.isInterrupted(yield* Fiber.interrupt(fiber))).toBe(true);
+        yield* Deferred.await(withdrawn);
+      }),
+    );
   });
 });

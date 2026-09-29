@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { ModelInfo } from "@basis/contracts";
 import { diffStats, parseDiff, readDetails } from "../src/model/details.ts";
 import {
-  displayPath, formatCost, formatDuration, formatTokens, partialStringField, summarizeToolArgs, summarizeUsage, tildePath, truncateLines,
+  displayPath,
+  formatCost,
+  formatDuration,
+  formatTokens,
+  partialStringField,
+  summarizeToolArgs,
+  summarizeUsage,
+  tildePath,
+  truncateLines,
 } from "../src/model/format.ts";
 import { branchSlug, contextSize } from "../src/model/format.ts";
 import { clampThinking, filterModels, knownProjects, thinkingLevels } from "../src/model/prefs.ts";
@@ -31,9 +39,9 @@ describe("format", () => {
   });
 
   it("reads string fields from partial JSON", () => {
-    expect(partialStringField("{\"command\":\"echo \\\"hi", "command")).toBe("echo \"hi");
-    expect(partialStringField("{\"command\":\"a\\", "command")).toBe("a");
-    expect(partialStringField("{\"com", "command")).toBeUndefined();
+    expect(partialStringField('{"command":"echo \\"hi', "command")).toBe('echo "hi');
+    expect(partialStringField('{"command":"a\\', "command")).toBe("a");
+    expect(partialStringField('{"com', "command")).toBeUndefined();
   });
 
   it("summarizes usage", () => {
@@ -49,8 +57,12 @@ describe("format", () => {
 
 describe("details", () => {
   it("reads known shapes and ignores the rest", () => {
-    expect(readDetails({ diff: "+a", exitCode: 2, truncation: { truncated: true }, fullOutputPath: "/tmp/x" }))
-      .toEqual({ diff: "+a", exitCode: 2, truncated: true, fullOutputPath: "/tmp/x" });
+    expect(readDetails({ diff: "+a", exitCode: 2, truncation: { truncated: true }, fullOutputPath: "/tmp/x" })).toEqual({
+      diff: "+a",
+      exitCode: 2,
+      truncated: true,
+      fullOutputPath: "/tmp/x",
+    });
     expect(readDetails("nope")).toEqual({});
     expect(readDetails({ exitCode: "0" })).toEqual({});
   });
@@ -64,8 +76,17 @@ describe("details", () => {
 
 describe("prefs", () => {
   const model = (ref: string, levels: ModelInfo["thinkingLevels"], reasoning = true): ModelInfo => ({
-    ref, provider: ref.split("/")[0]!, id: ref.split("/")[1]!, name: ref.toUpperCase(), api: "x", reasoning, thinkingLevels: levels,
-    input: ["text"], contextWindow: 1, maxTokens: 1, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    ref,
+    provider: ref.split("/")[0]!,
+    id: ref.split("/")[1]!,
+    name: ref.toUpperCase(),
+    api: "x",
+    reasoning,
+    thinkingLevels: levels,
+    input: ["text"],
+    contextWindow: 1,
+    maxTokens: 1,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   });
   it("filters and groups models by provider", () => {
     const groups = filterModels([model("a/one", []), model("b/two", []), model("a/three", [])], "a o");
@@ -86,7 +107,11 @@ describe("prefs", () => {
     expect(clampThinking(undefined, "high")).toBeUndefined();
   });
   it("lists the host directory, then sessions by recency, then added projects", () => {
-    const sessions = [{ cwd: "/b", updatedAt: 1 }, { cwd: "/c", updatedAt: 5 }, { cwd: "/b", updatedAt: 9 }];
+    const sessions = [
+      { cwd: "/b", updatedAt: 1 },
+      { cwd: "/c", updatedAt: 5 },
+      { cwd: "/b", updatedAt: 9 },
+    ];
     expect(knownProjects("/a", sessions, ["/d", "/c"])).toEqual(["/a", "/b", "/c", "/d"]);
     expect(knownProjects(undefined, [], ["/d"])).toEqual(["/d"]);
   });

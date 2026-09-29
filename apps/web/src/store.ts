@@ -4,8 +4,21 @@ import { SessionLog, describeError, startPrompt } from "@basis/client";
 import type { ConnectionStatus, Host } from "@basis/client";
 import { branchOf, trajectory as projectTrajectory } from "@basis/contracts";
 import type {
-  AuthType, HostEvent, HostInfo, InteractionAnswer, InteractionRequest, ModelInfo, NoticePayload, PluginStatus,
-  PromptContent, ProviderInfo, SessionEvent, SessionInfo, ThinkingLevel, TurnOptions, WorkspaceStatus,
+  AuthType,
+  HostEvent,
+  HostInfo,
+  InteractionAnswer,
+  InteractionRequest,
+  ModelInfo,
+  NoticePayload,
+  PluginStatus,
+  PromptContent,
+  ProviderInfo,
+  SessionEvent,
+  SessionInfo,
+  ThinkingLevel,
+  TurnOptions,
+  WorkspaceStatus,
 } from "@basis/contracts";
 import { load, save } from "./lib/storage.ts";
 import { applyDelta, emptyLive, endTurn, reconcileLive, settleStep } from "./model/live.ts";
@@ -66,7 +79,11 @@ const THINKING_KEY = "basis.thinkingByModel";
 const PROJECTS_KEY = "basis.projects";
 
 const loadJson = <A>(key: string, fallback: A): A => {
-  try { return JSON.parse(load(key) ?? "") as A; } catch { return fallback; }
+  try {
+    return JSON.parse(load(key) ?? "") as A;
+  } catch {
+    return fallback;
+  }
 };
 
 export const [state, setState] = createStore<State>({
@@ -218,7 +235,11 @@ export const refreshPlugins = async (): Promise<void> => {
 const [allModelsSignal, setAllModels] = createSignal<readonly ModelInfo[] | undefined>();
 export const allModels = allModelsSignal;
 export const loadAllModels = async (): Promise<void> => {
-  try { setAllModels(await client().llm.models()); } catch (error) { reportError(error, "Could not list models"); }
+  try {
+    setAllModels(await client().llm.models());
+  } catch (error) {
+    reportError(error, "Could not list models");
+  }
 };
 
 export const refreshProviders = async (): Promise<void> => {
@@ -239,12 +260,18 @@ const updateLive = (sessionId: string, update: (state: LiveState) => LiveState):
 let endedTurns: Readonly<Record<string, string>> = {};
 
 /** The most recent host events, newest last, for the event log (`basis events`). */
-export interface LoggedEvent { readonly seq: number; readonly at: number; readonly event: HostEvent }
+export interface LoggedEvent {
+  readonly seq: number;
+  readonly at: number;
+  readonly event: HostEvent;
+}
 const EVENT_LOG = 500;
 let eventSeq = 0;
 const [eventLogSignal, setEventLog] = createSignal<readonly LoggedEvent[]>([]);
 export const eventLog = eventLogSignal;
-export const clearEventLog = (): void => { setEventLog([]); };
+export const clearEventLog = (): void => {
+  setEventLog([]);
+};
 
 export const onEvent = (event: HostEvent): void => {
   setEventLog((log) => [...(log.length >= EVENT_LOG ? log.slice(log.length - EVENT_LOG + 1) : log), { seq: ++eventSeq, at: Date.now(), event }]);
@@ -284,7 +311,8 @@ export const onEvent = (event: HostEvent): void => {
       return;
     case "notice":
       toast({
-        level: event.notice.level, message: event.notice.message,
+        level: event.notice.level,
+        message: event.notice.message,
         ...(event.notice.source === undefined ? {} : { source: event.notice.source }),
         ...(event.notice.links === undefined ? {} : { links: event.notice.links }),
         ...(event.notice.code === undefined ? {} : { code: event.notice.code }),
@@ -319,11 +347,13 @@ export const selectSession = async (sessionId: string | undefined): Promise<void
   const h = host;
   const next = new SessionLog({ sessionId, fetch: (after) => h.session.events(sessionId, after) });
   log = next;
-  stopLog = next.subscribe((snapshot) => batch(() => {
-    setEvents(snapshot.events);
-    updateLive(sessionId, (current) => reconcileLive(current, snapshot.events));
-    setLogState({ loaded: snapshot.loaded, syncing: snapshot.syncing, ...(snapshot.error === undefined ? {} : { error: snapshot.error }) });
-  }));
+  stopLog = next.subscribe((snapshot) =>
+    batch(() => {
+      setEvents(snapshot.events);
+      updateLive(sessionId, (current) => reconcileLive(current, snapshot.events));
+      setLogState({ loaded: snapshot.loaded, syncing: snapshot.syncing, ...(snapshot.error === undefined ? {} : { error: snapshot.error }) });
+    }),
+  );
   await next.sync().catch((error) => reportError(error, "Could not load the session"));
 };
 
@@ -427,23 +457,31 @@ export const send = async (content: PromptContent): Promise<boolean> => {
   const id = sessionId;
   if (!state.running.includes(id)) setState("running", (running) => [...running, id]);
   const prompt = startPrompt(h, id, content, turnOptions());
-  void prompt.done.catch(() => {}).finally(() => {
-    // turn-ended normally clears this; the prompt settling is the fallback when the event was lost.
-    setState("running", (running) => running.filter((running) => running !== id));
-    void log?.sync().catch(() => {});
-  });
+  void prompt.done
+    .catch(() => {})
+    .finally(() => {
+      // turn-ended normally clears this; the prompt settling is the fallback when the event was lost.
+      setState("running", (running) => running.filter((running) => running !== id));
+      void log?.sync().catch(() => {});
+    });
   // A refused prompt returns false so the composer keeps the text; failures after that are only reported.
-  const accepted = await prompt.accepted.then(() => true, (error: unknown) => {
-    reportError(error, "Prompt was not sent");
-    return false;
-  });
+  const accepted = await prompt.accepted.then(
+    () => true,
+    (error: unknown) => {
+      reportError(error, "Prompt was not sent");
+      return false;
+    },
+  );
   if (accepted) void prompt.done.catch((error) => reportError(error));
   return accepted;
 };
 
 export const cancel = (): void => {
   const sessionId = state.activeId;
-  if (sessionId !== undefined) client().agent.cancel(sessionId).catch((error) => reportError(error, "Cancel failed"));
+  if (sessionId !== undefined)
+    client()
+      .agent.cancel(sessionId)
+      .catch((error) => reportError(error, "Cancel failed"));
 };
 
 export const chooseModel = (ref: string | undefined): void => {
@@ -489,10 +527,12 @@ export const login = async (provider: ProviderInfo, type: AuthType): Promise<voi
     reportError(error, `Login to ${provider.name} failed`);
   } finally {
     // Device codes and login links from this attempt are no longer useful.
-    setState(produce((s) => {
-      s.loggingIn = undefined;
-      s.toasts = s.toasts.filter((toast) => toast.id <= before || (toast.code === undefined && toast.links === undefined));
-    }));
+    setState(
+      produce((s) => {
+        s.loggingIn = undefined;
+        s.toasts = s.toasts.filter((toast) => toast.id <= before || (toast.code === undefined && toast.links === undefined));
+      }),
+    );
   }
 };
 
@@ -508,12 +548,16 @@ export const logout = async (provider: ProviderInfo): Promise<void> => {
 
 export const answerInteraction = (id: string, answer: InteractionAnswer): void => {
   setState("interactions", (open) => open.filter((request) => request.id !== id));
-  client().interaction.answer(id, answer).catch((error) => reportError(error));
+  client()
+    .interaction.answer(id, answer)
+    .catch((error) => reportError(error));
 };
 
 export const dismissInteraction = (id: string): void => {
   setState("interactions", (open) => open.filter((request) => request.id !== id));
-  client().interaction.dismiss(id).catch((error) => reportError(error));
+  client()
+    .interaction.dismiss(id)
+    .catch((error) => reportError(error));
 };
 
 export const restartPlugin = async (pluginId: string): Promise<void> => {
@@ -541,7 +585,9 @@ export const reloadConfig = async (): Promise<void> => {
   }
 };
 
-export const setView = (view: SessionViewKind): void => { setState("view", view); };
+export const setView = (view: SessionViewKind): void => {
+  setState("view", view);
+};
 
 /** Moves the active session's leaf to `eventId`: the next prompt branches from there (`basis session checkout`). */
 export const checkoutSession = async (eventId: string): Promise<void> => {
@@ -556,4 +602,6 @@ export const checkoutSession = async (eventId: string): Promise<void> => {
   }
 };
 
-export const openDialog = (dialog: Dialog): void => { setState({ dialog, ...(dialog === undefined ? { welcome: false } : {}) }); };
+export const openDialog = (dialog: Dialog): void => {
+  setState({ dialog, ...(dialog === undefined ? { welcome: false } : {}) });
+};

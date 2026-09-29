@@ -31,10 +31,16 @@ export function App() {
   // The chosen width survives a narrower window; only the displayed width is clamped.
   const [chosen, setChosen] = createSignal(Number(load(WIDTH_KEY)) || DEFAULT_WIDTH);
   const [viewport, setViewport] = createSignal(window.innerWidth);
-  const width = () => { viewport(); return clampWidth(chosen()); };
+  const width = () => {
+    viewport();
+    return clampWidth(chosen());
+  };
   const [collapsed, setCollapsed] = createSignal(load(COLLAPSED_KEY) === "1");
   const [resizing, setResizing] = createSignal(false);
-  const setCollapsedSaved = (value: boolean) => { setCollapsed(value); save(COLLAPSED_KEY, value ? "1" : undefined); };
+  const setCollapsedSaved = (value: boolean) => {
+    setCollapsed(value);
+    save(COLLAPSED_KEY, value ? "1" : undefined);
+  };
   /** On narrow screens the sidebar is a drawer; otherwise it collapses in place. */
   const toggleSidebar = () => (window.matchMedia(NARROW).matches ? setDrawer(!drawer()) : setCollapsedSaved(!collapsed()));
 
@@ -57,29 +63,45 @@ export function App() {
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
   };
-  const resetWidth = () => { setChosen(DEFAULT_WIDTH); save(WIDTH_KEY, undefined); };
+  const resetWidth = () => {
+    setChosen(DEFAULT_WIDTH);
+    save(WIDTH_KEY, undefined);
+  };
   const onResize = () => setViewport(window.innerWidth);
 
   const onKey = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
     const mod = event.ctrlKey || event.metaKey;
     const modal = state.dialog !== undefined || state.interactions.length > 0;
-    if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) { event.preventDefault(); toggleSidebar(); }
-    else if (mod && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); newChat(); setDrawer(false); }
-    else if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && !modal) { event.preventDefault(); openModelPicker(); }
-    else if (event.key === "/" && !mod && !typing(event.target) && !modal) { event.preventDefault(); focusPrompt(); }
-    else if (event.key === "Escape" && !modal && isBusy() && !typing(event.target)) { event.preventDefault(); cancel(); }
-    else if (event.key === "Escape" && drawer()) setDrawer(false);
+    if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) {
+      event.preventDefault();
+      toggleSidebar();
+    } else if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      newChat();
+      setDrawer(false);
+    } else if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && !modal) {
+      event.preventDefault();
+      openModelPicker();
+    } else if (event.key === "/" && !mod && !typing(event.target) && !modal) {
+      event.preventDefault();
+      focusPrompt();
+    } else if (event.key === "Escape" && !modal && isBusy() && !typing(event.target)) {
+      event.preventDefault();
+      cancel();
+    } else if (event.key === "Escape" && drawer()) setDrawer(false);
   };
-  onMount(() => { document.addEventListener("keydown", onKey); window.addEventListener("resize", onResize); });
-  onCleanup(() => { document.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); });
+  onMount(() => {
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+  });
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", onResize);
+  });
 
   return (
-    <div
-      class="app"
-      classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed(), resizing: resizing() }}
-      style={{ "--sidebar": `${width()}px` }}
-    >
+    <div class="app" classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed(), resizing: resizing() }} style={{ "--sidebar": `${width()}px` }}>
       <Sidebar onPick={() => setDrawer(false)} />
       <div
         class="sidebar-rail"
@@ -90,15 +112,25 @@ export function App() {
         onPointerDown={startResize}
         onDblClick={resetWidth}
       />
-      <Show when={drawer()}><div class="scrim" onClick={() => setDrawer(false)} /></Show>
+      <Show when={drawer()}>
+        <div class="scrim" onClick={() => setDrawer(false)} />
+      </Show>
       <div class="main-col">
         <ConnectionBanner />
         <SessionView onToggleSidebar={toggleSidebar} />
       </div>
-      <Show when={state.dialog === "providers"}><ProvidersDialog /></Show>
-      <Show when={state.dialog === "plugins"}><PluginsDialog /></Show>
-      <Show when={state.dialog === "events"}><EventsDialog /></Show>
-      <Show when={state.dialog === "add-project"}><AddProjectDialog /></Show>
+      <Show when={state.dialog === "providers"}>
+        <ProvidersDialog />
+      </Show>
+      <Show when={state.dialog === "plugins"}>
+        <PluginsDialog />
+      </Show>
+      <Show when={state.dialog === "events"}>
+        <EventsDialog />
+      </Show>
+      <Show when={state.dialog === "add-project"}>
+        <AddProjectDialog />
+      </Show>
       <InteractionModal />
       <Toasts />
       <TooltipLayer />

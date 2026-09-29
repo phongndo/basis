@@ -8,23 +8,36 @@ const fakeHost = () => {
   return {
     host: {
       agent: {
-        prompt: () => new Promise<void>((resolve, reject) => { settle = { resolve, reject }; }),
+        prompt: () =>
+          new Promise<void>((resolve, reject) => {
+            settle = { resolve, reject };
+          }),
         cancel: async () => {},
         running: async () => [],
       },
       onEvent: (listener: (event: HostEvent) => void) => {
         listeners.add(listener);
-        return () => { listeners.delete(listener); };
+        return () => {
+          listeners.delete(listener);
+        };
       },
     },
-    emit: (event: HostEvent) => { for (const listener of listeners) listener(event); },
+    emit: (event: HostEvent) => {
+      for (const listener of listeners) listener(event);
+    },
     listeners,
     settle: () => settle!,
   };
 };
 
 const state = (promise: Promise<unknown>) =>
-  Promise.race([promise.then(() => "resolved", () => "rejected"), new Promise((resolve) => setTimeout(() => resolve("pending"), 5))]);
+  Promise.race([
+    promise.then(
+      () => "resolved",
+      () => "rejected",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("pending"), 5)),
+  ]);
 
 describe("startPrompt", () => {
   test("is accepted when its session's turn starts, long before the turn ends", async () => {

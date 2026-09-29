@@ -52,8 +52,12 @@ export const makeHostRpcHttp = (base: string, token: string | undefined): Effect
   Effect.gen(function* () {
     const authorize = token === undefined || token === "" ? (request: HttpClientRequest.HttpClientRequest) => request : HttpClientRequest.bearerToken(token);
     const protocol = RpcClient.layerProtocolHttp({ url: new URL("/rpc/http", base).toString() }).pipe(
-      Layer.provide(Layer.effect(HttpClient.HttpClient, Effect.map(HttpClient.HttpClient, (client) =>
-        client.pipe(HttpClient.mapRequest(authorize), HttpClient.filterStatusOk)))),
+      Layer.provide(
+        Layer.effect(
+          HttpClient.HttpClient,
+          Effect.map(HttpClient.HttpClient, (client) => client.pipe(HttpClient.mapRequest(authorize), HttpClient.filterStatusOk)),
+        ),
+      ),
       Layer.provide(FetchHttpClient.layer),
       Layer.provide(RpcSerialization.layerNdjson),
     );

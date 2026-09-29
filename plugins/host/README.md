@@ -23,7 +23,7 @@ const { composition, diagnostics, files } = await Effect.runPromise(loadComposit
 
 The plugin activates inside `makeLoader`, before the loader value exists, so the app binds the handle through a `Deferred<Loader>` (see `tests/plugin.test.ts`; the handle's `composition` is `compositionInfo(yield* loader.composition, (yield* loader.core.inspect).plugins)`). Two kernel facts shape the rest:
 
-- `Loader.apply` retires the current revision and drains in-flight `core.run` work before swapping. A `HostControl.reload` executed *inside* `core.run` therefore waits on itself until the dispose deadline. Call it from plugin code (a transport's handler runs in its plugin scope) or, in the app, from the service value captured once with `loader.core.run(HostControl)`.
+- `Loader.apply` retires the current revision and drains in-flight `core.run` work before swapping. A `HostControl.reload` executed _inside_ `core.run` therefore waits on itself until the dispose deadline. Call it from plugin code (a transport's handler runs in its plugin scope) or, in the app, from the service value captured once with `loader.core.run(HostControl)`.
 - A fault raised while a plugin is still staging (activation inside a reload) is published with the pre-swap snapshot; the reload's own `PluginsChanged` follows with the final state. Events are losable by design: the app's log and `core.inspect` remain the source of truth.
 
 This package exports the factory rather than a default plugin instance because `HostControl` cannot exist without the loader.

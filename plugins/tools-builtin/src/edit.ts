@@ -7,7 +7,8 @@ import { fsMessage, resolveToCwd, text, throwIfAborted, withFileLock } from "./f
 
 const Replacement = Schema.Struct({
   oldText: Schema.String.annotations({
-    description: "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
+    description:
+      "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
   }),
   newText: Schema.String.annotations({ description: "Replacement text for this targeted edit." }),
 });
@@ -15,15 +16,19 @@ const Replacement = Schema.Struct({
 const EditFields = Schema.Struct({
   path: Schema.String.annotations({ description: "Path to the file to edit (relative or absolute)" }),
   edits: Schema.Array(Replacement).annotations({
-    description: "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
+    description:
+      "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
   }),
 });
 
 type Edit = typeof Replacement.Type;
 
 const isEdit = (value: unknown): value is Edit =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-  && typeof (value as Edit).oldText === "string" && typeof (value as Edit).newText === "string";
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  typeof (value as Edit).oldText === "string" &&
+  typeof (value as Edit).newText === "string";
 
 /**
  * Repairs shapes models are known to send, as pi does: `edits` as a JSON
@@ -52,8 +57,9 @@ function prepare(input: unknown): unknown {
 }
 
 /** Accepts the repaired shapes; the model is shown only the canonical `{ path, edits }` schema. */
-export const EditInput = Schema.transform(Schema.Unknown, EditFields, { strict: false, decode: prepare, encode: (value) => value })
-  .annotations({ jsonSchema: JSONSchema.make(EditFields) });
+export const EditInput = Schema.transform(Schema.Unknown, EditFields, { strict: false, decode: prepare, encode: (value) => value }).annotations({
+  jsonSchema: JSONSchema.make(EditFields),
+});
 export type EditInput = typeof EditFields.Type;
 
 export interface EditDetails {
@@ -69,7 +75,7 @@ const detectLineEnding = (content: string): "\r\n" | "\n" => {
   return lf !== -1 && crlf !== -1 && crlf < lf ? "\r\n" : "\n";
 };
 const normalizeToLF = (value: string) => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-const restoreLineEndings = (value: string, ending: "\r\n" | "\n") => ending === "\r\n" ? value.replace(/\n/g, "\r\n") : value;
+const restoreLineEndings = (value: string, ending: "\r\n" | "\n") => (ending === "\r\n" ? value.replace(/\n/g, "\r\n") : value);
 
 /** Counts overlapping matches too: "}\n}\n" occurs twice in "}\n}\n}\n". */
 const occurrences = (haystack: string, needle: string): number => {
@@ -85,23 +91,29 @@ const occurrences = (haystack: string, needle: string): number => {
  */
 export function applyEdits(content: string, edits: readonly Edit[], display: string): string {
   const one = edits.length === 1;
-  const matched = edits.map((edit, index) => {
-    const oldText = normalizeToLF(edit.oldText);
-    if (oldText.length === 0) throw new Error(one ? `oldText must not be empty in ${display}.` : `edits[${index}].oldText must not be empty in ${display}.`);
-    const at = content.indexOf(oldText);
-    if (at === -1) {
-      throw new Error(one
-        ? `Could not find the exact text in ${display}. The old text must match exactly including all whitespace and newlines.`
-        : `Could not find edits[${index}] in ${display}. The oldText must match exactly including all whitespace and newlines.`);
-    }
-    const count = occurrences(content, oldText);
-    if (count > 1) {
-      throw new Error(one
-        ? `Found ${count} occurrences of the text in ${display}. The text must be unique. Please provide more context to make it unique.`
-        : `Found ${count} occurrences of edits[${index}] in ${display}. Each oldText must be unique. Please provide more context to make it unique.`);
-    }
-    return { index, at, length: oldText.length, newText: normalizeToLF(edit.newText) };
-  }).sort((a, b) => a.at - b.at);
+  const matched = edits
+    .map((edit, index) => {
+      const oldText = normalizeToLF(edit.oldText);
+      if (oldText.length === 0) throw new Error(one ? `oldText must not be empty in ${display}.` : `edits[${index}].oldText must not be empty in ${display}.`);
+      const at = content.indexOf(oldText);
+      if (at === -1) {
+        throw new Error(
+          one
+            ? `Could not find the exact text in ${display}. The old text must match exactly including all whitespace and newlines.`
+            : `Could not find edits[${index}] in ${display}. The oldText must match exactly including all whitespace and newlines.`,
+        );
+      }
+      const count = occurrences(content, oldText);
+      if (count > 1) {
+        throw new Error(
+          one
+            ? `Found ${count} occurrences of the text in ${display}. The text must be unique. Please provide more context to make it unique.`
+            : `Found ${count} occurrences of edits[${index}] in ${display}. Each oldText must be unique. Please provide more context to make it unique.`,
+        );
+      }
+      return { index, at, length: oldText.length, newText: normalizeToLF(edit.newText) };
+    })
+    .sort((a, b) => a.at - b.at);
   for (let i = 1; i < matched.length; i++) {
     const previous = matched[i - 1]!;
     const current = matched[i]!;
@@ -115,16 +127,19 @@ export function applyEdits(content: string, edits: readonly Edit[], display: str
     result = result.slice(0, at) + newText + result.slice(at + length);
   }
   if (result === content) {
-    throw new Error(one
-      ? `No changes made to ${display}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`
-      : `No changes made to ${display}. The replacements produced identical content.`);
+    throw new Error(
+      one
+        ? `No changes made to ${display}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`
+        : `No changes made to ${display}. The replacements produced identical content.`,
+    );
   }
   return result;
 }
 
 export const editTool: Tool<EditInput> = {
   name: "edit",
-  description: "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+  description:
+    "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
   input: EditInput,
   execute: async ({ path, edits }, { cwd, signal }) => {
     if (edits.length === 0) throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");

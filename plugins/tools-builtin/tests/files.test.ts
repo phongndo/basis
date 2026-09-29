@@ -6,8 +6,12 @@ import type { EditDetails, ReadDetails } from "../src/index.ts";
 import { attempt, call, context, tempDir, textOf } from "./support.ts";
 
 let dir: string;
-beforeEach(async () => { dir = await tempDir(); });
-afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+beforeEach(async () => {
+  dir = await tempDir();
+});
+afterEach(async () => {
+  await fs.rm(dir, { recursive: true, force: true });
+});
 
 const put = (name: string, content: string | Buffer) => fs.writeFile(path.join(dir, name), content);
 const get = (name: string) => fs.readFile(path.join(dir, name), "utf8");
@@ -16,8 +20,9 @@ describe("read", () => {
   it("returns text relative to cwd and pages with offset and limit", async () => {
     await put("a.txt", "one\ntwo\nthree\nfour\n");
     expect(textOf(await call(readTool, { path: "a.txt" }, context(dir)))).toBe("one\ntwo\nthree\nfour\n");
-    expect(textOf(await call(readTool, { path: "@a.txt", offset: 2, limit: 2 }, context(dir))))
-      .toBe("two\nthree\n\n[2 more lines in file. Use offset=4 to continue.]");
+    expect(textOf(await call(readTool, { path: "@a.txt", offset: 2, limit: 2 }, context(dir)))).toBe(
+      "two\nthree\n\n[2 more lines in file. Use offset=4 to continue.]",
+    );
     expect(await attempt(readTool, { path: "a.txt", offset: 10 }, context(dir))).toBe("error: Offset 10 is beyond end of file (5 lines total)");
   });
 
@@ -28,12 +33,14 @@ describe("read", () => {
     expect((long.details as ReadDetails).truncation?.truncatedBy).toBe("lines");
 
     await put("wide.txt", Array.from({ length: 100 }, () => "x".repeat(1000)).join("\n"));
-    expect(textOf(await call(readTool, { path: "wide.txt", offset: 3 }, context(dir))))
-      .toMatch(/\[Showing lines 3-53 of 100 \(50\.0KB limit\)\. Use offset=54 to continue\.\]$/);
+    expect(textOf(await call(readTool, { path: "wide.txt", offset: 3 }, context(dir)))).toMatch(
+      /\[Showing lines 3-53 of 100 \(50\.0KB limit\)\. Use offset=54 to continue\.\]$/,
+    );
 
     await put("huge-line.txt", "y".repeat(60 * 1024));
-    expect(textOf(await call(readTool, { path: "huge-line.txt" }, context(dir))))
-      .toBe("[Line 1 is 60.0KB, exceeds 50.0KB limit. Use bash: sed -n '1p' huge-line.txt | head -c 51200]");
+    expect(textOf(await call(readTool, { path: "huge-line.txt" }, context(dir)))).toBe(
+      "[Line 1 is 60.0KB, exceeds 50.0KB limit. Use bash: sed -n '1p' huge-line.txt | head -c 51200]",
+    );
   });
 
   it("returns images by content, not extension, and reports missing files and directories", async () => {
@@ -62,15 +69,24 @@ describe("write", () => {
 describe("edit", () => {
   it("replaces unique text and returns a unified patch", async () => {
     await put("f.ts", "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
-    const result = await call(editTool, { path: "f.ts", edits: [{ oldText: "b\n", newText: "B\n" }, { oldText: "i", newText: "I" }] }, context(dir));
+    const result = await call(
+      editTool,
+      {
+        path: "f.ts",
+        edits: [
+          { oldText: "b\n", newText: "B\n" },
+          { oldText: "i", newText: "I" },
+        ],
+      },
+      context(dir),
+    );
     expect(textOf(result)).toBe("Successfully replaced 2 block(s) in f.ts.");
     expect(await get("f.ts")).toBe("a\nB\nc\nd\ne\nf\ng\nh\nI\nj\n");
     const details = result.details as EditDetails;
     expect(details.firstChangedLine).toBe(2);
-    expect(details.patch).toBe([
-      "--- f.ts", "+++ f.ts",
-      "@@ -1,10 +1,10 @@", " a", "-b", "+B", " c", " d", " e", " f", " g", " h", "-i", "+I", " j", "",
-    ].join("\n"));
+    expect(details.patch).toBe(
+      ["--- f.ts", "+++ f.ts", "@@ -1,10 +1,10 @@", " a", "-b", "+B", " c", " d", " e", " f", " g", " h", "-i", "+I", " j", ""].join("\n"),
+    );
   });
 
   it("refuses missing, ambiguous, overlapping, empty, and no-op edits without touching the file", async () => {
@@ -78,18 +94,32 @@ describe("edit", () => {
     const tryEdit = (edits: unknown) => attempt(editTool, { path: "f.txt", edits }, context(dir));
     expect(await tryEdit([{ oldText: "nope", newText: "x" }])).toContain("Could not find the exact text in f.txt");
     expect(await tryEdit([{ oldText: "foo", newText: "x" }])).toContain("Found 2 occurrences of the text in f.txt");
-    expect(await tryEdit([{ oldText: "bar foo", newText: "x" }, { oldText: "foo\nbaz", newText: "y" }])).toContain("edits[0] and edits[1] overlap");
+    expect(
+      await tryEdit([
+        { oldText: "bar foo", newText: "x" },
+        { oldText: "foo\nbaz", newText: "y" },
+      ]),
+    ).toContain("edits[0] and edits[1] overlap");
     expect(await tryEdit([{ oldText: "", newText: "x" }])).toContain("oldText must not be empty");
     expect(await tryEdit([{ oldText: "baz", newText: "baz" }])).toContain("No changes made");
-    expect(await tryEdit([{ oldText: "baz", newText: "q" }, { oldText: "zzz", newText: "q" }])).toContain("Could not find edits[1]");
+    expect(
+      await tryEdit([
+        { oldText: "baz", newText: "q" },
+        { oldText: "zzz", newText: "q" },
+      ]),
+    ).toContain("Could not find edits[1]");
     expect(await get("f.txt")).toBe("foo bar foo\nbaz\n");
   });
 
   it("counts overlapping occurrences as ambiguous", async () => {
     await put("f.txt", "}\n}\n}\n");
-    expect(await attempt(editTool, { path: "f.txt", edits: [{ oldText: "}\n}\n", newText: "x" }] }, context(dir))).toContain("Found 2 occurrences of the text in f.txt");
+    expect(await attempt(editTool, { path: "f.txt", edits: [{ oldText: "}\n}\n", newText: "x" }] }, context(dir))).toContain(
+      "Found 2 occurrences of the text in f.txt",
+    );
     await put("g.txt", "aaaa");
-    expect(await attempt(editTool, { path: "g.txt", edits: [{ oldText: "aa", newText: "b" }] }, context(dir))).toContain("Found 3 occurrences of the text in g.txt");
+    expect(await attempt(editTool, { path: "g.txt", edits: [{ oldText: "aa", newText: "b" }] }, context(dir))).toContain(
+      "Found 3 occurrences of the text in g.txt",
+    );
     expect(await get("f.txt")).toBe("}\n}\n}\n");
     expect(await get("g.txt")).toBe("aaaa");
   });
@@ -109,6 +139,8 @@ describe("edit", () => {
   });
 
   it("reports a missing file", async () => {
-    expect(await attempt(editTool, { path: "none.txt", edits: [{ oldText: "a", newText: "b" }] }, context(dir))).toBe("error: Could not edit file: File not found: none.txt");
+    expect(await attempt(editTool, { path: "none.txt", edits: [{ oldText: "a", newText: "b" }] }, context(dir))).toBe(
+      "error: Could not edit file: File not found: none.txt",
+    );
   });
 });

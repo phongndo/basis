@@ -11,12 +11,21 @@ function Ask(props: { request: Of<"ask"> }) {
     <Dialog
       title={props.request.title}
       onClose={() => dismissInteraction(props.request.id)}
-      footer={<>
-        <button type="button" class="button" onClick={() => dismissInteraction(props.request.id)}>Cancel</button>
-        <button type="button" class="button button-primary" disabled={value() === ""} onClick={() => answerInteraction(props.request.id, { type: "ask", value: value() })}>
-          Submit
-        </button>
-      </>}
+      footer={
+        <>
+          <button type="button" class="button" onClick={() => dismissInteraction(props.request.id)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="button button-primary"
+            disabled={value() === ""}
+            onClick={() => answerInteraction(props.request.id, { type: "ask", value: value() })}
+          >
+            Submit
+          </button>
+        </>
+      }
     >
       <input
         class="field"
@@ -26,9 +35,16 @@ function Ask(props: { request: Of<"ask"> }) {
         placeholder={props.request.placeholder ?? ""}
         value={value()}
         onInput={(event) => setValue(event.currentTarget.value)}
-        onKeyDown={(event) => { if (event.key === "Enter" && value() !== "") { event.preventDefault(); answerInteraction(props.request.id, { type: "ask", value: value() }); } }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && value() !== "") {
+            event.preventDefault();
+            answerInteraction(props.request.id, { type: "ask", value: value() });
+          }
+        }}
       />
-      <Show when={props.request.secret}><p class="muted small">Sent to the host and stored in its credential store; never shown again.</p></Show>
+      <Show when={props.request.secret}>
+        <p class="muted small">Sent to the host and stored in its credential store; never shown again.</p>
+      </Show>
     </Dialog>
   );
 }
@@ -38,12 +54,20 @@ function Confirm(props: { request: Of<"confirm"> }) {
     <Dialog
       title={props.request.title}
       onClose={() => dismissInteraction(props.request.id)}
-      footer={<>
-        <button class="button" onClick={() => answerInteraction(props.request.id, { type: "confirm", value: false })}>No</button>
-        <button class="button button-primary" data-autofocus onClick={() => answerInteraction(props.request.id, { type: "confirm", value: true })}>Yes</button>
-      </>}
+      footer={
+        <>
+          <button class="button" onClick={() => answerInteraction(props.request.id, { type: "confirm", value: false })}>
+            No
+          </button>
+          <button class="button button-primary" data-autofocus onClick={() => answerInteraction(props.request.id, { type: "confirm", value: true })}>
+            Yes
+          </button>
+        </>
+      }
     >
-      <Show when={props.request.detail}><p class="dialog-detail">{props.request.detail}</p></Show>
+      <Show when={props.request.detail}>
+        <p class="dialog-detail">{props.request.detail}</p>
+      </Show>
     </Dialog>
   );
 }
@@ -64,7 +88,9 @@ function Select(props: { request: Of<"select"> }) {
           {(option, index) => (
             <button class="choice" role="option" {...(index() === 0 ? { "data-autofocus": "" } : {})} onClick={() => pick(option.value)}>
               <span class="choice-label">{option.label}</span>
-              <Show when={option.description}><span class="choice-desc">{option.description}</span></Show>
+              <Show when={option.description}>
+                <span class="choice-desc">{option.description}</span>
+              </Show>
             </button>
           )}
         </For>

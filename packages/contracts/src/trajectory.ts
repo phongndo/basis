@@ -98,7 +98,10 @@ export function splitSystem(system: string | undefined, contributions: readonly 
   let at = 0;
   let first = true;
   for (const section of sections) {
-    if (section.chars === 0) { texts.push(""); continue; }
+    if (section.chars === 0) {
+      texts.push("");
+      continue;
+    }
     if (!first) {
       if (system?.slice(at, at + 2) !== "\n\n") return undefined;
       at += 2;
@@ -111,13 +114,25 @@ export function splitSystem(system: string | undefined, contributions: readonly 
 }
 
 interface MutableStep {
-  stepId: string; turnId: string; index: number; startedAt: number; endedAt?: number;
-  request?: TrajectoryRequest; response?: NonNullable<TrajectoryStep["response"]>;
-  attempts: TrajectoryAttempt[]; tools: { -readonly [K in keyof TrajectoryToolRun]: TrajectoryToolRun[K] }[];
+  stepId: string;
+  turnId: string;
+  index: number;
+  startedAt: number;
+  endedAt?: number;
+  request?: TrajectoryRequest;
+  response?: NonNullable<TrajectoryStep["response"]>;
+  attempts: TrajectoryAttempt[];
+  tools: { -readonly [K in keyof TrajectoryToolRun]: TrajectoryToolRun[K] }[];
 }
 interface MutableTurn {
-  turnId: string; index: number; startedAt: number; endedAt?: number; prompt?: UserMessage;
-  end?: NonNullable<TrajectoryTurn["end"]>; steps: MutableStep[]; usage: Usage;
+  turnId: string;
+  index: number;
+  startedAt: number;
+  endedAt?: number;
+  prompt?: UserMessage;
+  end?: NonNullable<TrajectoryTurn["end"]>;
+  steps: MutableStep[];
+  usage: Usage;
 }
 
 /** Turns in branch order. Events outside a turn (titles, compactions) are not part of it. */
@@ -175,21 +190,27 @@ export function trajectory(branch: readonly SessionEvent[]): TrajectoryTurn[] {
           const text = texts?.[i];
           const previous = previousSections.get(contribution.label);
           return {
-            id: contribution.label, source: contribution.source, chars: contribution.chars,
+            id: contribution.label,
+            source: contribution.source,
+            chars: contribution.chars,
             ...(text === undefined ? {} : { text }),
             changed: previous === undefined || previous !== (text ?? contribution.chars),
           };
         });
         const specByName = new Map(specs.map((spec) => [spec.name, spec]));
-        const tools = data.contributions.filter((contribution) => contribution.kind === "tool").map((contribution): TrajectoryTool => {
-          const spec = specByName.get(contribution.label);
-          const signature = spec === undefined ? String(contribution.chars) : JSON.stringify(spec);
-          return {
-            name: contribution.label, source: contribution.source, chars: contribution.chars,
-            ...(spec === undefined ? {} : { spec }),
-            changed: previousTools.get(contribution.label) !== signature,
-          };
-        });
+        const tools = data.contributions
+          .filter((contribution) => contribution.kind === "tool")
+          .map((contribution): TrajectoryTool => {
+            const spec = specByName.get(contribution.label);
+            const signature = spec === undefined ? String(contribution.chars) : JSON.stringify(spec);
+            return {
+              name: contribution.label,
+              source: contribution.source,
+              chars: contribution.chars,
+              ...(spec === undefined ? {} : { spec }),
+              changed: previousTools.get(contribution.label) !== signature,
+            };
+          });
         const removed = [
           ...[...previousSections.keys()].filter((id) => !sections.some((section) => section.id === id)),
           ...[...previousTools.keys()].filter((name) => !tools.some((tool) => tool.name === name)),
@@ -199,12 +220,16 @@ export function trajectory(branch: readonly SessionEvent[]): TrajectoryTurn[] {
         const step = stepFor(data.turnId, data.stepId, event.at);
         if (step === undefined) return;
         step.request = {
-          eventId: event.id, at: event.at, model: data.model,
+          eventId: event.id,
+          at: event.at,
+          model: data.model,
           ...(data.thinking === undefined ? {} : { thinking: data.thinking }),
           composition: data.composition,
           messages: deriveMessages(branch.slice(0, position)).length,
           ...(system === undefined ? {} : { system }),
-          sections, tools, removed,
+          sections,
+          tools,
+          removed,
         };
         return;
       }

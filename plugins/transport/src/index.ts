@@ -51,27 +51,30 @@ export default definePlugin({
   requires: [Paths, Sessions, Agent, Llm, HostControl, Workspace],
   // Owns the listening port: a reload stops this instance before starting its replacement.
   exclusive: true,
-  layer: (config) => Layer.scopedDiscard(Effect.gen(function* () {
-    const owner = yield* PluginContext;
-    const events = yield* Events;
-    const [paths, sessions, agent, llm, control, workspace] = yield* Effect.all([Paths, Sessions, Agent, Llm, HostControl, Workspace]);
+  layer: (config) =>
+    Layer.scopedDiscard(
+      Effect.gen(function* () {
+        const owner = yield* PluginContext;
+        const events = yield* Events;
+        const [paths, sessions, agent, llm, control, workspace] = yield* Effect.all([Paths, Sessions, Agent, Llm, HostControl, Workspace]);
 
-    let hub: Hub | undefined;
-    const interactions = makeInteractions(() => hub!, config.interactionGraceMs);
-    hub = yield* makeHub(owner, interactions.open);
-    yield* owner.on(InteractionHook, interactions.handle);
+        let hub: Hub | undefined;
+        const interactions = makeInteractions(() => hub!, config.interactionGraceMs);
+        hub = yield* makeHub(owner, interactions.open);
+        yield* owner.on(InteractionHook, interactions.handle);
 
-    const token = config.token ?? generatedToken;
-    const login = makeLogins(llm, yield* Effect.scope);
-    const handlers = HostRpcs.toLayer(makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, login }));
-    const address = yield* startServer({ host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir }, handlers);
-    const url = `http://${clientHost(address.hostname)}:${address.port}`;
-    yield* publishDiscovery(paths.home, { url, token, pid: process.pid, startedAt: Date.now() });
-    yield* events.publish(Notice, {
-      level: "info",
-      source: owner.id,
-      message: `Listening on ${url}`,
-      ...(config.staticDir === undefined ? {} : { links: [{ url: `${url}/?token=${encodeURIComponent(token)}`, label: "Open the web app" }] }),
-    });
-  })),
+        const token = config.token ?? generatedToken;
+        const login = makeLogins(llm, yield* Effect.scope);
+        const handlers = HostRpcs.toLayer(makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, login }));
+        const address = yield* startServer({ host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir }, handlers);
+        const url = `http://${clientHost(address.hostname)}:${address.port}`;
+        yield* publishDiscovery(paths.home, { url, token, pid: process.pid, startedAt: Date.now() });
+        yield* events.publish(Notice, {
+          level: "info",
+          source: owner.id,
+          message: `Listening on ${url}`,
+          ...(config.staticDir === undefined ? {} : { links: [{ url: `${url}/?token=${encodeURIComponent(token)}`, label: "Open the web app" }] }),
+        });
+      }),
+    ),
 });

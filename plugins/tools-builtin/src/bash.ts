@@ -37,7 +37,11 @@ const killTree = (child: ChildProcess) => {
   try {
     process.kill(-child.pid, "SIGKILL");
   } catch {
-    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      /* already gone */
+    }
   }
 };
 
@@ -67,11 +71,23 @@ function waitForExit(child: ChildProcess): Promise<number | null> {
       if (idle !== undefined) clearTimeout(idle);
       idle = setTimeout(() => finish(code), EXIT_STDIO_GRACE_MS);
     };
-    const maybeFinish = () => { if (exited && stdoutEnded && stderrEnded) finish(code); };
-    child.stdout?.once("end", () => { stdoutEnded = true; maybeFinish(); });
-    child.stderr?.once("end", () => { stderrEnded = true; maybeFinish(); });
-    child.stdout?.on("data", () => { if (exited && !settled) armIdle(); });
-    child.stderr?.on("data", () => { if (exited && !settled) armIdle(); });
+    const maybeFinish = () => {
+      if (exited && stdoutEnded && stderrEnded) finish(code);
+    };
+    child.stdout?.once("end", () => {
+      stdoutEnded = true;
+      maybeFinish();
+    });
+    child.stderr?.once("end", () => {
+      stderrEnded = true;
+      maybeFinish();
+    });
+    child.stdout?.on("data", () => {
+      if (exited && !settled) armIdle();
+    });
+    child.stderr?.on("data", () => {
+      if (exited && !settled) armIdle();
+    });
     child.once("error", (error) => {
       if (settled) return;
       settled = true;
@@ -110,9 +126,18 @@ export const bashTool: Tool<BashInput> = {
     child.stderr.on("data", onData);
     let timedOut = false;
     let aborted = false;
-    const onAbort = () => { aborted = true; killTree(child); };
+    const onAbort = () => {
+      aborted = true;
+      killTree(child);
+    };
     signal.addEventListener("abort", onAbort, { once: true });
-    const timer = timeout === undefined ? undefined : setTimeout(() => { timedOut = true; killTree(child); }, timeout * 1000);
+    const timer =
+      timeout === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            killTree(child);
+          }, timeout * 1000);
 
     let exitCode: number | null;
     try {
@@ -140,11 +165,15 @@ export const bashTool: Tool<BashInput> = {
         body += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${fullOutputPath}]`;
       }
     }
-    const status = aborted ? "Command aborted"
-      : timedOut ? `Command timed out after ${timeout} seconds`
-      : exitCode === null ? "Command terminated without an exit code"
-      : exitCode !== 0 ? `Command exited with code ${exitCode}`
-      : undefined;
+    const status = aborted
+      ? "Command aborted"
+      : timedOut
+        ? `Command timed out after ${timeout} seconds`
+        : exitCode === null
+          ? "Command terminated without an exit code"
+          : exitCode !== 0
+            ? `Command exited with code ${exitCode}`
+            : undefined;
     const details: BashDetails = {
       exitCode: aborted || timedOut ? null : exitCode,
       ...(timedOut ? { timedOut } : {}),

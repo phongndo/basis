@@ -63,10 +63,14 @@ export function Popover(props: {
   const activeIndex = () => items().findIndex((item) => item.dataset.active === "true");
   const activate = (index: number, scroll = true) => {
     const all = items();
-    all.forEach((item, i) => { item.dataset.active = String(i === index); });
+    all.forEach((item, i) => {
+      item.dataset.active = String(i === index);
+    });
     if (scroll) all[index]?.scrollIntoView({ block: "nearest" });
   };
-  const place = () => { if (menu !== undefined) position(trigger.getBoundingClientRect(), menu, props.placement ?? "bottom-end"); };
+  const place = () => {
+    if (menu !== undefined) position(trigger.getBoundingClientRect(), menu, props.placement ?? "bottom-end");
+  };
 
   const close = (restoreFocus = true) => {
     if (!open()) return;
@@ -93,7 +97,11 @@ export function Popover(props: {
     });
   };
 
-  props.controller?.({ open: () => { if (!open() && !props.disabled) show(); } });
+  props.controller?.({
+    open: () => {
+      if (!open() && !props.disabled) show();
+    },
+  });
 
   const onPointerDown = (event: PointerEvent) => {
     const target = event.target as Node;
@@ -122,12 +130,32 @@ export function Popover(props: {
     const index = activeIndex();
     const inField = event.target instanceof HTMLInputElement;
     switch (event.key) {
-      case "Escape": event.preventDefault(); event.stopPropagation(); close(); return;
-      case "Tab": close(false); return;
-      case "ArrowDown": event.preventDefault(); activate(all.length === 0 ? -1 : (index + 1) % all.length); return;
-      case "ArrowUp": event.preventDefault(); activate(all.length === 0 ? -1 : (index - 1 + all.length) % all.length); return;
-      case "Home": if (inField) return; event.preventDefault(); activate(0); return;
-      case "End": if (inField) return; event.preventDefault(); activate(all.length - 1); return;
+      case "Escape":
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      case "Tab":
+        close(false);
+        return;
+      case "ArrowDown":
+        event.preventDefault();
+        activate(all.length === 0 ? -1 : (index + 1) % all.length);
+        return;
+      case "ArrowUp":
+        event.preventDefault();
+        activate(all.length === 0 ? -1 : (index - 1 + all.length) % all.length);
+        return;
+      case "Home":
+        if (inField) return;
+        event.preventDefault();
+        activate(0);
+        return;
+      case "End":
+        if (inField) return;
+        event.preventDefault();
+        activate(all.length - 1);
+        return;
       case "Enter":
       case " ":
         if (event.key === " " && inField) return;
@@ -158,20 +186,27 @@ export function Popover(props: {
         ref={trigger}
         type="button"
         class={props.triggerClass ?? "icon-button"}
-        data-tip={open() ? undefined : props.tip ?? props.label}
+        data-tip={open() ? undefined : (props.tip ?? props.label)}
         aria-label={props.label}
         aria-haspopup="menu"
         aria-expanded={open()}
         disabled={props.disabled}
         onClick={() => (open() ? close() : show())}
-        onKeyDown={(event) => { if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !open()) { event.preventDefault(); show(); } }}
+        onKeyDown={(event) => {
+          if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !open()) {
+            event.preventDefault();
+            show();
+          }
+        }}
       >
         {props.trigger}
       </button>
       <Show when={open()}>
         <Portal>
           <div
-            ref={(el) => { menu = el; }}
+            ref={(el) => {
+              menu = el;
+            }}
             class={`popover menu ${props.menuClass ?? ""}`}
             role="menu"
             tabindex="-1"

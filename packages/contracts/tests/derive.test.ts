@@ -12,7 +12,7 @@ function log(...items: readonly (EventData | { readonly data: EventData; readonl
       id: `e${i + 1}`,
       parent: explicit ? item.parent : i === 0 ? null : `e${i}`,
       at: 1000 + i,
-      data: explicit ? item.data : item as EventData,
+      data: explicit ? item.data : (item as EventData),
     });
   });
   return events;
@@ -21,10 +21,25 @@ function log(...items: readonly (EventData | { readonly data: EventData; readonl
 const user = (text: string): EventData => ({ type: "message", message: { role: "user", content: [{ type: "text", text }], timestamp: 0 } });
 const assistant = (text: string): EventData => ({
   type: "message",
-  message: { role: "assistant", content: [{ type: "text", text }], api: "test", provider: "p", model: "m", usage: emptyUsage, stopReason: "stop", timestamp: 0 },
+  message: {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    api: "test",
+    provider: "p",
+    model: "m",
+    usage: emptyUsage,
+    stopReason: "stop",
+    timestamp: 0,
+  },
 });
 const request = (extra: Partial<Extract<EventData, { type: "request" }>> = {}): EventData => ({
-  type: "request", turnId: "t", stepId: "s", model: "p/m", composition: "c", contributions: [], ...extra,
+  type: "request",
+  turnId: "t",
+  stepId: "s",
+  model: "p/m",
+  composition: "c",
+  contributions: [],
+  ...extra,
 });
 
 describe("branchOf", () => {
@@ -38,8 +53,13 @@ describe("branchOf", () => {
 
 describe("deriveMessages", () => {
   it("replaces history before firstKeptId with the latest summary", () => {
-    const events = log(user("old"), assistant("old reply"), user("kept"),
-      { type: "compaction", summary: "S", firstKeptId: "e3", tokensBefore: 10, source: "compaction" }, assistant("new"));
+    const events = log(
+      user("old"),
+      assistant("old reply"),
+      user("kept"),
+      { type: "compaction", summary: "S", firstKeptId: "e3", tokensBefore: 10, source: "compaction" },
+      assistant("new"),
+    );
     const messages = deriveMessages(events);
     expect(messages).toHaveLength(3);
     expect(JSON.stringify(messages[0])).toContain("S");
@@ -48,8 +68,13 @@ describe("deriveMessages", () => {
   });
 
   it("ignores attempts and non-message events", () => {
-    const events = log({ type: "turn-start", turnId: "t" }, user("hi"), request(),
-      { type: "attempt", turnId: "t", stepId: "s", message: { role: "assistant", content: [], api: "x", provider: "p", model: "m", usage: emptyUsage, stopReason: "error", timestamp: 0 }, timing: { startedAt: 0, endedAt: 1 } });
+    const events = log({ type: "turn-start", turnId: "t" }, user("hi"), request(), {
+      type: "attempt",
+      turnId: "t",
+      stepId: "s",
+      message: { role: "assistant", content: [], api: "x", provider: "p", model: "m", usage: emptyUsage, stopReason: "error", timestamp: 0 },
+      timing: { startedAt: 0, endedAt: 1 },
+    });
     expect(deriveMessages(events)).toHaveLength(1);
   });
 });

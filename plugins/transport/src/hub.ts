@@ -1,8 +1,6 @@
 import { Deferred, Effect, Queue, Stream } from "effect";
 import type { Context } from "effect";
-import {
-  AssistantDelta, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted,
-} from "@basis/contracts";
+import { AssistantDelta, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted } from "@basis/contracts";
 import type { HostEvent, InteractionRequest } from "@basis/contracts";
 import type { CoreClosed, Event, EventError, PluginContext } from "@basis/core";
 import { toPluginStatus } from "./errors.ts";
@@ -33,10 +31,7 @@ export interface Hub {
   readonly drained: Effect.Effect<void>;
 }
 
-export const makeHub = (
-  owner: Context.Tag.Service<PluginContext>,
-  open: () => Iterable<InteractionRequest>,
-): Effect.Effect<Hub, EventError | CoreClosed> =>
+export const makeHub = (owner: Context.Tag.Service<PluginContext>, open: () => Iterable<InteractionRequest>): Effect.Effect<Hub, EventError | CoreClosed> =>
   Effect.gen(function* () {
     const subscribers = new Set<Subscriber>();
     let drained = yield* Deferred.make<void>();
@@ -64,17 +59,17 @@ export const makeHub = (
       if (subscribers.size === 1) drained = yield* Deferred.make<void>();
       return subscriber;
     });
-    const leave = (subscriber: Subscriber) => Effect.gen(function* () {
-      subscribers.delete(subscriber);
-      yield* Queue.shutdown(subscriber.feed);
-      yield* Queue.shutdown(subscriber.inbox);
-      if (subscribers.size === 0) yield* Deferred.succeed(drained, undefined);
-    });
+    const leave = (subscriber: Subscriber) =>
+      Effect.gen(function* () {
+        subscribers.delete(subscriber);
+        yield* Queue.shutdown(subscriber.feed);
+        yield* Queue.shutdown(subscriber.inbox);
+        if (subscribers.size === 0) yield* Deferred.succeed(drained, undefined);
+      });
 
-    const events: Stream.Stream<HostEvent> = Stream.unwrapScoped(Effect.map(
-      Effect.acquireRelease(join, leave),
-      (subscriber) => Stream.merge(Stream.fromQueue(subscriber.inbox), Stream.fromQueue(subscriber.feed)),
-    ));
+    const events: Stream.Stream<HostEvent> = Stream.unwrapScoped(
+      Effect.map(Effect.acquireRelease(join, leave), (subscriber) => Stream.merge(Stream.fromQueue(subscriber.inbox), Stream.fromQueue(subscriber.feed))),
+    );
 
     return {
       events,

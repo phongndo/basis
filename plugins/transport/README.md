@@ -8,13 +8,13 @@ Serves `HostRpcs` from `@basis/contracts` with `@effect/rpc` on Node's HTTP serv
 { "plugins": { "transport": { "config": { "port": 7433, "staticDir": "/path/to/apps/web/dist" } } } }
 ```
 
-| Config | Default | Meaning |
-| --- | --- | --- |
-| `host` | `"127.0.0.1"` | Bind address. Loopback unless set explicitly. |
-| `port` | `7433` | `0` asks the OS for a free port. |
-| `token` | random per host process | Required on `/rpc*` and `/api*`. The generated token survives plugin restarts, so connected clients and the web app link stay valid. |
-| `staticDir` | none | Built web app served at `/`; extensionless paths without a file fall back to `index.html`. No token needed. |
-| `interactionGraceMs` | `15000` | How long an open question waits for a client to (re)connect before failing `Unavailable`. |
+| Config               | Default                 | Meaning                                                                                                                              |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `host`               | `"127.0.0.1"`           | Bind address. Loopback unless set explicitly.                                                                                        |
+| `port`               | `7433`                  | `0` asks the OS for a free port.                                                                                                     |
+| `token`              | random per host process | Required on `/rpc*` and `/api*`. The generated token survives plugin restarts, so connected clients and the web app link stay valid. |
+| `staticDir`          | none                    | Built web app served at `/`; extensionless paths without a file fall back to `index.html`. No token needed.                          |
+| `interactionGraceMs` | `15000`                 | How long an open question waits for a client to (re)connect before failing `Unavailable`.                                            |
 
 Endpoints (token as `Authorization: Bearer <token>` or `?token=`, which browser WebSockets need; otherwise `401`):
 

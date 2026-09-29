@@ -1,9 +1,15 @@
 {
   "name": "@basis/core",
   "version": "0.1.0",
-  "description": "Typed plugin composition, scoped lifecycles, hooks, events, and supervised reloads",
   "private": true,
+  "description": "Typed plugin composition, scoped lifecycles, hooks, events, and supervised reloads",
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
   "type": "module",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -11,12 +17,6 @@
       "import": "./dist/index.js"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "examples",
-    "README.md"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepack": "pnpm build",

@@ -62,21 +62,14 @@ export class EventError extends Data.TaggedError("EventError")<{
 }> {}
 
 export class HookError extends Data.TaggedError("HookError")<{
-  readonly reason:
-    | "PointConflict"
-    | "InvalidOrder"
-    | "OwnerClosed"
-    | "NextAlreadyCalled"
-    | "InvocationEnded";
+  readonly reason: "PointConflict" | "InvalidOrder" | "OwnerClosed" | "NextAlreadyCalled" | "InvocationEnded";
   readonly hook: string;
   readonly pluginId?: string;
   readonly message: string;
 }> {}
 
 /** Where in a plugin's life a failure was observed. */
-export const FaultPhase = Schema.Literal(
-  "config", "activate", "service", "intercept", "observe", "background", "dispose",
-);
+export const FaultPhase = Schema.Literal("config", "activate", "service", "intercept", "observe", "background", "dispose");
 export type FaultPhase = typeof FaultPhase.Type;
 
 /**

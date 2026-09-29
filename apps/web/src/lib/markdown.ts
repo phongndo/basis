@@ -18,11 +18,12 @@ const hook = () => {
   });
 };
 
-const sanitize = (html: string): string => DOMPurify.sanitize(html, {
-  USE_PROFILES: { html: true },
-  FORBID_TAGS: ["img", "style", "form", "input", "button", "textarea", "select"],
-  FORBID_ATTR: ["style", "class", "id"],
-});
+const sanitize = (html: string): string =>
+  DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ["img", "style", "form", "input", "button", "textarea", "select"],
+    FORBID_ATTR: ["style", "class", "id"],
+  });
 
 /**
  * Model markdown to sanitized HTML. Raw HTML in the source is sanitized, never

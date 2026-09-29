@@ -64,13 +64,28 @@ interface Revision {
 /** Track resolved services; copying a whole context conservatively leases all of it. */
 class TrackedServices extends Map<string, unknown> {
   readonly read = new Set<string>();
-  override get(key: string): unknown { this.read.add(key); return super.get(key); }
-  private all(): void { for (const key of super.keys()) this.read.add(key); }
-  override entries() { this.all(); return super.entries(); }
-  override values() { this.all(); return super.values(); }
-  override [Symbol.iterator]() { this.all(); return super[Symbol.iterator](); }
+  override get(key: string): unknown {
+    this.read.add(key);
+    return super.get(key);
+  }
+  private all(): void {
+    for (const key of super.keys()) this.read.add(key);
+  }
+  override entries() {
+    this.all();
+    return super.entries();
+  }
+  override values() {
+    this.all();
+    return super.values();
+  }
+  override [Symbol.iterator]() {
+    this.all();
+    return super[Symbol.iterator]();
+  }
   override forEach(callback: (value: unknown, key: string, map: Map<string, unknown>) => void, thisArg?: unknown): void {
-    this.all(); super.forEach(callback, thisArg);
+    this.all();
+    super.forEach(callback, thisArg);
   }
 }
 
@@ -85,11 +100,12 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
     let shutdownFault: ShutdownTimeout | undefined;
     const pendingDisposals = new Set<Deferred.Deferred<void>>();
     let faultSequence = 0;
-    const report = (instance: Instance, fault: PluginFault): Effect.Effect<void> => Effect.suspend(() => {
-      const reported = Object.assign(fault, { sequence: ++faultSequence });
-      instance.fault = reported;
-      return PubSub.isShutdown(faults).pipe(Effect.flatMap((closed) => closed ? Effect.void : PubSub.publish(faults, reported).pipe(Effect.asVoid)));
-    });
+    const report = (instance: Instance, fault: PluginFault): Effect.Effect<void> =>
+      Effect.suspend(() => {
+        const reported = Object.assign(fault, { sequence: ++faultSequence });
+        instance.fault = reported;
+        return PubSub.isShutdown(faults).pipe(Effect.flatMap((closed) => (closed ? Effect.void : PubSub.publish(faults, reported).pipe(Effect.asVoid))));
+      });
     const registry = new HookRegistry();
     const bus = new EventBus();
     const base = Context.empty().pipe(Context.add(Hooks, registry), Context.add(Events, bus)) as Context.Context<never>;
@@ -126,11 +142,15 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
     /** Wait for work admitted under a retired revision; interrupt what outlives the dispose deadline. */
     const drain = (previous: Revision): Effect.Effect<number> =>
       withDeadline(Deferred.await(previous.drained), defaults.dispose, "abandon").pipe(
-        Effect.flatMap((finished) => Option.isSome(finished) ? Effect.succeed(0) : Effect.gen(function* () {
-          const stale = [...previous.fibers];
-          yield* withDeadline(Fiber.interruptAll(stale), defaults.dispose, "abandon");
-          return stale.length;
-        })),
+        Effect.flatMap((finished) =>
+          Option.isSome(finished)
+            ? Effect.succeed(0)
+            : Effect.gen(function* () {
+                const stale = [...previous.fibers];
+                yield* withDeadline(Fiber.interruptAll(stale), defaults.dispose, "abandon");
+                return stale.length;
+              }),
+        ),
       );
 
     const retire = (instance: Instance) => {
@@ -140,116 +160,136 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
       instance.observers.retire();
     };
 
-    const create = (plugin: Plugin, rawConfig: unknown): Effect.Effect<Instance> => Effect.gen(function* () {
-      const scope = yield* Scope.make();
-      const identity: PluginIdentity = { id: plugin.id, ...(plugin.version === undefined ? {} : { version: plugin.version }) };
-      const instance: Instance = {
-        id: plugin.id, plugin, rawConfig, identity, scope,
-        hooks: registry.owner(identity, scope, false),
-        observers: bus.owner(identity, scope, false, (fault) => report(instance, fault)),
-        output: Context.empty(),
-        state: "pending",
-      };
-      return instance;
-    });
+    const create = (plugin: Plugin, rawConfig: unknown): Effect.Effect<Instance> =>
+      Effect.gen(function* () {
+        const scope = yield* Scope.make();
+        const identity: PluginIdentity = { id: plugin.id, ...(plugin.version === undefined ? {} : { version: plugin.version }) };
+        const instance: Instance = {
+          id: plugin.id,
+          plugin,
+          rawConfig,
+          identity,
+          scope,
+          hooks: registry.owner(identity, scope, false),
+          observers: bus.owner(identity, scope, false, (fault) => report(instance, fault)),
+          output: Context.empty(),
+          state: "pending",
+        };
+        return instance;
+      });
 
     const background = (instance: Instance, name: string, task: Effect.Effect<unknown, unknown, unknown>, required: boolean) =>
       Effect.gen(function* () {
         if (state !== "active" || instance.state === "closed" || instance.state === "failed") return yield* new CoreClosed();
         // Forked fibers inherit interruptibility; owned work must stop when its scope closes.
-        const fiber = yield* Effect.forkIn(Effect.interruptible(task.pipe(
-          Effect.withSpan("core.background", { attributes: { ...attributes(instance.identity), "task.name": name } }),
-        )), instance.scope);
-        const watch = Fiber.await(fiber).pipe(Effect.flatMap((exit) => {
-          if (Exit.isSuccess(exit) || Cause.isInterruptedOnly(exit.cause)) return Effect.void;
-          const fault = new PluginFault({ pluginId: instance.id, phase: "background", operation: name, cause: exit.cause });
-          return report(instance, fault).pipe(Effect.zipRight(required ? fail(instance, fault) : Effect.void));
-        }));
+        const fiber = yield* Effect.forkIn(
+          Effect.interruptible(task.pipe(Effect.withSpan("core.background", { attributes: { ...attributes(instance.identity), "task.name": name } }))),
+          instance.scope,
+        );
+        const watch = Fiber.await(fiber).pipe(
+          Effect.flatMap((exit) => {
+            if (Exit.isSuccess(exit) || Cause.isInterruptedOnly(exit.cause)) return Effect.void;
+            const fault = new PluginFault({ pluginId: instance.id, phase: "background", operation: name, cause: exit.cause });
+            return report(instance, fault).pipe(Effect.zipRight(required ? fail(instance, fault) : Effect.void));
+          }),
+        );
         yield* Effect.forkIn(Effect.interruptible(watch), supervisor);
       }).pipe(Effect.asVoid);
 
     const activate = (instance: Instance, config: unknown, environment: Context.Context<never>): Effect.Effect<void, PluginFault> =>
-      Effect.uninterruptibleMask((restore) => Effect.gen(function* () {
-        instance.state = "activating";
-        const context: Context.Tag.Service<PluginContext> = {
-          ...instance.identity,
-          on: instance.hooks.on,
-          observe: instance.observers.observe,
-          background: <R>(name: string, task: Effect.Effect<unknown, unknown, R>, options?: { readonly required?: boolean }) =>
-            background(instance, name, task, options?.required ?? false) as Effect.Effect<void, CoreClosed, R>,
-          trace: (name, effect) => effect.pipe(Effect.withSpan(name, { attributes: attributes(instance.identity) })),
-        };
-        // Only declared dependencies are visible during activation, not the entire graph.
-        const inputs = new Map<string, unknown>([
-          [Hooks.key, registry], [PluginContext.key, context], [Events.key, bus],
-        ]);
-        for (const tag of instance.plugin.requires) {
-          if (!inputs.has(tag.key)) inputs.set(tag.key, environment.unsafeMap.get(tag.key));
-        }
-        const limit = Duration.decode(instance.plugin.deadlines?.activate ?? defaults.activate);
-        const build = Effect.suspend(() => Layer.buildWithScope(instance.plugin.layer(config), instance.scope)).pipe(
-          Effect.mapInputContext((caller: Context.Context<never>) => {
-            const provided = new Map(inputs);
-            if (caller.unsafeMap.has(Tracer.ParentSpan.key)) {
-              provided.set(Tracer.ParentSpan.key, caller.unsafeMap.get(Tracer.ParentSpan.key));
-            }
-            return Context.unsafeMake<unknown>(provided);
-          }),
-          Effect.flatMap((output) => {
-            const declared = new Set(instance.plugin.provides.map((tag) => tag.key));
-            const missing = [...declared].filter((key) => !output.unsafeMap.has(key));
-            const undeclared = [...output.unsafeMap.keys()].filter((key) => !declared.has(key));
-            if (missing.length || undeclared.length) {
-              return Effect.fail(new CapabilityMismatch({ pluginId: instance.id, missing, undeclared }));
-            }
-            return Effect.succeed(output);
-          }),
-          Effect.disconnect,
-          Effect.timeoutFail({ duration: limit, onTimeout: () => new DeadlineExceeded({ pluginId: instance.id, phase: "activate", limit }) }),
-          Effect.catchAllCause((cause) => Cause.isInterruptedOnly(cause)
-            ? Effect.failCause(cause as Cause.Cause<never>)
-            : Effect.fail(new PluginFault({ pluginId: instance.id, phase: "activate", cause, deadline: isDeadline(cause) }))),
-          Effect.withSpan("core.activate", { attributes: attributes(instance.identity) }),
-        );
-        // Resource bookkeeping is masked; plugin initialization remains interruptible.
-        const fiber = yield* Effect.forkIn(Effect.interruptible(build), instance.scope);
-        const exit = yield* Effect.exit(restore(Fiber.join(fiber)).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber))));
-        if (Exit.isSuccess(exit)) {
-          instance.output = exit.value;
-          instance.state = "active";
-          return;
-        }
-        if (Cause.isInterruptedOnly(exit.cause)) {
-          yield* dispose(instance, exit, "closed");
-          return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
-        }
-        const fault = Option.getOrThrow(Cause.failureOption(exit.cause));
-        yield* report(instance, fault);
-        yield* dispose(instance, exit, "failed");
-        return yield* Effect.fail(fault);
-      }));
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          instance.state = "activating";
+          const context: Context.Tag.Service<PluginContext> = {
+            ...instance.identity,
+            on: instance.hooks.on,
+            observe: instance.observers.observe,
+            background: <R>(name: string, task: Effect.Effect<unknown, unknown, R>, options?: { readonly required?: boolean }) =>
+              background(instance, name, task, options?.required ?? false) as Effect.Effect<void, CoreClosed, R>,
+            trace: (name, effect) => effect.pipe(Effect.withSpan(name, { attributes: attributes(instance.identity) })),
+          };
+          // Only declared dependencies are visible during activation, not the entire graph.
+          const inputs = new Map<string, unknown>([
+            [Hooks.key, registry],
+            [PluginContext.key, context],
+            [Events.key, bus],
+          ]);
+          for (const tag of instance.plugin.requires) {
+            if (!inputs.has(tag.key)) inputs.set(tag.key, environment.unsafeMap.get(tag.key));
+          }
+          const limit = Duration.decode(instance.plugin.deadlines?.activate ?? defaults.activate);
+          const build = Effect.suspend(() => Layer.buildWithScope(instance.plugin.layer(config), instance.scope)).pipe(
+            Effect.mapInputContext((caller: Context.Context<never>) => {
+              const provided = new Map(inputs);
+              if (caller.unsafeMap.has(Tracer.ParentSpan.key)) {
+                provided.set(Tracer.ParentSpan.key, caller.unsafeMap.get(Tracer.ParentSpan.key));
+              }
+              return Context.unsafeMake<unknown>(provided);
+            }),
+            Effect.flatMap((output) => {
+              const declared = new Set(instance.plugin.provides.map((tag) => tag.key));
+              const missing = [...declared].filter((key) => !output.unsafeMap.has(key));
+              const undeclared = [...output.unsafeMap.keys()].filter((key) => !declared.has(key));
+              if (missing.length || undeclared.length) {
+                return Effect.fail(new CapabilityMismatch({ pluginId: instance.id, missing, undeclared }));
+              }
+              return Effect.succeed(output);
+            }),
+            Effect.disconnect,
+            Effect.timeoutFail({ duration: limit, onTimeout: () => new DeadlineExceeded({ pluginId: instance.id, phase: "activate", limit }) }),
+            Effect.catchAllCause((cause) =>
+              Cause.isInterruptedOnly(cause)
+                ? Effect.failCause(cause as Cause.Cause<never>)
+                : Effect.fail(new PluginFault({ pluginId: instance.id, phase: "activate", cause, deadline: isDeadline(cause) })),
+            ),
+            Effect.withSpan("core.activate", { attributes: attributes(instance.identity) }),
+          );
+          // Resource bookkeeping is masked; plugin initialization remains interruptible.
+          const fiber = yield* Effect.forkIn(Effect.interruptible(build), instance.scope);
+          const exit = yield* Effect.exit(restore(Fiber.join(fiber)).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber))));
+          if (Exit.isSuccess(exit)) {
+            instance.output = exit.value;
+            instance.state = "active";
+            return;
+          }
+          if (Cause.isInterruptedOnly(exit.cause)) {
+            yield* dispose(instance, exit, "closed");
+            return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
+          }
+          const fault = Option.getOrThrow(Cause.failureOption(exit.cause));
+          yield* report(instance, fault);
+          yield* dispose(instance, exit, "failed");
+          return yield* Effect.fail(fault);
+        }),
+      );
 
     const dispose = (instance: Instance, exit: Exit.Exit<unknown, unknown>, final: "closed" | "failed"): Effect.Effect<void> =>
-      Effect.uninterruptible(Effect.gen(function* () {
-        instance.hooks.stop();
-        instance.observers.retire();
-        const limit = Duration.decode(instance.plugin.deadlines?.dispose ?? defaults.dispose);
-        const settled = yield* Deferred.make<void>();
-        pendingDisposals.add(settled);
-        const close = Scope.close(instance.scope, exit).pipe(Effect.ensuring(Effect.sync(() => {
-          pendingDisposals.delete(settled);
-          Deferred.unsafeDone(settled, Effect.void);
-        })));
-        const result = yield* withDeadline(close, limit, "continue").pipe(
-          Effect.map(Option.getOrElse((): Exit.Exit<void, unknown> => Exit.fail(new DeadlineExceeded({ pluginId: instance.id, phase: "dispose", limit })))),
-          Effect.withSpan("core.dispose", { attributes: attributes(instance.identity) }),
-        );
-        if (Exit.isFailure(result) && !Cause.isInterruptedOnly(result.cause)) {
-          const fault = new PluginFault({ pluginId: instance.id, phase: "dispose", cause: result.cause, deadline: isDeadline(result.cause) });
-          yield* report(instance, fault);
-        }
-        if (instance.state !== "failed") instance.state = final;
-      }));
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          instance.hooks.stop();
+          instance.observers.retire();
+          const limit = Duration.decode(instance.plugin.deadlines?.dispose ?? defaults.dispose);
+          const settled = yield* Deferred.make<void>();
+          pendingDisposals.add(settled);
+          const close = Scope.close(instance.scope, exit).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                pendingDisposals.delete(settled);
+                Deferred.unsafeDone(settled, Effect.void);
+              }),
+            ),
+          );
+          const result = yield* withDeadline(close, limit, "continue").pipe(
+            Effect.map(Option.getOrElse((): Exit.Exit<void, unknown> => Exit.fail(new DeadlineExceeded({ pluginId: instance.id, phase: "dispose", limit })))),
+            Effect.withSpan("core.dispose", { attributes: attributes(instance.identity) }),
+          );
+          if (Exit.isFailure(result) && !Cause.isInterruptedOnly(result.cause)) {
+            const fault = new PluginFault({ pluginId: instance.id, phase: "dispose", cause: result.cause, deadline: isDeadline(result.cause) });
+            yield* report(instance, fault);
+          }
+          if (instance.state !== "failed") instance.state = final;
+        }),
+      );
 
     /** Dependents of `id` in the current composition, transitively, in dependency order. */
     const dependentsOf = (id: string): string[] => {
@@ -257,7 +297,12 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
       for (const candidate of order) {
         const instance = instances.get(candidate);
         if (!instance || found.has(candidate)) continue;
-        if (instance.plugin.requires.some((tag) => { const provider = providers.get(tag.key); return provider !== undefined && found.has(provider); })) {
+        if (
+          instance.plugin.requires.some((tag) => {
+            const provider = providers.get(tag.key);
+            return provider !== undefined && found.has(provider);
+          })
+        ) {
           found.add(candidate);
         }
       }
@@ -267,31 +312,35 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
 
     /** Stop a failed plugin and everything that depends on it; nothing else is touched. */
     const fail = (instance: Instance, fault: PluginFault): Effect.Effect<void> =>
-      lock.withPermits(1)(Effect.uninterruptible(Effect.gen(function* () {
-        if (state !== "active" || instances.get(instance.id) !== instance || instance.state !== "active") return;
-        const halted = dependentsOf(instance.id).map((id) => instances.get(id)!);
-        retire(instance);
-        for (const dependent of halted) retire(dependent);
-        // A runtime failure revokes only the affected capabilities. Track service
-        // resolution so unrelated tasks are not interrupted with the failed plugin.
-        revision.environment = environmentOf();
-        const removed = new Set([instance, ...halted].flatMap((item) => item.plugin.provides.map((tag) => tag.key)));
-        const affected: Fiber.RuntimeFiber<unknown, unknown>[] = [];
-        for (const [fiber, services] of tasks) {
-          if (services.read.has(Hooks.key) || [...removed].some((key) => services.read.has(key))) affected.push(fiber);
-          for (const key of removed) services.delete(key);
-        }
-        const finished = yield* withDeadline(Effect.forEach(affected, Fiber.await, { discard: true }), defaults.dispose, "abandon");
-        if (Option.isNone(finished)) yield* withDeadline(Fiber.interruptAll(affected), defaults.dispose, "abandon");
-        for (const dependent of [...halted].reverse()) {
-          const wasActive = dependent.state === "draining";
-          yield* dispose(dependent, Exit.fail(fault), "closed");
-          if (wasActive) dependent.haltedBy = instance.id;
-        }
-        yield* dispose(instance, Exit.fail(fault), "failed");
-        instance.state = "failed";
-        if (instance.plugin.restart) yield* Effect.forkIn(Effect.interruptible(restartLoop(instance, instance.plugin.restart, fault)), supervisor);
-      })));
+      lock.withPermits(1)(
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            if (state !== "active" || instances.get(instance.id) !== instance || instance.state !== "active") return;
+            const halted = dependentsOf(instance.id).map((id) => instances.get(id)!);
+            retire(instance);
+            for (const dependent of halted) retire(dependent);
+            // A runtime failure revokes only the affected capabilities. Track service
+            // resolution so unrelated tasks are not interrupted with the failed plugin.
+            revision.environment = environmentOf();
+            const removed = new Set([instance, ...halted].flatMap((item) => item.plugin.provides.map((tag) => tag.key)));
+            const affected: Fiber.RuntimeFiber<unknown, unknown>[] = [];
+            for (const [fiber, services] of tasks) {
+              if (services.read.has(Hooks.key) || [...removed].some((key) => services.read.has(key))) affected.push(fiber);
+              for (const key of removed) services.delete(key);
+            }
+            const finished = yield* withDeadline(Effect.forEach(affected, Fiber.await, { discard: true }), defaults.dispose, "abandon");
+            if (Option.isNone(finished)) yield* withDeadline(Fiber.interruptAll(affected), defaults.dispose, "abandon");
+            for (const dependent of [...halted].reverse()) {
+              const wasActive = dependent.state === "draining";
+              yield* dispose(dependent, Exit.fail(fault), "closed");
+              if (wasActive) dependent.haltedBy = instance.id;
+            }
+            yield* dispose(instance, Exit.fail(fault), "failed");
+            instance.state = "failed";
+            if (instance.plugin.restart) yield* Effect.forkIn(Effect.interruptible(restartLoop(instance, instance.plugin.restart, fault)), supervisor);
+          }),
+        ),
+      );
 
     /**
      * One schedule driver per plugin id, kept across failures: a plugin that keeps
@@ -308,231 +357,277 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
         while (true) {
           const step = yield* Effect.either(driver.next(last));
           if (Either.isLeft(step)) return;
-          const result = yield* Effect.either(applyLocked(currentMembers(), new Set([id]), true, undefined, () => instances.get(id) === failed && failed.state === "failed" && drivers.get(id) === driver));
+          const result = yield* Effect.either(
+            applyLocked(
+              currentMembers(),
+              new Set([id]),
+              true,
+              undefined,
+              () => instances.get(id) === failed && failed.state === "failed" && drivers.get(id) === driver,
+            ),
+          );
           if (Either.isRight(result)) return;
           last = instances.get(id)?.fault ?? last;
         }
       });
 
-    const currentMembers = (): Member[] => order.map((id) => {
-      const instance = instances.get(id)!;
-      return { plugin: instance.plugin, ...(instance.rawConfig === undefined ? {} : { config: instance.rawConfig }) };
-    });
+    const currentMembers = (): Member[] =>
+      order.map((id) => {
+        const instance = instances.get(id)!;
+        return { plugin: instance.plugin, ...(instance.rawConfig === undefined ? {} : { config: instance.rawConfig }) };
+      });
 
     /**
      * `lenient` (restart): the forced plugin must activate; a dependent that cannot
      * is left failed, and its own dependents halted, without aborting the change.
      * A loader apply is never lenient: the whole composition applies or nothing does.
      */
-    const applyLocked = (members: readonly Member[], force: ReadonlySet<string>, lenient = false, operation?: { committed: boolean }, stillNeeded?: () => boolean): Effect.Effect<ReloadReport, ApplyError> =>
-      lock.withPermits(1)(Effect.uninterruptibleMask((restore) => Effect.gen(function* () {
-        if (state !== "active") {
-          return yield* new PlanError({ errors: [new CompositionError({ reason: "CoreClosed", message: "The core is closing or has closed", plugins: [] })] });
-        }
-        if (stillNeeded && !stillNeeded()) return { started: [], restarted: [], failed: [], stopped: [], unchanged: order, interrupted: 0, faults: [] };
-        const raw = new Map(members.map((member) => [member.plugin.id, member.config]));
-        const planned = plan(members.map((member) => member.plugin), (id) => raw.get(id));
-        if (Either.isLeft(planned)) return yield* new PlanError({ errors: planned.left });
-        const { ordered, configs, providers: nextProviders } = planned.right;
-
-        // Changed: new, different definition or config, forced, or depending on a changed provider.
-        const changed = new Set<string>();
-        const errors: CompositionError[] = [];
-        for (const plugin of ordered) {
-          const instance = instances.get(plugin.id);
-          const dependsOnChanged = plugin.requires.some((tag) => { const provider = nextProviders.get(tag.key); return provider !== undefined && changed.has(provider); });
-          if (!instance || instance.plugin !== plugin || !deepEqual(instance.rawConfig, raw.get(plugin.id)) || force.has(plugin.id) || dependsOnChanged) {
-            changed.add(plugin.id);
-            for (const tag of plugin.requires) {
-              const provider = nextProviders.get(tag.key);
-              if (provider !== undefined && !changed.has(provider) && instances.get(provider)?.state !== "active") {
-                errors.push(new CompositionError({
-                  reason: "InactiveDependency", capability: tag.key, plugins: [plugin.id, provider],
-                  message: `Plugin "${plugin.id}" requires "${tag.key}" from "${provider}", which is not active; restart "${provider}" first`,
-                }));
-              }
+    const applyLocked = (
+      members: readonly Member[],
+      force: ReadonlySet<string>,
+      lenient = false,
+      operation?: { committed: boolean },
+      stillNeeded?: () => boolean,
+    ): Effect.Effect<ReloadReport, ApplyError> =>
+      lock.withPermits(1)(
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            if (state !== "active") {
+              return yield* new PlanError({
+                errors: [new CompositionError({ reason: "CoreClosed", message: "The core is closing or has closed", plugins: [] })],
+              });
             }
-          }
-        }
-        if (errors.length) return yield* new PlanError({ errors: errors as [CompositionError, ...CompositionError[]] });
-        const nextIds = ordered.map((plugin) => plugin.id);
-        const stops = order.filter((id) => !raw.has(id));
-        const previousOrder = order;
-        let interrupted = 0;
-        const reloadFaults: PluginFault[] = [];
+            if (stillNeeded && !stillNeeded()) return { started: [], restarted: [], failed: [], stopped: [], unchanged: order, interrupted: 0, faults: [] };
+            const raw = new Map(members.map((member) => [member.plugin.id, member.config]));
+            const planned = plan(
+              members.map((member) => member.plugin),
+              (id) => raw.get(id),
+            );
+            if (Either.isLeft(planned)) return yield* new PlanError({ errors: planned.left });
+            const { ordered, configs, providers: nextProviders } = planned.right;
 
-        // Exclusive plugins cannot coexist with their replacement: stop them (and their dependents) first.
-        const gapped = new Set<string>();
-        for (const id of changed) {
-          const instance = instances.get(id);
-          if (instance?.state === "active" && instance.plugin.exclusive) {
-            gapped.add(id);
-            for (const dependent of dependentsOf(id)) if (instances.get(dependent)?.state === "active") gapped.add(dependent);
-          }
-        }
-        if (gapped.size) {
-          if (operation) operation.committed = true;
-          for (const id of gapped) retire(instances.get(id)!);
-          const previous = yield* publishRevision;
-          interrupted += yield* drain(previous);
-          for (const id of [...previousOrder].reverse()) if (gapped.has(id)) yield* dispose(instances.get(id)!, Exit.void, "closed");
-        }
-
-        // Stage replacements while unchanged instances keep serving.
-        const staged: Instance[] = [];
-        const inactive = new Set<string>();
-        let environment = base;
-        const staging = Effect.gen(function* () {
-          for (const plugin of ordered) {
-            if (changed.has(plugin.id)) {
-              const instance = yield* create(plugin, raw.get(plugin.id));
-              staged.push(instance);
-              const blocked = plugin.requires.map((tag) => nextProviders.get(tag.key)).find((provider) => provider !== undefined && inactive.has(provider));
-              if (blocked !== undefined) {
-                instance.state = "closed";
-                instance.haltedBy = blocked;
-                inactive.add(plugin.id);
-                continue;
-              }
-              const exit = yield* Effect.exit(restore(activate(instance, configs.get(plugin.id), environment)));
-              if (Exit.isFailure(exit)) {
-                if (!lenient || force.has(plugin.id) || Cause.isInterruptedOnly(exit.cause)) return yield* Effect.failCause(exit.cause);
-                inactive.add(plugin.id);
-                continue;
-              }
-              environment = Context.merge(environment, instance.output);
-            } else {
+            // Changed: new, different definition or config, forced, or depending on a changed provider.
+            const changed = new Set<string>();
+            const errors: CompositionError[] = [];
+            for (const plugin of ordered) {
               const instance = instances.get(plugin.id);
-              if (instance?.state === "active") environment = Context.merge(environment, instance.output);
+              const dependsOnChanged = plugin.requires.some((tag) => {
+                const provider = nextProviders.get(tag.key);
+                return provider !== undefined && changed.has(provider);
+              });
+              if (!instance || instance.plugin !== plugin || !deepEqual(instance.rawConfig, raw.get(plugin.id)) || force.has(plugin.id) || dependsOnChanged) {
+                changed.add(plugin.id);
+                for (const tag of plugin.requires) {
+                  const provider = nextProviders.get(tag.key);
+                  if (provider !== undefined && !changed.has(provider) && instances.get(provider)?.state !== "active") {
+                    errors.push(
+                      new CompositionError({
+                        reason: "InactiveDependency",
+                        capability: tag.key,
+                        plugins: [plugin.id, provider],
+                        message: `Plugin "${plugin.id}" requires "${tag.key}" from "${provider}", which is not active; restart "${provider}" first`,
+                      }),
+                    );
+                  }
+                }
+              }
             }
-          }
-        });
-        const outcome = yield* Effect.exit(staging);
-        if (Exit.isFailure(outcome)) {
-          for (const instance of [...staged].reverse()) {
-            if (instance.state !== "failed") yield* dispose(instance, outcome, "closed");
-          }
-          const fault = Option.getOrNull(Cause.failureOption(outcome.cause));
-          // The explicit gap cannot be undone here: stopped exclusive plugins stay down, attributed to this failure.
-          for (const id of gapped) {
-            const instance = instances.get(id)!;
-            instance.state = "failed";
-            instance.fault = fault ?? new PluginFault({ pluginId: id, phase: "activate", cause: outcome.cause });
-          }
-          if (gapped.size) yield* publishRevision;
-          return yield* Effect.failCause(outcome.cause);
-        }
+            if (errors.length) return yield* new PlanError({ errors: errors as [CompositionError, ...CompositionError[]] });
+            const nextIds = ordered.map((plugin) => plugin.id);
+            const stops = order.filter((id) => !raw.has(id));
+            const previousOrder = order;
+            let interrupted = 0;
+            const reloadFaults: PluginFault[] = [];
 
-        // Swap: caller cancellation can no longer roll this operation back.
-        if (operation) operation.committed = true;
-        // Swap: one atomic step for callers and hook/event dispatch.
-        const old = [...changed, ...stops].flatMap((id) => { const instance = instances.get(id); return instance && !gapped.has(id) ? [instance] : []; });
-        for (const instance of old) retire(instance);
-        for (const instance of staged) {
-          instance.hooks.publish();
-          instance.observers.publish();
-          instances.set(instance.id, instance);
-        }
-        for (const id of stops) instances.delete(id);
-        order = nextIds;
-        providers = nextProviders;
-        const previous = yield* publishRevision;
+            // Exclusive plugins cannot coexist with their replacement: stop them (and their dependents) first.
+            const gapped = new Set<string>();
+            for (const id of changed) {
+              const instance = instances.get(id);
+              if (instance?.state === "active" && instance.plugin.exclusive) {
+                gapped.add(id);
+                for (const dependent of dependentsOf(id)) if (instances.get(dependent)?.state === "active") gapped.add(dependent);
+              }
+            }
+            if (gapped.size) {
+              if (operation) operation.committed = true;
+              for (const id of gapped) retire(instances.get(id)!);
+              const previous = yield* publishRevision;
+              interrupted += yield* drain(previous);
+              for (const id of [...previousOrder].reverse()) if (gapped.has(id)) yield* dispose(instances.get(id)!, Exit.void, "closed");
+            }
 
-        // Drain, then dispose old instances in reverse dependency order.
-        interrupted += yield* drain(previous);
-        const oldById = new Map(old.map((instance) => [instance.id, instance]));
-        for (const id of [...previousOrder].reverse()) {
-          const instance = oldById.get(id);
-          if (!instance) continue;
-          yield* dispose(instance, Exit.void, "closed");
-          if (instance.fault?.phase === "dispose") reloadFaults.push(instance.fault);
-        }
-        const activated = staged.filter((instance) => instance.state === "active");
-        return {
-          started: activated.filter((instance) => !previousOrder.includes(instance.id)).map((instance) => instance.id),
-          restarted: activated.filter((instance) => previousOrder.includes(instance.id)).map((instance) => instance.id),
-          failed: staged.filter((instance) => instance.state !== "active").map((instance) => instance.id),
-          stopped: stops,
-          unchanged: nextIds.filter((id) => !changed.has(id)),
-          interrupted,
-          faults: reloadFaults,
-        };
-      })));
+            // Stage replacements while unchanged instances keep serving.
+            const staged: Instance[] = [];
+            const inactive = new Set<string>();
+            let environment = base;
+            const staging = Effect.gen(function* () {
+              for (const plugin of ordered) {
+                if (changed.has(plugin.id)) {
+                  const instance = yield* create(plugin, raw.get(plugin.id));
+                  staged.push(instance);
+                  const blocked = plugin.requires.map((tag) => nextProviders.get(tag.key)).find((provider) => provider !== undefined && inactive.has(provider));
+                  if (blocked !== undefined) {
+                    instance.state = "closed";
+                    instance.haltedBy = blocked;
+                    inactive.add(plugin.id);
+                    continue;
+                  }
+                  const exit = yield* Effect.exit(restore(activate(instance, configs.get(plugin.id), environment)));
+                  if (Exit.isFailure(exit)) {
+                    if (!lenient || force.has(plugin.id) || Cause.isInterruptedOnly(exit.cause)) return yield* Effect.failCause(exit.cause);
+                    inactive.add(plugin.id);
+                    continue;
+                  }
+                  environment = Context.merge(environment, instance.output);
+                } else {
+                  const instance = instances.get(plugin.id);
+                  if (instance?.state === "active") environment = Context.merge(environment, instance.output);
+                }
+              }
+            });
+            const outcome = yield* Effect.exit(staging);
+            if (Exit.isFailure(outcome)) {
+              for (const instance of [...staged].reverse()) {
+                if (instance.state !== "failed") yield* dispose(instance, outcome, "closed");
+              }
+              const fault = Option.getOrNull(Cause.failureOption(outcome.cause));
+              // The explicit gap cannot be undone here: stopped exclusive plugins stay down, attributed to this failure.
+              for (const id of gapped) {
+                const instance = instances.get(id)!;
+                instance.state = "failed";
+                instance.fault = fault ?? new PluginFault({ pluginId: id, phase: "activate", cause: outcome.cause });
+              }
+              if (gapped.size) yield* publishRevision;
+              return yield* Effect.failCause(outcome.cause);
+            }
+
+            // Swap: caller cancellation can no longer roll this operation back.
+            if (operation) operation.committed = true;
+            // Swap: one atomic step for callers and hook/event dispatch.
+            const old = [...changed, ...stops].flatMap((id) => {
+              const instance = instances.get(id);
+              return instance && !gapped.has(id) ? [instance] : [];
+            });
+            for (const instance of old) retire(instance);
+            for (const instance of staged) {
+              instance.hooks.publish();
+              instance.observers.publish();
+              instances.set(instance.id, instance);
+            }
+            for (const id of stops) instances.delete(id);
+            order = nextIds;
+            providers = nextProviders;
+            const previous = yield* publishRevision;
+
+            // Drain, then dispose old instances in reverse dependency order.
+            interrupted += yield* drain(previous);
+            const oldById = new Map(old.map((instance) => [instance.id, instance]));
+            for (const id of [...previousOrder].reverse()) {
+              const instance = oldById.get(id);
+              if (!instance) continue;
+              yield* dispose(instance, Exit.void, "closed");
+              if (instance.fault?.phase === "dispose") reloadFaults.push(instance.fault);
+            }
+            const activated = staged.filter((instance) => instance.state === "active");
+            return {
+              started: activated.filter((instance) => !previousOrder.includes(instance.id)).map((instance) => instance.id),
+              restarted: activated.filter((instance) => previousOrder.includes(instance.id)).map((instance) => instance.id),
+              failed: staged.filter((instance) => instance.state !== "active").map((instance) => instance.id),
+              stopped: stops,
+              unchanged: nextIds.filter((id) => !changed.has(id)),
+              interrupted,
+              faults: reloadFaults,
+            };
+          }),
+        ),
+      );
 
     /** Lifecycle changes run on supervisor-owned fibers so shutdown can interrupt them. */
     const supervised = <A, E>(build: (operation: { committed: boolean }) => Effect.Effect<A, E>): Effect.Effect<A, E> =>
-      Effect.uninterruptibleMask((resume) => Effect.gen(function* () {
-        const operation = { committed: false };
-        const fiber = yield* Effect.forkIn(Effect.interruptible(build(operation)), supervisor);
-        // Once old resources are retiring, losing their caller must not cancel
-        // the replacement or make drain wait on its own lifecycle fiber.
-        return yield* resume(Fiber.join(fiber)).pipe(Effect.onInterrupt(() =>
-          operation.committed ? Effect.void : Fiber.interrupt(fiber)));
-      }));
+      Effect.uninterruptibleMask((resume) =>
+        Effect.gen(function* () {
+          const operation = { committed: false };
+          const fiber = yield* Effect.forkIn(Effect.interruptible(build(operation)), supervisor);
+          // Once old resources are retiring, losing their caller must not cancel
+          // the replacement or make drain wait on its own lifecycle fiber.
+          return yield* resume(Fiber.join(fiber)).pipe(Effect.onInterrupt(() => (operation.committed ? Effect.void : Fiber.interrupt(fiber))));
+        }),
+      );
 
-    const shutdown: Effect.Effect<void> = Effect.uninterruptible(Effect.suspend(() => {
-      if (state !== "active") return Deferred.await(closed).pipe(Effect.orDie);
-      state = "closing";
-      return Effect.gen(function* () {
-        const awaitDisposals = Effect.suspend(() => Effect.forEach([...pendingDisposals], Deferred.await, { discard: true }));
-        const cleanup = Effect.gen(function* () {
-          // Interrupt work and lifecycle changes together, then preserve resources
-          // until both have actually stopped. A caller deadline never kills them.
-          yield* Effect.all([Scope.close(work, Exit.void), Scope.close(supervisor, Exit.void)], { concurrency: "unbounded", discard: true });
-          registry.close();
-          yield* bus.close();
-          yield* awaitDisposals;
-          let cause: Cause.Cause<unknown> | undefined;
-          for (const id of [...order].reverse()) {
-            const instance = instances.get(id)!;
-            if (instance.state === "closed" || instance.state === "failed") continue;
-            yield* dispose(instance, Exit.void, "closed");
-            const fault = instance.fault;
-            if (fault?.phase === "dispose") {
-              cause = cause ? Cause.sequential(cause, fault.cause) : fault.cause;
-              // Surface the plugin deadline promptly, retaining providers until
-              // that plugin's actual cleanup finishes.
-              if (fault.deadline) yield* Deferred.failCause(closed, cause);
-            }
+    const shutdown: Effect.Effect<void> = Effect.uninterruptible(
+      Effect.suspend(() => {
+        if (state !== "active") return Deferred.await(closed).pipe(Effect.orDie);
+        state = "closing";
+        return Effect.gen(function* () {
+          const awaitDisposals = Effect.suspend(() => Effect.forEach([...pendingDisposals], Deferred.await, { discard: true }));
+          const cleanup = Effect.gen(function* () {
+            // Interrupt work and lifecycle changes together, then preserve resources
+            // until both have actually stopped. A caller deadline never kills them.
+            yield* Effect.all([Scope.close(work, Exit.void), Scope.close(supervisor, Exit.void)], { concurrency: "unbounded", discard: true });
+            registry.close();
+            yield* bus.close();
             yield* awaitDisposals;
+            let cause: Cause.Cause<unknown> | undefined;
+            for (const id of [...order].reverse()) {
+              const instance = instances.get(id)!;
+              if (instance.state === "closed" || instance.state === "failed") continue;
+              yield* dispose(instance, Exit.void, "closed");
+              const fault = instance.fault;
+              if (fault?.phase === "dispose") {
+                cause = cause ? Cause.sequential(cause, fault.cause) : fault.cause;
+                // Surface the plugin deadline promptly, retaining providers until
+                // that plugin's actual cleanup finishes.
+                if (fault.deadline) yield* Deferred.failCause(closed, cause);
+              }
+              yield* awaitDisposals;
+            }
+            yield* PubSub.shutdown(faults);
+            state = "closed";
+            if (cause) return yield* Effect.failCause(cause);
+          });
+          yield* Effect.forkDaemon(
+            Effect.uninterruptible(cleanup).pipe(
+              Effect.exit,
+              Effect.flatMap((exit) => Deferred.done(closed, exit)),
+            ),
+          );
+          const result = yield* withDeadline(Deferred.await(closed), shutdownLimit, "abandon");
+          if (Option.isNone(result)) {
+            shutdownFault = new ShutdownTimeout({ limit: shutdownLimit });
+            yield* Deferred.fail(closed, shutdownFault);
           }
-          yield* PubSub.shutdown(faults);
-          state = "closed";
-          if (cause) return yield* Effect.failCause(cause);
-        });
-        yield* Effect.forkDaemon(Effect.uninterruptible(cleanup).pipe(Effect.exit, Effect.flatMap((exit) => Deferred.done(closed, exit))));
-        const result = yield* withDeadline(Deferred.await(closed), shutdownLimit, "abandon");
-        if (Option.isNone(result)) {
-          shutdownFault = new ShutdownTimeout({ limit: shutdownLimit });
-          yield* Deferred.fail(closed, shutdownFault);
-        }
-        return yield* Deferred.await(closed);
-      }).pipe(Effect.orDie);
-    }));
+          return yield* Deferred.await(closed);
+        }).pipe(Effect.orDie);
+      }),
+    );
     yield* Effect.addFinalizer(() => shutdown);
 
     const core: Core<any> = {
       run: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-        Effect.uninterruptibleMask((resume) => Effect.gen(function* () {
-          if (state !== "active") return yield* new CoreClosed();
-          const admitted = revision;
-          admitted.pending++;
-          const caller = yield* Effect.context<never>();
-          const services = new TrackedServices(Context.merge(caller, admitted.environment).unsafeMap);
-          const provided = Effect.mapInputContext(effect, (_: Context.Context<never>) => Context.unsafeMake<R>(services));
-          const fiber = yield* Effect.forkIn(resume(provided), work);
-          tasks.set(fiber, services);
-          admitted.fibers.add(fiber);
-          admitted.pending--;
-          return yield* resume(Fiber.join(fiber)).pipe(
-            Effect.onInterrupt(() => Fiber.interrupt(fiber)),
-            Effect.ensuring(Effect.sync(() => {
-              tasks.delete(fiber);
-              admitted.fibers.delete(fiber);
-              if (admitted.retired && admitted.fibers.size === 0 && admitted.pending === 0) Deferred.unsafeDone(admitted.drained, Effect.void);
-            })),
-          );
-        })),
+        Effect.uninterruptibleMask((resume) =>
+          Effect.gen(function* () {
+            if (state !== "active") return yield* new CoreClosed();
+            const admitted = revision;
+            admitted.pending++;
+            const caller = yield* Effect.context<never>();
+            const services = new TrackedServices(Context.merge(caller, admitted.environment).unsafeMap);
+            const provided = Effect.mapInputContext(effect, (_: Context.Context<never>) => Context.unsafeMake<R>(services));
+            const fiber = yield* Effect.forkIn(resume(provided), work);
+            tasks.set(fiber, services);
+            admitted.fibers.add(fiber);
+            admitted.pending--;
+            return yield* resume(Fiber.join(fiber)).pipe(
+              Effect.onInterrupt(() => Fiber.interrupt(fiber)),
+              Effect.ensuring(
+                Effect.sync(() => {
+                  tasks.delete(fiber);
+                  admitted.fibers.delete(fiber);
+                  if (admitted.retired && admitted.fibers.size === 0 && admitted.pending === 0) Deferred.unsafeDone(admitted.drained, Effect.void);
+                }),
+              ),
+            );
+          }),
+        ),
       inspect: Effect.sync((): CoreSnapshot => ({
         state,
         faultSequence,
@@ -542,22 +637,24 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
         events: bus.inspect(),
       })),
       faults: Stream.fromPubSub(faults, { maxChunkSize: 1 }),
-      restart: (id) => Effect.suspend((): Effect.Effect<void, ReloadError | CoreClosed> => {
-        if (state !== "active") return Effect.fail(new CoreClosed());
-        const instance = instances.get(id);
-        if (!instance) {
-          return Effect.fail(new ReloadError({ diagnostics: [new Diagnostic({ severity: "error", pluginId: id, message: `No plugin "${id}" is loaded` })] }));
-        }
-        if (instance.state === "active") return Effect.void;
-        drivers.delete(id);
-        return supervised((operation) => applyLocked(currentMembers(), new Set([id]), true, operation)).pipe(Effect.mapError(toReloadError), Effect.asVoid);
-      }),
+      restart: (id) =>
+        Effect.suspend((): Effect.Effect<void, ReloadError | CoreClosed> => {
+          if (state !== "active") return Effect.fail(new CoreClosed());
+          const instance = instances.get(id);
+          if (!instance) {
+            return Effect.fail(new ReloadError({ diagnostics: [new Diagnostic({ severity: "error", pluginId: id, message: `No plugin "${id}" is loaded` })] }));
+          }
+          if (instance.state === "active") return Effect.void;
+          drivers.delete(id);
+          return supervised((operation) => applyLocked(currentMembers(), new Set([id]), true, operation)).pipe(Effect.mapError(toReloadError), Effect.asVoid);
+        }),
     };
 
     return {
       core,
       members: Effect.sync(currentMembers),
-      apply: (members, onApplied) => supervised((operation) => applyLocked(members, new Set(), false, operation).pipe(Effect.tap(() => Effect.sync(() => onApplied?.())))),
+      apply: (members, onApplied) =>
+        supervised((operation) => applyLocked(members, new Set(), false, operation).pipe(Effect.tap(() => Effect.sync(() => onApplied?.())))),
       shutdown,
     };
   });
@@ -576,7 +673,12 @@ function withDeadline<A, E>(
   return Effect.gen(function* () {
     const done = yield* Deferred.make<Option.Option<Exit.Exit<A, E>>>();
     const body = onTimeout === "continue" ? Effect.uninterruptible(effect) : Effect.interruptible(effect);
-    const worker = yield* Effect.forkDaemon(body.pipe(Effect.exit, Effect.flatMap((exit) => Deferred.succeed(done, Option.some(exit)))));
+    const worker = yield* Effect.forkDaemon(
+      body.pipe(
+        Effect.exit,
+        Effect.flatMap((exit) => Deferred.succeed(done, Option.some(exit))),
+      ),
+    );
     const timer = yield* Effect.forkDaemon(Effect.interruptible(Effect.sleep(limit)).pipe(Effect.zipRight(Deferred.succeed(done, Option.none()))));
     const result = yield* Deferred.await(done);
     yield* Fiber.interruptFork(timer);
@@ -602,11 +704,16 @@ function toDiagnostic(error: CompositionError): Diagnostic {
 
 function suggestionFor(error: CompositionError): string | undefined {
   switch (error.reason) {
-    case "MissingCapability": return `Add a plugin that provides "${error.capability}" or remove "${error.plugins[0]}"`;
-    case "DuplicateCapability": return `Keep one of ${error.plugins.map((id) => `"${id}"`).join(", ")}`;
-    case "InactiveDependency": return `Restart "${error.plugins[1]}"`;
-    case "InvalidConfig": return `Fix the config for "${error.plugins[0]}"`;
-    default: return undefined;
+    case "MissingCapability":
+      return `Add a plugin that provides "${error.capability}" or remove "${error.plugins[0]}"`;
+    case "DuplicateCapability":
+      return `Keep one of ${error.plugins.map((id) => `"${id}"`).join(", ")}`;
+    case "InactiveDependency":
+      return `Restart "${error.plugins[1]}"`;
+    case "InvalidConfig":
+      return `Fix the config for "${error.plugins[0]}"`;
+    default:
+      return undefined;
   }
 }
 

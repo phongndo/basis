@@ -14,8 +14,12 @@ class SilentWebSocket extends EventTarget {
       this.dispatchEvent(new Event("open"));
     }, 0);
   }
-  send(data: string) { this.sent.push(data); }
-  close() { this.readyState = 3; }
+  send(data: string) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+  }
 }
 
 const tick = Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 10)));
@@ -28,18 +32,22 @@ describe("makeHostRpc", () => {
       sockets.push(socket);
       return socket as unknown as globalThis.WebSocket;
     });
-    const exit = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-      const rpc = yield* makeHostRpc("ws://host.invalid/rpc", constructor);
-      const events = yield* Effect.fork(Stream.runDrain(rpc.Host.Events()));
-      yield* tick;
-      expect(sockets[0]?.sent.some((line) => line.includes("Host.Events"))).toBe(true);
-      // One ping goes unanswered; the next ping interval declares the connection dead.
-      for (let i = 0; i < 3; i++) {
-        yield* TestClock.adjust("10 seconds");
-        yield* tick;
-      }
-      return yield* Fiber.poll(events);
-    }).pipe(Effect.provide(TestContext.TestContext))));
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const rpc = yield* makeHostRpc("ws://host.invalid/rpc", constructor);
+          const events = yield* Effect.fork(Stream.runDrain(rpc.Host.Events()));
+          yield* tick;
+          expect(sockets[0]?.sent.some((line) => line.includes("Host.Events"))).toBe(true);
+          // One ping goes unanswered; the next ping interval declares the connection dead.
+          for (let i = 0; i < 3; i++) {
+            yield* TestClock.adjust("10 seconds");
+            yield* tick;
+          }
+          return yield* Fiber.poll(events);
+        }).pipe(Effect.provide(TestContext.TestContext)),
+      ),
+    );
     expect(Option.isSome(exit) && Exit.isFailure(exit.value)).toBe(true);
   });
 });

@@ -17,10 +17,7 @@ export const PathsSchema = Schema.Struct({
 });
 
 /** Resolve every location once. `$BASIS_HOME` overrides `~/.basis`; nothing else is configurable. */
-export function resolvePaths(options: {
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly cwd: string;
-}): PathsService {
+export function resolvePaths(options: { readonly env: Readonly<Record<string, string | undefined>>; readonly cwd: string }): PathsService {
   const cwd = resolve(options.cwd);
   const configured = options.env.BASIS_HOME?.trim();
   const home = configured ? resolve(cwd, configured) : join(options.env.HOME || homedir(), ".basis");

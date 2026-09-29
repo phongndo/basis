@@ -31,33 +31,48 @@ export function plan(
 
   for (const plugin of plugins) {
     if (!plugin.id || plugin.id.trim() !== plugin.id) {
-      errors.push(new CompositionError({
-        reason: "InvalidId", message: "Plugin ids must be nonempty and have no surrounding whitespace", plugins: [plugin.id],
-      }));
+      errors.push(
+        new CompositionError({
+          reason: "InvalidId",
+          message: "Plugin ids must be nonempty and have no surrounding whitespace",
+          plugins: [plugin.id],
+        }),
+      );
       continue;
     }
     if (byId.has(plugin.id)) {
-      errors.push(new CompositionError({
-        reason: "DuplicatePlugin", message: `Duplicate plugin id "${plugin.id}"`, plugins: [plugin.id],
-      }));
+      errors.push(
+        new CompositionError({
+          reason: "DuplicatePlugin",
+          message: `Duplicate plugin id "${plugin.id}"`,
+          plugins: [plugin.id],
+        }),
+      );
       continue;
     }
     byId.set(plugin.id, plugin);
     for (const tag of plugin.provides) {
       if (reserved.has(tag.key)) {
-        errors.push(new CompositionError({
-          reason: "ReservedCapability", message: `Plugin "${plugin.id}" cannot provide runtime capability "${tag.key}"`,
-          plugins: [plugin.id], capability: tag.key,
-        }));
+        errors.push(
+          new CompositionError({
+            reason: "ReservedCapability",
+            message: `Plugin "${plugin.id}" cannot provide runtime capability "${tag.key}"`,
+            plugins: [plugin.id],
+            capability: tag.key,
+          }),
+        );
         continue;
       }
       const previous = providers.get(tag.key);
       if (previous) {
-        errors.push(new CompositionError({
-          reason: "DuplicateCapability",
-          message: `Capability "${tag.key}" is provided by both "${previous.id}" and "${plugin.id}"; select one provider`,
-          plugins: [previous.id, plugin.id], capability: tag.key,
-        }));
+        errors.push(
+          new CompositionError({
+            reason: "DuplicateCapability",
+            message: `Capability "${tag.key}" is provided by both "${previous.id}" and "${plugin.id}"; select one provider`,
+            plugins: [previous.id, plugin.id],
+            capability: tag.key,
+          }),
+        );
         continue;
       }
       providers.set(tag.key, plugin);
@@ -70,14 +85,17 @@ export function plan(
     // Absent config decodes as an empty object so all-optional schemas need no row.
     const result = Schema.decodeUnknownEither(plugin.config)(rawConfigs(plugin.id) ?? {});
     if (Either.isLeft(result)) {
-      const path = ParseResult.ArrayFormatter.formatErrorSync(result.left)[0]?.path
-        .filter((segment): segment is string | number => typeof segment !== "symbol");
-      errors.push(new CompositionError({
-        reason: "InvalidConfig",
-        message: `Invalid config for plugin "${plugin.id}":\n${ParseResult.TreeFormatter.formatErrorSync(result.left)}`,
-        plugins: [plugin.id],
-        ...(path === undefined ? {} : { path }),
-      }));
+      const path = ParseResult.ArrayFormatter.formatErrorSync(result.left)[0]?.path.filter(
+        (segment): segment is string | number => typeof segment !== "symbol",
+      );
+      errors.push(
+        new CompositionError({
+          reason: "InvalidConfig",
+          message: `Invalid config for plugin "${plugin.id}":\n${ParseResult.TreeFormatter.formatErrorSync(result.left)}`,
+          plugins: [plugin.id],
+          ...(path === undefined ? {} : { path }),
+        }),
+      );
     } else {
       configs.set(plugin.id, result.right);
     }
@@ -90,10 +108,14 @@ export function plan(
       if (builtins.has(tag.key)) continue;
       const provider = providers.get(tag.key);
       if (!provider) {
-        errors.push(new CompositionError({
-          reason: "MissingCapability", message: `Plugin "${plugin.id}" requires missing capability "${tag.key}"`,
-          plugins: [plugin.id], capability: tag.key,
-        }));
+        errors.push(
+          new CompositionError({
+            reason: "MissingCapability",
+            message: `Plugin "${plugin.id}" requires missing capability "${tag.key}"`,
+            plugins: [plugin.id],
+            capability: tag.key,
+          }),
+        );
         continue;
       }
       required.add(provider);
@@ -116,9 +138,13 @@ export function plan(
         if (visiting.has(dependency)) {
           const first = stack.findIndex((entry) => entry.plugin === dependency);
           const cycle = [...stack.slice(first).map((entry) => entry.plugin.id), dependency.id];
-          errors.push(new CompositionError({
-            reason: "DependencyCycle", message: `Plugin dependency cycle: ${cycle.join(" -> ")}`, plugins: cycle,
-          }));
+          errors.push(
+            new CompositionError({
+              reason: "DependencyCycle",
+              message: `Plugin dependency cycle: ${cycle.join(" -> ")}`,
+              plugins: cycle,
+            }),
+          );
           // Skip the back edge so the remaining graph is still reported.
           continue;
         }

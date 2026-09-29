@@ -11,15 +11,28 @@ import { finish, record } from "../packages/core/bench/budgets.ts";
 /** Runs the packed consumer in a real browser. The caller owns the temporary install. */
 export async function checkBrowser(consumer: string) {
   const bundle = await build({
-    entryPoints: [join(consumer, "browser.ts")], bundle: true, format: "esm", platform: "browser", minify: true, write: false,
+    entryPoints: [join(consumer, "browser.ts")],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    minify: true,
+    write: false,
   });
   const script = bundle.outputFiles[0]!.contents;
   const html = readFileSync(join(consumer, "browser.html"));
   const server = createServer((request, response) => {
     switch (request.url) {
-      case "/": response.setHeader("content-type", "text/html"); response.end(html); break;
-      case "/browser.js": response.setHeader("content-type", "text/javascript"); response.end(script); break;
-      default: response.statusCode = 204; response.end();
+      case "/":
+        response.setHeader("content-type", "text/html");
+        response.end(html);
+        break;
+      case "/browser.js":
+        response.setHeader("content-type", "text/javascript");
+        response.end(script);
+        break;
+      default:
+        response.statusCode = 204;
+        response.end();
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -30,8 +43,12 @@ export async function checkBrowser(consumer: string) {
     try {
       const page = await browser.newPage();
       const errors: string[] = [];
-      page.on("pageerror", (error) => { errors.push(error.message); });
-      page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+      page.on("pageerror", (error) => {
+        errors.push(error.message);
+      });
+      page.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+      });
       await page.goto(`http://127.0.0.1:${port}`);
       await page.waitForFunction(() => document.body.dataset.status !== undefined, undefined, { timeout: 10_000 });
       assert.equal(await page.getAttribute("body", "data-status"), "passed", await page.locator("output").innerText());
@@ -40,6 +57,11 @@ export async function checkBrowser(consumer: string) {
       record("browserBundleBytes", script.byteLength);
       record("browserBundleGzipBytes", gzipSync(script).byteLength);
       finish("browser");
-    } finally { await browser.close(); }
-  } finally { server.closeAllConnections(); server.close(); }
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
 }

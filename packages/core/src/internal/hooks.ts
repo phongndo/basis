@@ -73,36 +73,43 @@ export class HookRegistry implements Context.Tag.Service<Hooks> {
     const owner: Owner = { identity, visible, accepting: true };
     const owned = new Set<Registration>();
     const on = <I, O, E, R>(hook: Hook<I, O, E>, handler: Handler<I, O, E, R>, options: HookOptions = {}) =>
-      Effect.uninterruptible(Effect.gen(this, function* () {
-        if (this.closed) return yield* new CoreClosed();
-        if (!owner.accepting) return yield* ownerClosed(hook.name, identity.id);
-        const order = options.order ?? 0;
-        if (!Number.isFinite(order)) {
-          return yield* new HookError({ reason: "InvalidOrder", hook: hook.name, pluginId: identity.id, message: "Hook order must be finite" });
-        }
-        const entry = yield* this.entry(hook);
-        const environment = withoutParent(yield* Effect.context<R>());
-        const registration: Registration = {
-          owner,
-          entry,
-          order,
-          sequence: this.sequence++,
-          active: true,
-          // This erasure is local to the heterogeneous registry. Token identity protects dispatch.
-          handle: ((input: I, next: Next<I, O, E>) => Effect.provide(
-            Effect.suspend(() => handler(input, next)), environment,
-          )) as unknown as Handler<unknown, unknown, unknown>,
-        };
-        entry.all.push(registration);
-        owned.add(registration);
-        rebuild(entry);
-        yield* Scope.addFinalizer(scope, Effect.sync(() => {
-          registration.active = false;
-          owned.delete(registration);
-          entry.all = entry.all.filter((candidate) => candidate !== registration);
+      Effect.uninterruptible(
+        Effect.gen(this, function* () {
+          if (this.closed) return yield* new CoreClosed();
+          if (!owner.accepting) return yield* ownerClosed(hook.name, identity.id);
+          const order = options.order ?? 0;
+          if (!Number.isFinite(order)) {
+            return yield* new HookError({ reason: "InvalidOrder", hook: hook.name, pluginId: identity.id, message: "Hook order must be finite" });
+          }
+          const entry = yield* this.entry(hook);
+          const environment = withoutParent(yield* Effect.context<R>());
+          const registration: Registration = {
+            owner,
+            entry,
+            order,
+            sequence: this.sequence++,
+            active: true,
+            // This erasure is local to the heterogeneous registry. Token identity protects dispatch.
+            handle: ((input: I, next: Next<I, O, E>) =>
+              Effect.provide(
+                Effect.suspend(() => handler(input, next)),
+                environment,
+              )) as unknown as Handler<unknown, unknown, unknown>,
+          };
+          entry.all.push(registration);
+          owned.add(registration);
           rebuild(entry);
-        }));
-      }));
+          yield* Scope.addFinalizer(
+            scope,
+            Effect.sync(() => {
+              registration.active = false;
+              owned.delete(registration);
+              entry.all = entry.all.filter((candidate) => candidate !== registration);
+              rebuild(entry);
+            }),
+          );
+        }),
+      );
     const each = (update: (registration: Registration) => void) => {
       for (const registration of owned) {
         update(registration);
@@ -111,9 +118,22 @@ export class HookRegistry implements Context.Tag.Service<Hooks> {
     };
     return {
       on,
-      publish: () => { owner.visible = true; each(() => {}); },
-      retire: () => { owner.accepting = false; owner.visible = false; each(() => {}); },
-      stop: () => { owner.accepting = false; owner.visible = false; each((registration) => { registration.active = false; }); },
+      publish: () => {
+        owner.visible = true;
+        each(() => {});
+      },
+      retire: () => {
+        owner.accepting = false;
+        owner.visible = false;
+        each(() => {});
+      },
+      stop: () => {
+        owner.accepting = false;
+        owner.visible = false;
+        each((registration) => {
+          registration.active = false;
+        });
+      },
     };
   }
 
@@ -132,25 +152,36 @@ export class HookRegistry implements Context.Tag.Service<Hooks> {
         Effect.suspend(() => {
           if (this.closed) return Effect.fail(new CoreClosed());
           const registration = handlers[index];
-          if (!registration) return Effect.provide(Effect.suspend(() => terminal(value)), caller);
+          if (!registration)
+            return Effect.provide(
+              Effect.suspend(() => terminal(value)),
+              caller,
+            );
           if (!registration.active) return Effect.fail(ownerClosed(hook.name, registration.owner.identity.id));
           let called = false;
           let alive = true;
-          const next = (nextInput: I): Effect.Effect<O, E | HookError | CoreClosed> => Effect.suspend(() => {
-            if (!alive || called) {
-              return Effect.fail(new HookError({
-                reason: alive ? "NextAlreadyCalled" : "InvocationEnded",
-                hook: hook.name,
-                pluginId: registration.owner.identity.id,
-                message: alive ? "A hook handler may execute next only once" : "next cannot execute after its handler has finished",
-              }));
-            }
-            called = true;
-            return dispatch(index + 1, nextInput);
-          });
+          const next = (nextInput: I): Effect.Effect<O, E | HookError | CoreClosed> =>
+            Effect.suspend(() => {
+              if (!alive || called) {
+                return Effect.fail(
+                  new HookError({
+                    reason: alive ? "NextAlreadyCalled" : "InvocationEnded",
+                    hook: hook.name,
+                    pluginId: registration.owner.identity.id,
+                    message: alive ? "A hook handler may execute next only once" : "next cannot execute after its handler has finished",
+                  }),
+                );
+              }
+              called = true;
+              return dispatch(index + 1, nextInput);
+            });
           const handle = registration.handle as Handler<I, O, E>;
           return Effect.suspend(() => handle(value, next)).pipe(
-            Effect.ensuring(Effect.sync(() => { alive = false; })),
+            Effect.ensuring(
+              Effect.sync(() => {
+                alive = false;
+              }),
+            ),
             Effect.withSpan("core.hook", {
               // This frame is always the dispatcher, not plugin code. Keep attribution
               // and failure stacks without capturing a redundant stack on every call.
@@ -161,17 +192,20 @@ export class HookRegistry implements Context.Tag.Service<Hooks> {
         });
       return yield* dispatch(0, input);
     });
-  }
+  };
 
   private entry(hook: { readonly name: string }): Effect.Effect<Entry, HookError> {
     return Effect.suspend(() => {
       const existing = this.entries.get(hook.name);
       if (existing) {
         if (existing.token !== hook) {
-          return Effect.fail(new HookError({
-            reason: "PointConflict", hook: hook.name,
-            message: `Different hook tokens use the name "${hook.name}"; import the shared token instead`,
-          }));
+          return Effect.fail(
+            new HookError({
+              reason: "PointConflict",
+              hook: hook.name,
+              message: `Different hook tokens use the name "${hook.name}"; import the shared token instead`,
+            }),
+          );
         }
         return Effect.succeed(existing);
       }

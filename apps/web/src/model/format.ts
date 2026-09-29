@@ -90,8 +90,8 @@ export const partialStringField = (json: string, key: string): string | undefine
   }
 };
 
-const str = (value: unknown): string | undefined => typeof value === "string" && value !== "" ? value : undefined;
-const num = (value: unknown): number | undefined => typeof value === "number" ? value : undefined;
+const str = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
+const num = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 
 export interface ToolSummary {
   /** Short primary argument: a command, a path, a pattern. */
@@ -125,9 +125,8 @@ export const summarizeToolArgs = (
       const p = path(args.path ?? args.file_path);
       const offset = num(args.offset);
       const limit = num(args.limit);
-      const range = offset !== undefined || limit !== undefined
-        ? `lines ${offset ?? 1}${limit !== undefined ? `–${(offset ?? 1) + limit - 1}` : "+"}`
-        : undefined;
+      const range =
+        offset !== undefined || limit !== undefined ? `lines ${offset ?? 1}${limit !== undefined ? `–${(offset ?? 1) + limit - 1}` : "+"}` : undefined;
       return { ...(p === undefined ? {} : { primary: p }), ...(range === undefined ? {} : { secondary: range }) };
     }
     case "write":
@@ -166,11 +165,15 @@ export const truncateLines = (text: string, max: number): { readonly text: strin
 
 /** A branch name for a new worktree from the first message: `basis/fix-login-redirect`. */
 export const branchSlug = (text: string): string => {
-  const words = text.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").split(/\s+/).filter(Boolean).slice(0, 5);
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
   const slug = words.join("-").replace(/-+/g, "-").slice(0, 40).replace(/-+$/, "");
   return `basis/${slug === "" ? "task" : slug}`;
 };
 
 /** A context window for display: `1_000_000` → `1M`, `203_000` → `203K`. */
-export const contextSize = (tokens: number): string =>
-  tokens >= 1_000_000 ? `${Number((tokens / 1_000_000).toFixed(1))}M` : `${Math.round(tokens / 1000)}K`;
+export const contextSize = (tokens: number): string => (tokens >= 1_000_000 ? `${Number((tokens / 1_000_000).toFixed(1))}M` : `${Math.round(tokens / 1000)}K`);

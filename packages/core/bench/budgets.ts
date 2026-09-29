@@ -39,9 +39,12 @@ export function record(name: string, value: number) {
 
 export function finish(name: string) {
   const report = {
-    measuredAt: new Date().toISOString(), runtime: `Node ${process.version}`,
-    platform: `${process.platform}/${process.arch}`, cpu: cpus()[0]?.model,
-    enforced, measurements,
+    measuredAt: new Date().toISOString(),
+    runtime: `Node ${process.version}`,
+    platform: `${process.platform}/${process.arch}`,
+    cpu: cpus()[0]?.model,
+    enforced,
+    measurements,
   };
   console.log(JSON.stringify(report));
   const directory = process.env.BASIS_BENCH_OUTPUT_DIR;

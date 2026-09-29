@@ -35,7 +35,10 @@ export const HostEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literal("delta"), sessionId: Schema.String, turnId: Schema.String, stepId: Schema.String, event: StreamEvent }),
   Schema.Struct({ type: Schema.Literal("turn-started"), sessionId: Schema.String, turnId: Schema.String }),
   Schema.Struct({
-    type: Schema.Literal("turn-ended"), sessionId: Schema.String, turnId: Schema.String, usage: Usage,
+    type: Schema.Literal("turn-ended"),
+    sessionId: Schema.String,
+    turnId: Schema.String,
+    usage: Usage,
     reason: Schema.Literal("done", "cancelled", "error", "max-steps"),
   }),
   Schema.Struct({ type: Schema.Literal("interaction"), request: InteractionRequest }),
@@ -59,7 +62,8 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Session.Create", { payload: { cwd: Schema.optional(Schema.String) }, success: SessionInfo, error: HostError }),
   Rpc.make("Session.Events", {
     payload: { sessionId: Schema.String, after: Schema.optional(Schema.Number) },
-    success: Schema.Array(SessionEvent), error: HostError,
+    success: Schema.Array(SessionEvent),
+    error: HostError,
   }),
   Rpc.make("Session.Checkout", { payload: { sessionId: Schema.String, eventId: Schema.String }, success: SessionInfo, error: HostError }),
   Rpc.make("Session.SetTitle", { payload: { sessionId: Schema.String, title: Schema.String }, success: SessionInfo, error: HostError }),
@@ -83,12 +87,14 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Workspace.CreateDirectory", { payload: { path: Schema.String }, success: WorkspaceStatus, error: HostError }),
   Rpc.make("Workspace.CreateWorktree", {
     payload: { path: Schema.String, branch: Schema.String, base: Schema.optional(Schema.String) },
-    success: WorkspaceStatus, error: HostError,
+    success: WorkspaceStatus,
+    error: HostError,
   }),
   Rpc.make("Workspace.Branches", { payload: { path: Schema.String }, success: Schema.Array(GitBranch), error: HostError }),
   Rpc.make("Workspace.Checkout", {
     payload: { path: Schema.String, branch: Schema.String, create: Schema.optional(Schema.Boolean) },
-    success: WorkspaceStatus, error: HostError,
+    success: WorkspaceStatus,
+    error: HostError,
   }),
 
   Rpc.make("Host.Info", { success: HostInfo }),

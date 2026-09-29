@@ -56,14 +56,19 @@ export function loadLocalPlugins(dirs: readonly string[]): Effect.Effect<LocalPl
           const exported: unknown[] = Array.isArray(module.default) ? module.default : [module.default];
           const found = exported.filter(isPlugin);
           if (found.length === 0) {
-            diagnostics.push(new Diagnostic({ severity: "warning", message: `${file}: no plugin in the default export`, suggestion: "export default definePlugin({ ... })" }));
+            diagnostics.push(
+              new Diagnostic({ severity: "warning", message: `${file}: no plugin in the default export`, suggestion: "export default definePlugin({ ... })" }),
+            );
           }
           plugins.push(...found);
         } catch (cause) {
-          diagnostics.push(new Diagnostic({
-            severity: "error", message: `${file}: cannot load: ${cause instanceof Error ? cause.message : String(cause)}`,
-            suggestion: "Fix the file or move it out of the plugins directory",
-          }));
+          diagnostics.push(
+            new Diagnostic({
+              severity: "error",
+              message: `${file}: cannot load: ${cause instanceof Error ? cause.message : String(cause)}`,
+              suggestion: "Fix the file or move it out of the plugins directory",
+            }),
+          );
         }
       }
     }

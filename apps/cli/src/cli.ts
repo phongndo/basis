@@ -2,7 +2,18 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Effect } from "effect";
 import {
-  branchOf, HostError, LEDGER_SORTS, ledger, parseLedgerFilter, promptDiff, rebuildRequest, recordStart, recordsBetween, recordSummary, sortRecords, trajectory,
+  branchOf,
+  HostError,
+  LEDGER_SORTS,
+  ledger,
+  parseLedgerFilter,
+  promptDiff,
+  rebuildRequest,
+  recordStart,
+  recordsBetween,
+  recordSummary,
+  sortRecords,
+  trajectory,
 } from "@basis/contracts";
 import type { LedgerSort, TrajectoryStep, TrajectoryTurn } from "@basis/contracts";
 import { makeHostRpc, makeHostRpcHttp, rpcUrl } from "@basis/client";
@@ -11,10 +22,29 @@ import { readDiscovery } from "@basis/plugin-transport";
 import { CliError, ExitCode, usage } from "./command.ts";
 import type { Command, Failure, Io, Options, QuestionPolicy } from "./command.ts";
 import {
-  formatDiff, formatPlugins, formatRecords, formatReload, formatSession, formatSessions, formatStatus, formatStep, formatSystem, formatTools, formatTrajectory,
+  formatDiff,
+  formatPlugins,
+  formatRecords,
+  formatReload,
+  formatSession,
+  formatSessions,
+  formatStatus,
+  formatStep,
+  formatSystem,
+  formatTools,
+  formatTrajectory,
 } from "./format.ts";
 import {
-  answerCommand, cancelCommand, dismissCommand, eventsCommand, loginCommand, logoutCommand, modelsCommand, providersCommand, questionsCommand, runCommand,
+  answerCommand,
+  cancelCommand,
+  dismissCommand,
+  eventsCommand,
+  loginCommand,
+  logoutCommand,
+  modelsCommand,
+  providersCommand,
+  questionsCommand,
+  runCommand,
 } from "./live.ts";
 import { workspaceCommand } from "./workspace.ts";
 
@@ -103,31 +133,37 @@ export const parseOffset = (text: string): number | undefined => {
   if (/^\d+(\.\d+)?$/.test(text)) return Number(text) * 1000;
   const units: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
   let total = 0;
-  const rest = text.replace(/(\d+(?:\.\d+)?)(ms|s|m|h)/g, (_, value: string, unit: string) => { total += Number(value) * units[unit]!; return ""; });
+  const rest = text.replace(/(\d+(?:\.\d+)?)(ms|s|m|h)/g, (_, value: string, unit: string) => {
+    total += Number(value) * units[unit]!;
+    return "";
+  });
   return rest === "" && text !== "" ? total : undefined;
 };
 
 const route = (positionals: readonly string[], options: Options, io: Io): Command | CliError => {
   const [command, sub, arg, ...rest] = positionals;
-  const extra = (count: number) => positionals.length > count ? usage(`Unexpected argument "${positionals[count]}"`) : undefined;
+  const extra = (count: number) => (positionals.length > count ? usage(`Unexpected argument "${positionals[count]}"`) : undefined);
   switch (command) {
     case "status":
-      return extra(1) ?? (({ discovery, rpc }) =>
-        Effect.all([rpc.Host.Info(), rpc.Host.Plugins(), rpc.Agent.Running()], { concurrency: "unbounded" }).pipe(
-          Effect.map(([info, plugins, running]) => ({
-            json: { url: discovery.url, pid: discovery.pid, startedAt: discovery.startedAt, info, plugins, running },
-            text: formatStatus(discovery, info, plugins, running),
-          })),
-        ));
+      return (
+        extra(1) ??
+        (({ discovery, rpc }) =>
+          Effect.all([rpc.Host.Info(), rpc.Host.Plugins(), rpc.Agent.Running()], { concurrency: "unbounded" }).pipe(
+            Effect.map(([info, plugins, running]) => ({
+              json: { url: discovery.url, pid: discovery.pid, startedAt: discovery.startedAt, info, plugins, running },
+              text: formatStatus(discovery, info, plugins, running),
+            })),
+          ))
+      );
     case "plugins":
       if (sub === undefined || sub === "list") {
-        return extra(sub === undefined ? 1 : 2) ?? (({ rpc }) =>
-          Effect.map(rpc.Host.Plugins(), (plugins) => ({ json: plugins, text: formatPlugins(plugins) })));
+        return (
+          extra(sub === undefined ? 1 : 2) ?? (({ rpc }) => Effect.map(rpc.Host.Plugins(), (plugins) => ({ json: plugins, text: formatPlugins(plugins) })))
+        );
       }
       if (sub === "restart") {
         if (arg === undefined) return usage("plugins restart needs a plugin id");
-        return extra(3) ?? (({ rpc }) =>
-          Effect.as(rpc.Host.RestartPlugin({ pluginId: arg }), { json: { restarted: arg }, text: `restarted ${arg}` }));
+        return extra(3) ?? (({ rpc }) => Effect.as(rpc.Host.RestartPlugin({ pluginId: arg }), { json: { restarted: arg }, text: `restarted ${arg}` }));
       }
       return usage(`Unknown plugins command "${sub}"`);
     case "reload":
@@ -180,19 +216,21 @@ const sessionCommand = (sub: string | undefined, arg: string | undefined, rest: 
       if (arg !== undefined) return usage(`Unexpected argument "${arg}"`);
       if (options.all && options.cwd !== undefined) return usage("Use either --all or --cwd");
       const cwd = options.all ? undefined : resolve(io.cwd, options.cwd ?? ".");
-      return ({ rpc }) => Effect.map(rpc.Session.List(cwd === undefined ? {} : { cwd }), (sessions) => ({
-        json: sessions,
-        text: sessions.length ? formatSessions(sessions, cwd === undefined) : `No sessions${cwd === undefined ? "" : ` in ${cwd}`}.`,
-      }));
+      return ({ rpc }) =>
+        Effect.map(rpc.Session.List(cwd === undefined ? {} : { cwd }), (sessions) => ({
+          json: sessions,
+          text: sessions.length ? formatSessions(sessions, cwd === undefined) : `No sessions${cwd === undefined ? "" : ` in ${cwd}`}.`,
+        }));
     }
     case "show":
       if (arg === undefined) return usage("session show needs a session id");
       if (rest.length) return usage(`Unexpected argument "${rest[0]}"`);
-      return ({ rpc }) => Effect.gen(function* () {
-        const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId: arg }), rpc.Session.Events({ sessionId: arg })], { concurrency: "unbounded" });
-        const branch = branchOf(events, info.leaf);
-        return { json: { info, branch }, text: formatSession(info, branch) };
-      });
+      return ({ rpc }) =>
+        Effect.gen(function* () {
+          const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId: arg }), rpc.Session.Events({ sessionId: arg })], { concurrency: "unbounded" });
+          const branch = branchOf(events, info.leaf);
+          return { json: { info, branch }, text: formatSession(info, branch) };
+        });
     case "new":
       if (arg !== undefined) return usage(`Unexpected argument "${arg}"`);
       return ({ rpc }) => Effect.map(rpc.Session.Create({ cwd: resolve(io.cwd, options.cwd ?? ".") }), (info) => ({ json: info, text: info.id }));
@@ -205,9 +243,11 @@ const sessionCommand = (sub: string | undefined, arg: string | undefined, rest: 
       const eventId = rest[0];
       if (arg === undefined || eventId === undefined) return usage("session checkout needs a session id and an event id");
       if (rest.length > 1) return usage(`Unexpected argument "${rest[1]}"`);
-      return ({ rpc }) => Effect.map(rpc.Session.Checkout({ sessionId: arg, eventId }), (info) => ({
-        json: info, text: `${info.id} now continues from ${eventId}; the next prompt starts a new branch there`,
-      }));
+      return ({ rpc }) =>
+        Effect.map(rpc.Session.Checkout({ sessionId: arg, eventId }), (info) => ({
+          json: info,
+          text: `${info.id} now continues from ${eventId}; the next prompt starts a new branch there`,
+        }));
     }
     default:
       return usage(sub === undefined ? "session needs a command: list, show, new, title, or checkout" : `Unknown session command "${sub}"`);
@@ -219,7 +259,8 @@ const inspectCommand = (sessionId: string, options: Options): Command | CliError
   const listing = options.records || options.filter !== undefined || options.sort !== undefined || options.range !== undefined;
   if (options.view !== undefined && selector === undefined) return usage(`--${options.view} needs --request`);
   if (selector !== undefined && listing) return usage("Use either --request or --records/--filter/--sort/--range");
-  if (options.sort !== undefined && !(LEDGER_SORTS as readonly string[]).includes(options.sort)) return usage(`--sort must be one of ${LEDGER_SORTS.join(", ")}`);
+  if (options.sort !== undefined && !(LEDGER_SORTS as readonly string[]).includes(options.sort))
+    return usage(`--sort must be one of ${LEDGER_SORTS.join(", ")}`);
   let range: { from: number | undefined; to: number | undefined } | undefined;
   if (options.range !== undefined) {
     const [from, to, ...more] = options.range.split("..");
@@ -230,45 +271,59 @@ const inspectCommand = (sessionId: string, options: Options): Command | CliError
     }
     range = { from: start, to: end };
   }
-  return ({ rpc }) => Effect.gen(function* () {
-    const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId }), rpc.Session.Events({ sessionId })], { concurrency: "unbounded" });
-    const branch = branchOf(events, info.leaf);
-    const turns = trajectory(branch);
-    if (listing) {
-      const running = turns.at(-1)?.end === undefined;
-      let records = ledger(turns).filter(parseLedgerFilter(options.filter ?? ""));
-      if (range !== undefined && records.length > 0) {
-        const origin = Math.min(...ledger(turns).map(recordStart));
-        records = recordsBetween(records, origin + (range.from ?? 0), range.to === undefined ? Infinity : origin + range.to);
+  return ({ rpc }) =>
+    Effect.gen(function* () {
+      const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId }), rpc.Session.Events({ sessionId })], { concurrency: "unbounded" });
+      const branch = branchOf(events, info.leaf);
+      const turns = trajectory(branch);
+      if (listing) {
+        const running = turns.at(-1)?.end === undefined;
+        let records = ledger(turns).filter(parseLedgerFilter(options.filter ?? ""));
+        if (range !== undefined && records.length > 0) {
+          const origin = Math.min(...ledger(turns).map(recordStart));
+          records = recordsBetween(records, origin + (range.from ?? 0), range.to === undefined ? Infinity : origin + range.to);
+        }
+        records = sortRecords(records, (options.sort ?? "time") as LedgerSort, options.desc, running);
+        return { json: records.map((record) => recordSummary(record, running)), text: formatRecords(records, running) };
       }
-      records = sortRecords(records, (options.sort ?? "time") as LedgerSort, options.desc, running);
-      return { json: records.map((record) => recordSummary(record, running)), text: formatRecords(records, running) };
-    }
-    if (selector === undefined) return { json: { info, turns }, text: formatTrajectory(turns) };
-    const found = findStep(turns, selector);
-    if (found === undefined) {
-      return yield* new CliError({ code: "NotFound", message: `No request "${selector}" on the current branch of ${sessionId}`, subject: selector, exit: ExitCode.failed });
-    }
-    const request = found.step.request;
-    if (options.view !== undefined && request === undefined) {
-      return yield* new CliError({ code: "NotFound", message: `Step ${found.turn.index}.${found.step.index} logged no request`, subject: selector, exit: ExitCode.failed });
-    }
-    switch (options.view) {
-      case "system": return { json: request!.sections, text: formatSystem(request!) };
-      case "tools": return { json: request!.tools, text: formatTools(request!) };
-      case "diff": {
-        const requests = turns.flatMap((turn) => turn.steps.flatMap((step) => (step.request === undefined ? [] : [step.request])));
-        const previous = requests[requests.indexOf(request!) - 1];
-        const diff = promptDiff(previous, request!);
-        return { json: { previous: previous?.eventId, sections: diff }, text: formatDiff(diff, previous === undefined) };
+      if (selector === undefined) return { json: { info, turns }, text: formatTrajectory(turns) };
+      const found = findStep(turns, selector);
+      if (found === undefined) {
+        return yield* new CliError({
+          code: "NotFound",
+          message: `No request "${selector}" on the current branch of ${sessionId}`,
+          subject: selector,
+          exit: ExitCode.failed,
+        });
       }
-      case "rebuilt": {
-        const rebuilt = rebuildRequest(branch, request!.eventId, sessionId);
-        return { json: rebuilt, text: JSON.stringify(rebuilt, null, 2) };
+      const request = found.step.request;
+      if (options.view !== undefined && request === undefined) {
+        return yield* new CliError({
+          code: "NotFound",
+          message: `Step ${found.turn.index}.${found.step.index} logged no request`,
+          subject: selector,
+          exit: ExitCode.failed,
+        });
       }
-      case undefined: return { json: { info, turn: found.turn.index, step: found.step }, text: formatStep(found.turn, found.step) };
-    }
-  });
+      switch (options.view) {
+        case "system":
+          return { json: request!.sections, text: formatSystem(request!) };
+        case "tools":
+          return { json: request!.tools, text: formatTools(request!) };
+        case "diff": {
+          const requests = turns.flatMap((turn) => turn.steps.flatMap((step) => (step.request === undefined ? [] : [step.request])));
+          const previous = requests[requests.indexOf(request!) - 1];
+          const diff = promptDiff(previous, request!);
+          return { json: { previous: previous?.eventId, sections: diff }, text: formatDiff(diff, previous === undefined) };
+        }
+        case "rebuilt": {
+          const rebuilt = rebuildRequest(branch, request!.eventId, sessionId);
+          return { json: rebuilt, text: JSON.stringify(rebuilt, null, 2) };
+        }
+        case undefined:
+          return { json: { info, turn: found.turn.index, step: found.step }, text: formatStep(found.turn, found.step) };
+      }
+    });
 };
 
 /** A step by request number, by `<turn>.<step>` (1-based), by step id, or the last step that sent a request. */
@@ -291,25 +346,31 @@ const findStep = (turns: readonly TrajectoryTurn[], selector: string): { turn: T
  * commands, and a WebSocket (opened only when a command follows events) for
  * streaming and questions, as the web app uses.
  */
-const connect = (io: Io) => Effect.gen(function* () {
-  const paths = resolvePaths({ env: io.env, cwd: io.cwd });
-  const discovery = yield* readDiscovery(paths.home);
-  if (discovery === undefined) {
-    return yield* new CliError({
-      code: "NoHost",
-      message: `No running Basis host for ${paths.home}. Start one with \`basis serve\`.`,
-      exit: ExitCode.unavailable,
-    });
-  }
-  const rpc = yield* makeHostRpcHttp(discovery.url, discovery.token);
-  const live = yield* Effect.cached(makeHostRpc(rpcUrl(discovery.url, discovery.token)));
-  return { discovery, rpc, live };
-});
+const connect = (io: Io) =>
+  Effect.gen(function* () {
+    const paths = resolvePaths({ env: io.env, cwd: io.cwd });
+    const discovery = yield* readDiscovery(paths.home);
+    if (discovery === undefined) {
+      return yield* new CliError({
+        code: "NoHost",
+        message: `No running Basis host for ${paths.home}. Start one with \`basis serve\`.`,
+        exit: ExitCode.unavailable,
+      });
+    }
+    const rpc = yield* makeHostRpcHttp(discovery.url, discovery.token);
+    const live = yield* Effect.cached(makeHostRpc(rpcUrl(discovery.url, discovery.token)));
+    return { discovery, rpc, live };
+  });
 
 const toCliError = (error: Failure): CliError => {
   if (error instanceof CliError) return error;
   if (error instanceof HostError) {
-    return new CliError({ code: error.code, message: error.message, ...(error.subject === undefined ? {} : { subject: error.subject }), exit: ExitCode.failed });
+    return new CliError({
+      code: error.code,
+      message: error.message,
+      ...(error.subject === undefined ? {} : { subject: error.subject }),
+      exit: ExitCode.failed,
+    });
   }
   // `filterStatusOk` turns a rejected token into a failed send; the response status says which it was.
   const status = (error.cause as { readonly response?: { readonly status?: unknown } } | undefined)?.response?.status;
@@ -378,14 +439,30 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
   const views = (["system", "tools", "diff", "rebuilt"] as const).filter((view) => values[view]);
   if (views.length > 1) return report(io, values.json, usage(`Use one of ${views.map((view) => `--${view}`).join(", ")}`));
   if (values.request !== undefined && values.step !== undefined) return report(io, values.json, usage("Use either --request or --step"));
-  if (values.questions !== undefined && !QUESTION_POLICIES.has(values.questions)) return report(io, values.json, usage("--questions must be ask, ignore, or dismiss"));
+  if (values.questions !== undefined && !QUESTION_POLICIES.has(values.questions))
+    return report(io, values.json, usage("--questions must be ask, ignore, or dismiss"));
   const options: Options = {
-    json: values.json, all: values.all, cwd: values.cwd, step: values.request ?? values.step,
-    filter: values.filter, records: values.records, view: views[0],
-    sort: values.sort, desc: values.desc, range: values.range,
-    model: values.model, thinking: values.thinking, images: values.image, follow: values.follow,
-    questions: values.questions as QuestionPolicy | undefined, answers: values.answer,
-    method: values.method, create: values.create, base: values.base, path: values.path, session: values.session,
+    json: values.json,
+    all: values.all,
+    cwd: values.cwd,
+    step: values.request ?? values.step,
+    filter: values.filter,
+    records: values.records,
+    view: views[0],
+    sort: values.sort,
+    desc: values.desc,
+    range: values.range,
+    model: values.model,
+    thinking: values.thinking,
+    images: values.image,
+    follow: values.follow,
+    questions: values.questions as QuestionPolicy | undefined,
+    answers: values.answer,
+    method: values.method,
+    create: values.create,
+    base: values.base,
+    path: values.path,
+    session: values.session,
   };
   const command = route(positionals, options, io);
   if (command instanceof CliError) return report(io, options.json, command);

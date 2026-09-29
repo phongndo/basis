@@ -26,12 +26,16 @@ export function watchConfig(paths: PathsService, options: WatchOptions = {}): St
           if (changed === null || changed === name) emit.single(target);
         });
         // A watcher error (directory removed) ends this source; the host keeps running without it.
-        watcher.on("error", () => { watcher.close(); });
+        watcher.on("error", () => {
+          watcher.close();
+        });
         watchers.push(watcher);
       } catch {
         // Directory absent: nothing to watch until the next start.
       }
     }
-    return Effect.sync(() => { for (const watcher of watchers) watcher.close(); });
+    return Effect.sync(() => {
+      for (const watcher of watchers) watcher.close();
+    });
   }).pipe(Stream.debounce(Duration.millis(options.debounceMs ?? 250)));
 }

@@ -13,17 +13,25 @@ if (!Number.isInteger(iterations) || iterations < 1) throw new Error("BASIS_BENC
 const point = Hook.make<number, number>("bench/increment");
 const tick = Event.make<number>("bench/tick");
 const terminal = (value: number) => Effect.succeed(value + 1);
-const plugins = (count: number) => Array.from({ length: count }, (_, index) => definePlugin({
-  id: `plugin-${String(index).padStart(3, "0")}`,
-  layer: Layer.effectDiscard(Effect.gen(function* () {
-    const owner = yield* PluginContext;
-    yield* owner.on(point, (value, next) => next(value));
-  })),
-}));
-const observers = (count: number) => Array.from({ length: count }, (_, index) => definePlugin({
-  id: `observer-${String(index).padStart(3, "0")}`,
-  layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) => owner.observe(tick, () => Effect.void))),
-}));
+const plugins = (count: number) =>
+  Array.from({ length: count }, (_, index) =>
+    definePlugin({
+      id: `plugin-${String(index).padStart(3, "0")}`,
+      layer: Layer.effectDiscard(
+        Effect.gen(function* () {
+          const owner = yield* PluginContext;
+          yield* owner.on(point, (value, next) => next(value));
+        }),
+      ),
+    }),
+  );
+const observers = (count: number) =>
+  Array.from({ length: count }, (_, index) =>
+    definePlugin({
+      id: `observer-${String(index).padStart(3, "0")}`,
+      layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) => owner.observe(tick, () => Effect.void))),
+    }),
+  );
 
 function repeat<A, E, R>(operation: Effect.Effect<A, E, R>, count: number): Effect.Effect<void, E, R> {
   return Effect.gen(function* () {
@@ -37,7 +45,7 @@ async function measure<E>(name: string, count: number, effect: Effect.Effect<voi
   for (let sample = 0; sample < samples; sample++) {
     const start = performance.now();
     await Effect.runPromise(effect);
-    values.push((performance.now() - start) * 1_000 / count);
+    values.push(((performance.now() - start) * 1_000) / count);
   }
   values.sort((a, b) => a - b);
   record(name, values[Math.floor(samples / 2)]!);
@@ -49,28 +57,56 @@ console.log(`Median batch means, ${samples} samples; brackets show min/max. No e
 await measure("Effect direct", iterations, repeat(terminal(1), iterations));
 let sink = 0;
 const increment = (n: number) => n + 1;
-await measure("Plain function", iterations, Effect.sync(() => { for (let n = 0; n < iterations; n++) sink = increment(sink); }));
+await measure(
+  "Plain function",
+  iterations,
+  Effect.sync(() => {
+    for (let n = 0; n < iterations; n++) sink = increment(sink);
+  }),
+);
 class Increment extends Context.Tag("bench/Increment")<Increment, typeof increment>() {}
-await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-  const core = yield* makeCore([definePlugin({ id: "increment", provides: [Increment], layer: Layer.succeed(Increment, increment) })]);
-  const call = yield* core.run(Increment);
-  yield* Effect.promise(() => measure("Captured capability", iterations, core.run(Effect.sync(() => { for (let n = 0; n < iterations; n++) sink = call(sink); }))));
-})));
+await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const core = yield* makeCore([definePlugin({ id: "increment", provides: [Increment], layer: Layer.succeed(Increment, increment) })]);
+      const call = yield* core.run(Increment);
+      yield* Effect.promise(() =>
+        measure(
+          "Captured capability",
+          iterations,
+          core.run(
+            Effect.sync(() => {
+              for (let n = 0; n < iterations; n++) sink = call(sink);
+            }),
+          ),
+        ),
+      );
+    }),
+  ),
+);
 
 for (const count of [0, 1, 8, 32]) {
-  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const core = yield* makeCore(plugins(count));
-    const hooks = yield* core.run(Hooks);
-    const batch = core.run(repeat(hooks.invoke(point, 1, terminal), iterations));
-    yield* Effect.promise(() => measure(`Hook / ${count} handlers / spans on`, iterations, batch));
-    yield* Effect.promise(() => measure(`Hook / ${count} handlers / spans off`, iterations, batch.pipe(Effect.withTracerEnabled(false))));
-  })));
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = yield* makeCore(plugins(count));
+        const hooks = yield* core.run(Hooks);
+        const batch = core.run(repeat(hooks.invoke(point, 1, terminal), iterations));
+        yield* Effect.promise(() => measure(`Hook / ${count} handlers / spans on`, iterations, batch));
+        yield* Effect.promise(() => measure(`Hook / ${count} handlers / spans off`, iterations, batch.pipe(Effect.withTracerEnabled(false))));
+      }),
+    ),
+  );
 }
 
-await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-  const core = yield* makeCore([]);
-  yield* Effect.promise(() => measure("core.run entry", iterations, repeat(core.run(Effect.void), iterations)));
-})));
+await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const core = yield* makeCore([]);
+      yield* Effect.promise(() => measure("core.run entry", iterations, repeat(core.run(Effect.void), iterations)));
+    }),
+  ),
+);
 
 for (const count of [0, 8, 32, 128]) {
   const composition = plugins(count);
@@ -78,11 +114,15 @@ for (const count of [0, 8, 32, 128]) {
 }
 
 for (const count of [0, 1, 8]) {
-  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const core = yield* makeCore(observers(count));
-    const events = yield* core.run(Events);
-    yield* Effect.promise(() => measure(`Event publish / ${count} observers`, iterations, core.run(repeat(events.publish(tick, 1), iterations))));
-  })));
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = yield* makeCore(observers(count));
+        const events = yield* core.run(Events);
+        yield* Effect.promise(() => measure(`Event publish / ${count} observers`, iterations, core.run(repeat(events.publish(tick, 1), iterations))));
+      }),
+    ),
+  );
 }
 
 // Reload: change one plugin's config in a composition where nothing depends on it.
@@ -90,13 +130,28 @@ for (const count of [8, 32, 128]) {
   const all = plugins(count);
   const byId = new Map<string, Plugin>(all.map((plugin) => [plugin.id, plugin]));
   const source = { resolve: (id: string) => Effect.succeed(byId.get(id)!) };
-  const composition = (version: number) => ({ plugins: Object.fromEntries(all.map((plugin, index) => [plugin.id, { config: index === 0 ? { version } : {} }])) });
-  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const loader = yield* makeLoader({ source, composition: composition(0) });
-    let version = 0;
-    // Config is opaque to schema-less plugins but still compared, so each apply restarts exactly one plugin.
-    yield* Effect.promise(() => measure(`Reload one of ${count} plugins`, 100, repeat(Effect.suspend(() => loader.apply(composition(++version))), 100)));
-  })));
+  const composition = (version: number) => ({
+    plugins: Object.fromEntries(all.map((plugin, index) => [plugin.id, { config: index === 0 ? { version } : {} }])),
+  });
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loader = yield* makeLoader({ source, composition: composition(0) });
+        let version = 0;
+        // Config is opaque to schema-less plugins but still compared, so each apply restarts exactly one plugin.
+        yield* Effect.promise(() =>
+          measure(
+            `Reload one of ${count} plugins`,
+            100,
+            repeat(
+              Effect.suspend(() => loader.apply(composition(++version))),
+              100,
+            ),
+          ),
+        );
+      }),
+    ),
+  );
 }
 if (sink === 0) throw new Error("Unobserved capability result");
 finish("microbench");

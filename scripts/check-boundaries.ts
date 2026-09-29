@@ -13,10 +13,11 @@ for (const name of Object.keys({ ...manifest.dependencies, ...manifest.peerDepen
   if (name !== "effect") problems.push(`packages/core/package.json: runtime dependency "${name}" (only effect is allowed)`);
 }
 
-const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
-  const path = join(dir, name);
-  return statSync(path).isDirectory() ? (name === "node_modules" || name === "dist" ? [] : walk(path)) : [path];
-});
+const walk = (dir: string): string[] =>
+  readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? (name === "node_modules" || name === "dist" ? [] : walk(path)) : [path];
+  });
 const importPattern = /(?:from\s+|import\s*\(\s*|import\s+)["']([^"']+)["']/g;
 for (const file of walk(core).filter((path) => /\.(ts|tsx|mts)$/.test(path))) {
   const text = readFileSync(file, "utf8");

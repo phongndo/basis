@@ -27,18 +27,20 @@ const io = (message: string, cause: unknown, provider?: string) =>
 export function readStore(path: string): Effect.Effect<RawStore, CredentialError> {
   return Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: (cause) => cause }).pipe(
     Effect.matchEffect({
-      onFailure: (cause) => errno(cause) === "ENOENT" ? Effect.succeed({}) : Effect.fail(io(`Cannot read ${path}`, cause)),
+      onFailure: (cause) => (errno(cause) === "ENOENT" ? Effect.succeed({}) : Effect.fail(io(`Cannot read ${path}`, cause))),
       onSuccess: (text) => {
         if (text.trim() === "") return Effect.succeed({});
         const parsed = Either.try(() => JSON.parse(text) as unknown);
         if (Either.isRight(parsed) && typeof parsed.right === "object" && parsed.right !== null && !Array.isArray(parsed.right)) {
           return Effect.succeed(parsed.right as RawStore);
         }
-        return Effect.fail(new CredentialError({
-          reason: "Corrupt",
-          message: `${path} is not a JSON object of credentials; fix or remove it`,
-          ...(Either.isLeft(parsed) ? { cause: parsed.left } : {}),
-        }));
+        return Effect.fail(
+          new CredentialError({
+            reason: "Corrupt",
+            message: `${path} is not a JSON object of credentials; fix or remove it`,
+            ...(Either.isLeft(parsed) ? { cause: parsed.left } : {}),
+          }),
+        );
       },
     }),
   );
@@ -51,7 +53,14 @@ export function decodeEntry(path: string, store: RawStore, provider: string): Ef
   const decoded = decodeCredential(store[provider]);
   return Either.isRight(decoded)
     ? Effect.succeed(decoded.right)
-    : Effect.fail(new CredentialError({ provider, reason: "Corrupt", message: `${path}: invalid credential for "${provider}": ${decoded.left.message}`, cause: decoded.left }));
+    : Effect.fail(
+        new CredentialError({
+          provider,
+          reason: "Corrupt",
+          message: `${path}: invalid credential for "${provider}": ${decoded.left.message}`,
+          cause: decoded.left,
+        }),
+      );
 }
 
 /** Temp file plus rename so readers never see a partial file; mode 0600 from creation, directory 0700. */
@@ -142,13 +151,17 @@ export function withFileLock<A, E>(path: string, body: Effect.Effect<A, E>, opti
     }
   });
 
-  const removeIfUnchanged = (text: string) => Effect.promise(async () => {
-    const current = await readFile(lock, "utf8").catch(() => undefined);
-    if (current !== undefined && current === text) await rm(lock, { force: true });
-  });
+  const removeIfUnchanged = (text: string) =>
+    Effect.promise(async () => {
+      const current = await readFile(lock, "utf8").catch(() => undefined);
+      if (current !== undefined && current === text) await rm(lock, { force: true });
+    });
 
   const acquire = Effect.gen(function* () {
-    yield* Effect.tryPromise({ try: () => mkdir(dirname(path), { recursive: true, mode: 0o700 }), catch: (cause) => io(`Cannot create ${dirname(path)}`, cause) });
+    yield* Effect.tryPromise({
+      try: () => mkdir(dirname(path), { recursive: true, mode: 0o700 }),
+      catch: (cause) => io(`Cannot create ${dirname(path)}`, cause),
+    });
     const deadline = Date.now() + waitMs;
     while (true) {
       const created = yield* tryCreate;
@@ -175,9 +188,11 @@ export function withFileLock<A, E>(path: string, body: Effect.Effect<A, E>, opti
     return utimes(lock, now, now).catch(() => undefined);
   }).pipe(Effect.repeat(Schedule.spaced(Duration.millis(staleMs / 3))));
 
-  return Effect.scoped(Effect.gen(function* () {
-    yield* Effect.acquireRelease(acquire, () => release);
-    yield* Effect.forkScoped(heartbeat);
-    return yield* body;
-  }));
+  return Effect.scoped(
+    Effect.gen(function* () {
+      yield* Effect.acquireRelease(acquire, () => release);
+      yield* Effect.forkScoped(heartbeat);
+      return yield* body;
+    }),
+  );
 }

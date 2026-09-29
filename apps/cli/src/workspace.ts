@@ -17,34 +17,63 @@ export const workspaceCommand = (sub: string | undefined, args: readonly string[
   switch (sub) {
     case undefined:
     case "status":
-      return extra(1) ?? (({ rpc }) => Effect.map(rpc.Workspace.Status({ path: hostPath(io, args[0] ?? options.path) }), (status) => ({ json: status, text: formatWorkspace(status) })));
+      return (
+        extra(1) ??
+        (({ rpc }) =>
+          Effect.map(rpc.Workspace.Status({ path: hostPath(io, args[0] ?? options.path) }), (status) => ({ json: status, text: formatWorkspace(status) })))
+      );
     case "branches":
-      return extra(1) ?? (({ rpc }) => Effect.map(rpc.Workspace.Branches({ path: hostPath(io, args[0] ?? options.path) }), (branches) => ({ json: branches, text: formatBranches(branches) })));
+      return (
+        extra(1) ??
+        (({ rpc }) =>
+          Effect.map(rpc.Workspace.Branches({ path: hostPath(io, args[0] ?? options.path) }), (branches) => ({
+            json: branches,
+            text: formatBranches(branches),
+          })))
+      );
     case "checkout": {
       const branch = args[0];
       if (branch === undefined) return usage("workspace checkout needs a branch");
-      return extra(1) ?? (({ rpc }) => Effect.map(
-        rpc.Workspace.Checkout({ path: hostPath(io, options.path), branch, ...(options.create ? { create: true } : {}) }),
-        (status) => ({ json: status, text: formatWorkspace(status) }),
-      ));
+      return (
+        extra(1) ??
+        (({ rpc }) =>
+          Effect.map(rpc.Workspace.Checkout({ path: hostPath(io, options.path), branch, ...(options.create ? { create: true } : {}) }), (status) => ({
+            json: status,
+            text: formatWorkspace(status),
+          })))
+      );
     }
     case "worktree": {
       const branch = args[0];
       if (branch === undefined) return usage("workspace worktree needs a branch name");
-      return extra(1) ?? (({ rpc }) => Effect.map(
-        rpc.Workspace.CreateWorktree({ path: hostPath(io, options.path), branch, ...(options.base === undefined ? {} : { base: options.base }) }),
-        (status) => ({ json: status, text: formatWorkspace(status) }),
-      ));
+      return (
+        extra(1) ??
+        (({ rpc }) =>
+          Effect.map(
+            rpc.Workspace.CreateWorktree({ path: hostPath(io, options.path), branch, ...(options.base === undefined ? {} : { base: options.base }) }),
+            (status) => ({ json: status, text: formatWorkspace(status) }),
+          ))
+      );
     }
     case "mkdir": {
       const path = args[0];
       if (path === undefined) return usage("workspace mkdir needs a path");
-      return extra(1) ?? (({ rpc }) => Effect.map(rpc.Workspace.CreateDirectory({ path: hostPath(io, path) }), (status) => ({ json: status, text: formatWorkspace(status) })));
+      return (
+        extra(1) ??
+        (({ rpc }) => Effect.map(rpc.Workspace.CreateDirectory({ path: hostPath(io, path) }), (status) => ({ json: status, text: formatWorkspace(status) })))
+      );
     }
     case "browse": {
       // A trailing slash lists a directory; anything else completes the last segment, as the add-project dialog does.
-      const partial = args[0] === undefined ? `${io.cwd}/` : args[0].startsWith("~") || args[0].startsWith("/") ? args[0] : `${resolve(io.cwd, args[0])}${args[0].endsWith("/") ? "/" : ""}`;
-      return extra(1) ?? (({ rpc }) => Effect.map(rpc.Workspace.Browse({ partialPath: partial }), (listing) => ({ json: listing, text: formatListing(listing) })));
+      const partial =
+        args[0] === undefined
+          ? `${io.cwd}/`
+          : args[0].startsWith("~") || args[0].startsWith("/")
+            ? args[0]
+            : `${resolve(io.cwd, args[0])}${args[0].endsWith("/") ? "/" : ""}`;
+      return (
+        extra(1) ?? (({ rpc }) => Effect.map(rpc.Workspace.Browse({ partialPath: partial }), (listing) => ({ json: listing, text: formatListing(listing) })))
+      );
     }
     default:
       return usage(`Unknown workspace command "${sub}"`);

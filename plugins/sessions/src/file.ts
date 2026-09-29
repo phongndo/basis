@@ -7,9 +7,7 @@ import { decodeLine, encodeLine } from "./format.ts";
 import type { Header, Line } from "./format.ts";
 
 export const errorCode = (cause: unknown): string | undefined =>
-  typeof cause === "object" && cause !== null && typeof (cause as { code?: unknown }).code === "string"
-    ? (cause as { code: string }).code
-    : undefined;
+  typeof cause === "object" && cause !== null && typeof (cause as { code?: unknown }).code === "string" ? (cause as { code: string }).code : undefined;
 
 export const io = (sessionId: string | undefined, message: string) => (cause: unknown) =>
   new SessionError({
@@ -19,8 +17,7 @@ export const io = (sessionId: string | undefined, message: string) => (cause: un
     cause,
   });
 
-const corrupt = (sessionId: string, file: string, message: string) =>
-  new SessionError({ sessionId, reason: "Corrupt", message: `${file}: ${message}` });
+const corrupt = (sessionId: string, file: string, message: string) => new SessionError({ sessionId, reason: "Corrupt", message: `${file}: ${message}` });
 
 /** Complete lines of a file and where they end. Bytes after the last newline are a torn write and are ignored. */
 function splitComplete(buffer: Buffer): { readonly lines: string[]; readonly validBytes: number } {
@@ -50,38 +47,41 @@ export interface Loaded {
  */
 export function load(file: string, sessionId: string): Effect.Effect<Loaded, SessionError> {
   return Effect.tryPromise({ try: () => fs.readFile(file), catch: io(sessionId, `Cannot read ${file}`) }).pipe(
-    Effect.flatMap((buffer) => Effect.suspend(() => {
-      const { lines, validBytes } = splitComplete(buffer);
-      if (lines.length === 0) return Effect.fail(corrupt(sessionId, file, "missing header"));
-      const first = decodeLine(lines[0]!, true);
-      if (Either.isLeft(first)) return Effect.fail(corrupt(sessionId, file, `unreadable header (${first.left})`));
-      const header = first.right as Header;
-      const events: SessionEvent[] = [];
-      const byId = new Map<string, SessionEvent>();
-      let leaf: string | undefined;
-      let title: string | undefined;
-      let updatedAt = header.createdAt;
-      for (let i = 1; i < lines.length; i++) {
-        const decoded = decodeLine(lines[i]!, false);
-        if (Either.isLeft(decoded)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: ${decoded.left}`));
-        const line = decoded.right as Exclude<Line, Header>;
-        if ("type" in line) {
-          if (!byId.has(line.leaf)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: checkout to unknown event ${line.leaf}`));
-          leaf = line.leaf;
+    Effect.flatMap((buffer) =>
+      Effect.suspend(() => {
+        const { lines, validBytes } = splitComplete(buffer);
+        if (lines.length === 0) return Effect.fail(corrupt(sessionId, file, "missing header"));
+        const first = decodeLine(lines[0]!, true);
+        if (Either.isLeft(first)) return Effect.fail(corrupt(sessionId, file, `unreadable header (${first.left})`));
+        const header = first.right as Header;
+        const events: SessionEvent[] = [];
+        const byId = new Map<string, SessionEvent>();
+        let leaf: string | undefined;
+        let title: string | undefined;
+        let updatedAt = header.createdAt;
+        for (let i = 1; i < lines.length; i++) {
+          const decoded = decodeLine(lines[i]!, false);
+          if (Either.isLeft(decoded)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: ${decoded.left}`));
+          const line = decoded.right as Exclude<Line, Header>;
+          if ("type" in line) {
+            if (!byId.has(line.leaf)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: checkout to unknown event ${line.leaf}`));
+            leaf = line.leaf;
+            updatedAt = Math.max(updatedAt, line.at);
+            continue;
+          }
+          if (line.seq !== events.length + 1)
+            return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: expected seq ${events.length + 1}, found ${line.seq}`));
+          if (byId.has(line.id)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: duplicate event id ${line.id}`));
+          if (line.parent !== null && !byId.has(line.parent)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: unknown parent ${line.parent}`));
+          events.push(line);
+          byId.set(line.id, line);
+          leaf = line.id;
+          if (line.data.type === "title") title = line.data.title;
           updatedAt = Math.max(updatedAt, line.at);
-          continue;
         }
-        if (line.seq !== events.length + 1) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: expected seq ${events.length + 1}, found ${line.seq}`));
-        if (byId.has(line.id)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: duplicate event id ${line.id}`));
-        if (line.parent !== null && !byId.has(line.parent)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: unknown parent ${line.parent}`));
-        events.push(line);
-        byId.set(line.id, line);
-        leaf = line.id;
-        if (line.data.type === "title") title = line.data.title;
-        updatedAt = Math.max(updatedAt, line.at);
-      }
-      return Effect.succeed({ header, events, byId, leaf, title, updatedAt, validBytes, size: buffer.length });
-    })),
+        return Effect.succeed({ header, events, byId, leaf, title, updatedAt, validBytes, size: buffer.length });
+      }),
+    ),
   );
 }
 
@@ -92,36 +92,38 @@ export function load(file: string, sessionId: string): Effect.Effect<Loaded, Ses
  */
 export function scan(file: string, sessionId: string): Effect.Effect<SessionInfo, SessionError> {
   return Effect.tryPromise({ try: () => fs.readFile(file), catch: io(sessionId, `Cannot read ${file}`) }).pipe(
-    Effect.flatMap((buffer) => Effect.suspend(() => {
-      const { lines } = splitComplete(buffer);
-      const first = lines.length === 0 ? Either.left("missing header") : decodeLine(lines[0]!, true);
-      if (Either.isLeft(first)) return Effect.fail(corrupt(sessionId, file, `unreadable header (${first.left})`));
-      const header = first.right as Header;
-      let leaf: string | undefined;
-      let title: string | undefined;
-      let updatedAt = header.createdAt;
-      let lastSeq = 0;
-      for (let i = 1; i < lines.length; i++) {
-        let line: { type?: string; leaf?: string; id?: string; seq?: number; at?: number; data?: { type?: string; title?: string } };
-        try {
-          line = JSON.parse(lines[i]!);
-        } catch {
-          return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: not JSON`));
+    Effect.flatMap((buffer) =>
+      Effect.suspend(() => {
+        const { lines } = splitComplete(buffer);
+        const first = lines.length === 0 ? Either.left("missing header") : decodeLine(lines[0]!, true);
+        if (Either.isLeft(first)) return Effect.fail(corrupt(sessionId, file, `unreadable header (${first.left})`));
+        const header = first.right as Header;
+        let leaf: string | undefined;
+        let title: string | undefined;
+        let updatedAt = header.createdAt;
+        let lastSeq = 0;
+        for (let i = 1; i < lines.length; i++) {
+          let line: { type?: string; leaf?: string; id?: string; seq?: number; at?: number; data?: { type?: string; title?: string } };
+          try {
+            line = JSON.parse(lines[i]!);
+          } catch {
+            return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: not JSON`));
+          }
+          if (typeof line !== "object" || line === null || Array.isArray(line)) {
+            return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: not a record`));
+          }
+          if (typeof line.at === "number") updatedAt = Math.max(updatedAt, line.at);
+          if (line.type === "checkout") {
+            leaf = line.leaf;
+            continue;
+          }
+          leaf = line.id;
+          lastSeq = line.seq ?? lastSeq;
+          if (line.data?.type === "title") title = line.data.title;
         }
-        if (typeof line !== "object" || line === null || Array.isArray(line)) {
-          return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: not a record`));
-        }
-        if (typeof line.at === "number") updatedAt = Math.max(updatedAt, line.at);
-        if (line.type === "checkout") {
-          leaf = line.leaf;
-          continue;
-        }
-        leaf = line.id;
-        lastSeq = line.seq ?? lastSeq;
-        if (line.data?.type === "title") title = line.data.title;
-      }
-      return Effect.succeed(infoOf(header, { leaf, title, updatedAt, lastSeq }));
-    })),
+        return Effect.succeed(infoOf(header, { leaf, title, updatedAt, lastSeq }));
+      }),
+    ),
   );
 }
 
@@ -154,22 +156,23 @@ const writerFor = (handle: fs.FileHandle, file: string, sessionId: string, confi
   let end = confirmed;
   let dirty = false;
   return {
-    write: (line) => Effect.tryPromise({
-      try: async () => {
-        if (dirty) {
-          await handle.truncate(end);
+    write: (line) =>
+      Effect.tryPromise({
+        try: async () => {
+          if (dirty) {
+            await handle.truncate(end);
+            await handle.datasync();
+            dirty = false;
+          }
+          const text = encodeLine(line);
+          dirty = true;
+          await handle.appendFile(text);
           await handle.datasync();
           dirty = false;
-        }
-        const text = encodeLine(line);
-        dirty = true;
-        await handle.appendFile(text);
-        await handle.datasync();
-        dirty = false;
-        end += Buffer.byteLength(text);
-      },
-      catch: io(sessionId, `Cannot write ${file}`),
-    }),
+          end += Buffer.byteLength(text);
+        },
+        catch: io(sessionId, `Cannot write ${file}`),
+      }),
     close: Effect.promise(() => handle.close()).pipe(Effect.ignore),
   };
 };
@@ -178,7 +181,11 @@ const writerFor = (handle: fs.FileHandle, file: string, sessionId: string, confi
 const syncDirectory = async (dir: string) => {
   try {
     const handle = await fs.open(dir, "r");
-    try { await handle.sync(); } finally { await handle.close(); }
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
   } catch {
     // Not supported here; the data itself is still synced.
   }

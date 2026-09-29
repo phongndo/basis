@@ -27,12 +27,13 @@ export interface Interactions {
 export const makeInteractions = (hub: () => Hub, graceMs: number): Interactions => {
   const pending = new Map<string, Pending>();
 
-  const lookup = (id: string): Effect.Effect<Pending, HostError> => Effect.suspend(() => {
-    const found = pending.get(id);
-    return found === undefined
-      ? Effect.fail(new HostError({ code: "NotFound", message: `No open interaction "${id}"; it was answered, dismissed, or withdrawn`, subject: id }))
-      : Effect.succeed(found);
-  });
+  const lookup = (id: string): Effect.Effect<Pending, HostError> =>
+    Effect.suspend(() => {
+      const found = pending.get(id);
+      return found === undefined
+        ? Effect.fail(new HostError({ code: "NotFound", message: `No open interaction "${id}"; it was answered, dismissed, or withdrawn`, subject: id }))
+        : Effect.succeed(found);
+    });
 
   const abandoned: Effect.Effect<never, InteractionError> = Effect.gen(function* () {
     while (true) {
@@ -54,31 +55,36 @@ export const makeInteractions = (hub: () => Hub, graceMs: number): Interactions 
 
   return {
     open: () => Array.from(pending.values(), (entry) => entry.request),
-    handle: (request, next) => Effect.gen(function* () {
-      if ((yield* hub().count) === 0) return yield* next(request);
-      const entry: Pending = { request, answer: yield* Deferred.make<InteractionAnswer, InteractionError>() };
-      pending.set(request.id, entry);
-      yield* hub().broadcast({ type: "interaction", request });
-      return yield* Deferred.await(entry.answer).pipe(
-        Effect.raceFirst(abandoned),
-        // Answered, dismissed, abandoned, or withdrawn by interrupting the asker: every client drops the dialog.
-        Effect.ensuring(Effect.suspend(() => {
-          pending.delete(request.id);
-          return hub().broadcast({ type: "interaction-closed", id: request.id });
-        })),
-      );
-    }),
-    answer: (id, answer) => Effect.gen(function* () {
-      const entry = yield* lookup(id);
-      const problem = mismatch(entry.request, answer);
-      if (problem !== undefined) return yield* new HostError({ code: "Mismatch", message: problem, subject: id });
-      pending.delete(id);
-      yield* Deferred.succeed(entry.answer, answer);
-    }),
-    dismiss: (id) => Effect.gen(function* () {
-      const entry = yield* lookup(id);
-      pending.delete(id);
-      yield* Deferred.fail(entry.answer, new InteractionError({ reason: "Dismissed", message: `"${entry.request.title}" was dismissed` }));
-    }),
+    handle: (request, next) =>
+      Effect.gen(function* () {
+        if ((yield* hub().count) === 0) return yield* next(request);
+        const entry: Pending = { request, answer: yield* Deferred.make<InteractionAnswer, InteractionError>() };
+        pending.set(request.id, entry);
+        yield* hub().broadcast({ type: "interaction", request });
+        return yield* Deferred.await(entry.answer).pipe(
+          Effect.raceFirst(abandoned),
+          // Answered, dismissed, abandoned, or withdrawn by interrupting the asker: every client drops the dialog.
+          Effect.ensuring(
+            Effect.suspend(() => {
+              pending.delete(request.id);
+              return hub().broadcast({ type: "interaction-closed", id: request.id });
+            }),
+          ),
+        );
+      }),
+    answer: (id, answer) =>
+      Effect.gen(function* () {
+        const entry = yield* lookup(id);
+        const problem = mismatch(entry.request, answer);
+        if (problem !== undefined) return yield* new HostError({ code: "Mismatch", message: problem, subject: id });
+        pending.delete(id);
+        yield* Deferred.succeed(entry.answer, answer);
+      }),
+    dismiss: (id) =>
+      Effect.gen(function* () {
+        const entry = yield* lookup(id);
+        pending.delete(id);
+        yield* Deferred.fail(entry.answer, new InteractionError({ reason: "Dismissed", message: `"${entry.request.title}" was dismissed` }));
+      }),
   };
 };

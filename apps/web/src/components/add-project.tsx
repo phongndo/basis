@@ -115,11 +115,21 @@ export function AddProjectDialog() {
   };
   const pick = (row: Row | undefined) => {
     if (busy()) return;
-    if (row === undefined) { if (value().trim() !== "") void open(value()); return; }
+    if (row === undefined) {
+      if (value().trim() !== "") void open(value());
+      return;
+    }
     switch (row.kind) {
-      case "recent": case "here": void open(row.path); return;
-      case "entry": void open(row.entry.path); return;
-      case "create": void create(row.path); return;
+      case "recent":
+      case "here":
+        void open(row.path);
+        return;
+      case "entry":
+        void open(row.entry.path);
+        return;
+      case "create":
+        void create(row.path);
+        return;
     }
   };
   const move = (delta: number) => {
@@ -132,13 +142,22 @@ export function AddProjectDialog() {
   const caretAtEnd = () => input.selectionStart === value().length && input.selectionEnd === value().length;
   const onKeyDown = (event: KeyboardEvent) => {
     const row = rows()[active()];
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
-    else if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
-    else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
-    else if ((event.key === "Tab" && !event.shiftKey) || (event.key === "ArrowRight" && caretAtEnd())) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      move(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      move(-1);
+    } else if ((event.key === "Tab" && !event.shiftKey) || (event.key === "ArrowRight" && caretAtEnd())) {
       const target = row?.kind === "entry" ? row.entry.path : row?.kind === "recent" ? row.path : undefined;
-      if (target !== undefined) { event.preventDefault(); go(target); }
-      else if (event.key === "Tab") event.preventDefault();
+      if (target !== undefined) {
+        event.preventDefault();
+        go(target);
+      } else if (event.key === "Tab") event.preventDefault();
     } else if (event.key === "Backspace" && value().endsWith("/") && caretAtEnd() && value().length > 1) {
       event.preventDefault();
       up();
@@ -165,13 +184,21 @@ export function AddProjectDialog() {
     input.focus();
     // Learn the host user's home, then start beside the host's project.
     let userHome: string | undefined;
-    try { userHome = (await workspaceApi().browse("~/")).parent; setHome(userHome); } catch { /* absolute paths still work */ }
+    try {
+      userHome = (await workspaceApi().browse("~/")).parent;
+      setHome(userHome);
+    } catch {
+      /* absolute paths still work */
+    }
     const cwd = state.info?.cwd;
     initial = cwd === undefined ? "~/" : withSlash(shorten(cwd.slice(0, cwd.lastIndexOf("/")) || "/", userHome));
     update(initial, true);
     input.setSelectionRange(initial.length, initial.length);
   });
-  onCleanup(() => { window.clearTimeout(debounce); previous?.focus?.(); });
+  onCleanup(() => {
+    window.clearTimeout(debounce);
+    previous?.focus?.();
+  });
 
   const section = (index: number, row: Row) => {
     const before = rows()[index - 1];
@@ -182,7 +209,12 @@ export function AddProjectDialog() {
 
   return (
     <Portal>
-      <div class="backdrop palette-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <div
+        class="backdrop palette-backdrop"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) close();
+        }}
+      >
         <div class="palette" role="dialog" aria-modal="true" aria-label="Add project" onKeyDown={onKeyDown}>
           <div class="palette-input">
             <FolderIcon />
@@ -200,19 +232,27 @@ export function AddProjectDialog() {
               spellcheck={false}
               onInput={(event) => update(event.currentTarget.value)}
             />
-            <Show when={loading() || busy()}><Spinner /></Show>
+            <Show when={loading() || busy()}>
+              <Spinner />
+            </Show>
           </div>
           <Show when={crumbs().length > 0}>
             <nav class="palette-crumbs" aria-label="Current folder">
               <For each={crumbs()}>
                 {(crumb, index) => (
                   <>
-                    <Show when={index() > 0}><span class="crumb-sep">/</span></Show>
-                    <button type="button" class="crumb" tabindex="-1" onClick={() => go(crumb.path)}>{crumb.label}</button>
+                    <Show when={index() > 0}>
+                      <span class="crumb-sep">/</span>
+                    </Show>
+                    <button type="button" class="crumb" tabindex="-1" onClick={() => go(crumb.path)}>
+                      {crumb.label}
+                    </button>
                   </>
                 )}
               </For>
-              <Show when={listing()?.truncated}><span class="crumb-note">Showing the first {listing()?.entries.length}</span></Show>
+              <Show when={listing()?.truncated}>
+                <span class="crumb-note">Showing the first {listing()?.entries.length}</span>
+              </Show>
             </nav>
           </Show>
           <div class="palette-list" id="add-project-list" role="listbox" ref={list}>
@@ -234,37 +274,58 @@ export function AddProjectDialog() {
                     {(() => {
                       switch (row.kind) {
                         case "recent":
-                          return <>
-                            <FolderIcon />
-                            <span class="palette-name">{baseName(row.path)}</span>
-                            <span class="palette-path">{shorten(row.path, home())}</span>
-                          </>;
+                          return (
+                            <>
+                              <FolderIcon />
+                              <span class="palette-name">{baseName(row.path)}</span>
+                              <span class="palette-path">{shorten(row.path, home())}</span>
+                            </>
+                          );
                         case "here":
-                          return <>
-                            <FolderIcon />
-                            <span class="palette-name">Open <span class="palette-mono">{shorten(row.path, home())}</span></span>
-                          </>;
+                          return (
+                            <>
+                              <FolderIcon />
+                              <span class="palette-name">
+                                Open <span class="palette-mono">{shorten(row.path, home())}</span>
+                              </span>
+                            </>
+                          );
                         case "create":
-                          return <>
-                            <FolderPlusIcon />
-                            <span class="palette-name">Create folder <span class="palette-mono">{shorten(row.path, home())}</span></span>
-                          </>;
+                          return (
+                            <>
+                              <FolderPlusIcon />
+                              <span class="palette-name">
+                                Create folder <span class="palette-mono">{shorten(row.path, home())}</span>
+                              </span>
+                            </>
+                          );
                         case "entry":
-                          return <>
-                            <Show when={row.entry.git} fallback={<FolderIcon />}><GitBranchIcon /></Show>
-                            <span class="palette-name"><Highlighted name={row.entry.name} matches={row.entry.matches} /></span>
-                            <Show when={row.entry.git}><span class="tag palette-tag">git</span></Show>
-                            <button
-                              type="button"
-                              class="icon-button palette-into"
-                              aria-label={`Show folders in ${row.entry.name}`}
-                              data-tip="Show folders inside"
-                              tabindex="-1"
-                              onClick={(event) => { event.stopPropagation(); go(row.entry.path); }}
-                            >
-                              <ChevronIcon />
-                            </button>
-                          </>;
+                          return (
+                            <>
+                              <Show when={row.entry.git} fallback={<FolderIcon />}>
+                                <GitBranchIcon />
+                              </Show>
+                              <span class="palette-name">
+                                <Highlighted name={row.entry.name} matches={row.entry.matches} />
+                              </span>
+                              <Show when={row.entry.git}>
+                                <span class="tag palette-tag">git</span>
+                              </Show>
+                              <button
+                                type="button"
+                                class="icon-button palette-into"
+                                aria-label={`Show folders in ${row.entry.name}`}
+                                data-tip="Show folders inside"
+                                tabindex="-1"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  go(row.entry.path);
+                                }}
+                              >
+                                <ChevronIcon />
+                              </button>
+                            </>
+                          );
                       }
                     })()}
                   </div>

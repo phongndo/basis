@@ -3,9 +3,7 @@ import { cleanupSessionResources, createModels } from "@earendil-works/pi-ai";
 import type { AuthCheck, AuthContext, Provider, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Events, Hooks, PluginContext, definePlugin } from "@basis/core";
-import {
-  Credentials, Interaction, InteractionError, Llm, LlmError, LlmRequestHook, Notice, parseModelRef,
-} from "@basis/contracts";
+import { Credentials, Interaction, InteractionError, Llm, LlmError, LlmRequestHook, Notice, parseModelRef } from "@basis/contracts";
 import type { AuthType, LlmRequest, NoticePayload, ProviderInfo, StreamEvent } from "@basis/contracts";
 import { authInteraction, credentialStore, runner, toNotice } from "./auth.ts";
 import { makeEventMapper, reasoningFor, toContext, toModelInfo } from "./convert.ts";
@@ -60,144 +58,179 @@ export function makeLlmPlugin(options: Options = {}) {
     config: Config,
     provides: [Llm],
     requires: [Credentials, Interaction],
-    layer: (config: Config) => Layer.scoped(Llm, Effect.gen(function* () {
-      const plugin = yield* PluginContext;
-      const hooks = yield* Hooks;
-      const events = yield* Events;
-      const credentials = yield* Credentials;
-      const interaction = yield* Interaction;
-      const run = runner(yield* Effect.runtime<never>());
+    layer: (config: Config) =>
+      Layer.scoped(
+        Llm,
+        Effect.gen(function* () {
+          const plugin = yield* PluginContext;
+          const hooks = yield* Hooks;
+          const events = yield* Events;
+          const credentials = yield* Credentials;
+          const interaction = yield* Interaction;
+          const run = runner(yield* Effect.runtime<never>());
 
-      const models = createModels({
-        credentials: credentialStore(credentials, run),
-        ...(options.authContext === undefined ? {} : { authContext: options.authContext }),
-      });
-      for (const provider of selectProviders((options.providers ?? builtinProviders)(), config)) {
-        models.setProvider(withoutAnthropicOAuth(provider));
-      }
-      for (const provider of config.providers ?? []) models.setProvider(customProvider(provider));
+          const models = createModels({
+            credentials: credentialStore(credentials, run),
+            ...(options.authContext === undefined ? {} : { authContext: options.authContext }),
+          });
+          for (const provider of selectProviders((options.providers ?? builtinProviders)(), config)) {
+            models.setProvider(withoutAnthropicOAuth(provider));
+          }
+          for (const provider of config.providers ?? []) models.setProvider(customProvider(provider));
 
-      // Pooled Codex websockets keep the event loop alive until released.
-      yield* Effect.addFinalizer(() => Effect.sync(() => {
-        try {
-          cleanupSessionResources();
-        } catch {
-          // Best effort: a socket that fails to close cannot hold the plugin open.
-        }
-      }));
-
-      /** Updates dynamic provider catalogs (Radius in pi-ai 0.87.1); failures keep the previous list. */
-      const refresh = (providers?: readonly string[]) =>
-        Effect.tryPromise((signal) => models.refresh({ signal, ...(providers === undefined ? {} : { providers }) })).pipe(
-          Effect.tap(({ errors }) => Effect.forEach(errors, ([id, error]) =>
-            Effect.logDebug(`llm: model refresh failed for ${id}: ${error.message}`))),
-        );
-      yield* plugin.background("refresh models", refresh());
-
-      const unknownModel = (ref: string) =>
-        new LlmError({ reason: "UnknownModel", message: `Unknown model: ${ref}. Model refs are <provider>/<model>.` });
-
-      const findModel = (ref: string) => {
-        const parsed = parseModelRef(ref);
-        return parsed === undefined ? undefined : models.getModel(parsed.provider, parsed.model);
-      };
-
-      const terminal = (request: LlmRequest) => Effect.gen(function* () {
-        const model = findModel(request.model);
-        const provider = model === undefined ? undefined : models.getProvider(model.provider);
-        if (model === undefined || provider === undefined) return yield* Effect.fail(unknownModel(request.model));
-        const reasoning = reasoningFor(model, request.thinking);
-        return Stream.asyncPush<StreamEvent>((emit) => Effect.acquireRelease(
-          Effect.sync(() => {
-            const controller = new AbortController();
-            const streamOptions: SimpleStreamOptions = {
-              signal: controller.signal,
-              ...(reasoning === undefined ? {} : { reasoning }),
-              ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
-              ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
-            };
-            const mapper = makeEventMapper(model, provider);
-            const send = (out: StreamEvent[]) => out.length > 0 && emit.array(out);
-            void (async () => {
+          // Pooled Codex websockets keep the event loop alive until released.
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
               try {
-                for await (const event of models.streamSimple(model, toContext(request), streamOptions)) {
-                  send(mapper.push(event));
-                  if (mapper.finished) break;
-                }
-                send(mapper.end());
-              } catch (error) {
-                send(mapper.end(error));
+                cleanupSessionResources();
+              } catch {
+                // Best effort: a socket that fails to close cannot hold the plugin open.
               }
-              emit.end();
-            })();
-            return controller;
-          }),
-          // Interrupting the consumer aborts the provider request.
-          (controller) => Effect.sync(() => controller.abort()),
-        ), { bufferSize: "unbounded" });
-      });
+            }),
+          );
 
-      return Llm.of({
-        providers: Effect.forEach(models.getProviders(), (provider) =>
-          Effect.tryPromise((signal) => models.checkAuth(provider.id, { signal })).pipe(
-            Effect.orElseSucceed(() => undefined),
-            Effect.map((check) => toProviderInfo(provider, check)),
-          ), { concurrency: "unbounded" }),
+          /** Updates dynamic provider catalogs (Radius in pi-ai 0.87.1); failures keep the previous list. */
+          const refresh = (providers?: readonly string[]) =>
+            Effect.tryPromise((signal) => models.refresh({ signal, ...(providers === undefined ? {} : { providers }) })).pipe(
+              Effect.tap(({ errors }) => Effect.forEach(errors, ([id, error]) => Effect.logDebug(`llm: model refresh failed for ${id}: ${error.message}`))),
+            );
+          yield* plugin.background("refresh models", refresh());
 
-        models: (query) => query?.available === true
-          ? Effect.forEach(models.getProviders(), (provider) =>
-            Effect.tryPromise((signal) => models.getAvailable(provider.id, { signal })).pipe(Effect.orElseSucceed(() => [])),
-          { concurrency: "unbounded" }).pipe(Effect.map((lists) => lists.flat().map(toModelInfo)))
-          : Effect.sync(() => models.getModels().map(toModelInfo)),
+          const unknownModel = (ref: string) => new LlmError({ reason: "UnknownModel", message: `Unknown model: ${ref}. Model refs are <provider>/<model>.` });
 
-        model: (ref) => {
-          const model = findModel(ref);
-          return model === undefined ? Effect.fail(unknownModel(ref)) : Effect.succeed(toModelInfo(model));
-        },
+          const findModel = (ref: string) => {
+            const parsed = parseModelRef(ref);
+            return parsed === undefined ? undefined : models.getModel(parsed.provider, parsed.model);
+          };
 
-        stream: (request) => Stream.unwrap(hooks.invoke(LlmRequestHook, request, terminal).pipe(
-          // Hook misuse and a closing core are defects here: the contract's error channel is LlmError.
-          Effect.catchAll((error) => error._tag === "LlmError" ? Effect.fail(error) : Effect.die(error)),
-        )),
+          const terminal = (request: LlmRequest) =>
+            Effect.gen(function* () {
+              const model = findModel(request.model);
+              const provider = model === undefined ? undefined : models.getProvider(model.provider);
+              if (model === undefined || provider === undefined) return yield* Effect.fail(unknownModel(request.model));
+              const reasoning = reasoningFor(model, request.thinking);
+              return Stream.asyncPush<StreamEvent>(
+                (emit) =>
+                  Effect.acquireRelease(
+                    Effect.sync(() => {
+                      const controller = new AbortController();
+                      const streamOptions: SimpleStreamOptions = {
+                        signal: controller.signal,
+                        ...(reasoning === undefined ? {} : { reasoning }),
+                        ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
+                        ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+                      };
+                      const mapper = makeEventMapper(model, provider);
+                      const send = (out: StreamEvent[]) => out.length > 0 && emit.array(out);
+                      void (async () => {
+                        try {
+                          for await (const event of models.streamSimple(model, toContext(request), streamOptions)) {
+                            send(mapper.push(event));
+                            if (mapper.finished) break;
+                          }
+                          send(mapper.end());
+                        } catch (error) {
+                          send(mapper.end(error));
+                        }
+                        emit.end();
+                      })();
+                      return controller;
+                    }),
+                    // Interrupting the consumer aborts the provider request.
+                    (controller) => Effect.sync(() => controller.abort()),
+                  ),
+                { bufferSize: "unbounded" },
+              );
+            });
 
-        login: (providerId: string, type: AuthType) => Effect.gen(function* () {
-          const provider = models.getProvider(providerId);
-          if (provider === undefined) {
-            return yield* Effect.fail(new LlmError({ reason: "UnknownProvider", message: `Unknown provider: ${providerId}` }));
-          }
-          const method = type === "oauth" ? provider.auth.oauth : provider.auth.apiKey;
-          if (method?.login === undefined) {
-            const kind = type === "oauth" ? "OAuth" : "API key";
-            return yield* Effect.fail(new LlmError({ reason: "LoginFailed", message: `${provider.name} does not support ${kind} login` }));
-          }
-          // Provider flows notify synchronously; a queue keeps notices ordered, and
-          // `undefined` ends it so every notice is published before login returns.
-          const notices = yield* Queue.unbounded<NoticePayload | undefined>();
-          const publishAll: Effect.Effect<void> = Queue.take(notices).pipe(Effect.flatMap((notice) =>
-            notice === undefined ? Effect.void : Effect.zipRight(events.publish(Notice, notice), Effect.suspend(() => publishAll))));
-          const publisher = yield* Effect.fork(publishAll);
-          const flush = Effect.zipRight(Queue.offer(notices, undefined), Fiber.join(publisher));
-          yield* Effect.tryPromise({
-            try: (signal) => models.login(providerId, type, authInteraction(interaction, run, signal, (event) => {
-              Queue.unsafeOffer(notices, toNotice(event, provider.name));
-            })),
-            catch: (error) => loginError(error, provider),
-          }).pipe(Effect.ensuring(flush));
-          yield* plugin.background(`refresh ${providerId}`, refresh([providerId])).pipe(Effect.ignore);
-          // Every client learns of it, including one that reloaded while the login ran.
-          yield* events.publish(Notice, { level: "info", source: "llm", message: `Logged in to ${provider.name}` });
+          return Llm.of({
+            providers: Effect.forEach(
+              models.getProviders(),
+              (provider) =>
+                Effect.tryPromise((signal) => models.checkAuth(provider.id, { signal })).pipe(
+                  Effect.orElseSucceed(() => undefined),
+                  Effect.map((check) => toProviderInfo(provider, check)),
+                ),
+              { concurrency: "unbounded" },
+            ),
+
+            models: (query) =>
+              query?.available === true
+                ? Effect.forEach(
+                    models.getProviders(),
+                    (provider) => Effect.tryPromise((signal) => models.getAvailable(provider.id, { signal })).pipe(Effect.orElseSucceed(() => [])),
+                    { concurrency: "unbounded" },
+                  ).pipe(Effect.map((lists) => lists.flat().map(toModelInfo)))
+                : Effect.sync(() => models.getModels().map(toModelInfo)),
+
+            model: (ref) => {
+              const model = findModel(ref);
+              return model === undefined ? Effect.fail(unknownModel(ref)) : Effect.succeed(toModelInfo(model));
+            },
+
+            stream: (request) =>
+              Stream.unwrap(
+                hooks.invoke(LlmRequestHook, request, terminal).pipe(
+                  // Hook misuse and a closing core are defects here: the contract's error channel is LlmError.
+                  Effect.catchAll((error) => (error._tag === "LlmError" ? Effect.fail(error) : Effect.die(error))),
+                ),
+              ),
+
+            login: (providerId: string, type: AuthType) =>
+              Effect.gen(function* () {
+                const provider = models.getProvider(providerId);
+                if (provider === undefined) {
+                  return yield* Effect.fail(new LlmError({ reason: "UnknownProvider", message: `Unknown provider: ${providerId}` }));
+                }
+                const method = type === "oauth" ? provider.auth.oauth : provider.auth.apiKey;
+                if (method?.login === undefined) {
+                  const kind = type === "oauth" ? "OAuth" : "API key";
+                  return yield* Effect.fail(new LlmError({ reason: "LoginFailed", message: `${provider.name} does not support ${kind} login` }));
+                }
+                // Provider flows notify synchronously; a queue keeps notices ordered, and
+                // `undefined` ends it so every notice is published before login returns.
+                const notices = yield* Queue.unbounded<NoticePayload | undefined>();
+                const publishAll: Effect.Effect<void> = Queue.take(notices).pipe(
+                  Effect.flatMap((notice) =>
+                    notice === undefined
+                      ? Effect.void
+                      : Effect.zipRight(
+                          events.publish(Notice, notice),
+                          Effect.suspend(() => publishAll),
+                        ),
+                  ),
+                );
+                const publisher = yield* Effect.fork(publishAll);
+                const flush = Effect.zipRight(Queue.offer(notices, undefined), Fiber.join(publisher));
+                yield* Effect.tryPromise({
+                  try: (signal) =>
+                    models.login(
+                      providerId,
+                      type,
+                      authInteraction(interaction, run, signal, (event) => {
+                        Queue.unsafeOffer(notices, toNotice(event, provider.name));
+                      }),
+                    ),
+                  catch: (error) => loginError(error, provider),
+                }).pipe(Effect.ensuring(flush));
+                yield* plugin.background(`refresh ${providerId}`, refresh([providerId])).pipe(Effect.ignore);
+                // Every client learns of it, including one that reloaded while the login ran.
+                yield* events.publish(Notice, { level: "info", source: "llm", message: `Logged in to ${provider.name}` });
+              }),
+
+            logout: (providerId) =>
+              Effect.tryPromise({
+                try: (signal) => models.logout(providerId, { signal }),
+                catch: (error) =>
+                  new LlmError({
+                    reason: "LoginFailed",
+                    message: `Could not remove the ${providerId} credential: ${error instanceof Error ? error.message : String(error)}`,
+                    cause: error,
+                  }),
+              }),
+          });
         }),
-
-        logout: (providerId) => Effect.tryPromise({
-          try: (signal) => models.logout(providerId, { signal }),
-          catch: (error) => new LlmError({
-            reason: "LoginFailed",
-            message: `Could not remove the ${providerId} credential: ${error instanceof Error ? error.message : String(error)}`,
-            cause: error,
-          }),
-        }),
-      });
-    })),
+      ),
   });
 }
 

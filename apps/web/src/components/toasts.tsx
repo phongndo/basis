@@ -11,7 +11,12 @@ function CodeBox(props: { code: string }) {
       <code>{props.code}</code>
       <button
         class="button small"
-        onClick={() => void copyText(props.code).then((ok) => { setCopied(ok); setTimeout(() => setCopied(false), 1500); })}
+        onClick={() =>
+          void copyText(props.code).then((ok) => {
+            setCopied(ok);
+            setTimeout(() => setCopied(false), 1500);
+          })
+        }
       >
         <CopyIcon /> {copied() ? "Copied" : "Copy"}
       </button>
@@ -23,12 +28,18 @@ function ToastView(props: { toast: Toast }) {
   return (
     <div class={`toast toast-${props.toast.level}`} role={props.toast.level === "error" ? "alert" : "status"}>
       <div class="toast-main">
-        <Show when={props.toast.level !== "info"}><AlertIcon /></Show>
+        <Show when={props.toast.level !== "info"}>
+          <AlertIcon />
+        </Show>
         <div class="toast-text">
           <span>{props.toast.message}</span>
-          <Show when={props.toast.source && props.toast.source !== "client"}><span class="toast-source">{props.toast.source}</span></Show>
+          <Show when={props.toast.source && props.toast.source !== "client"}>
+            <span class="toast-source">{props.toast.source}</span>
+          </Show>
         </div>
-        <button class="icon-button" aria-label="Dismiss" onClick={() => dismissToast(props.toast.id)}><XIcon /></button>
+        <button class="icon-button" aria-label="Dismiss" onClick={() => dismissToast(props.toast.id)}>
+          <XIcon />
+        </button>
       </div>
       <Show when={props.toast.code}>{(code) => <CodeBox code={code()} />}</Show>
       <Show when={props.toast.links?.length}>

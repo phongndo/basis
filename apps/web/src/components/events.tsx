@@ -6,15 +6,24 @@ import { Dialog } from "./dialog.tsx";
 /** One line per event, as `basis events` prints them. */
 const describe = (event: HostEvent): string => {
   switch (event.type) {
-    case "notice": return `[${event.notice.level}]${event.notice.source === undefined ? "" : ` ${event.notice.source}:`} ${event.notice.message}`;
-    case "delta": return `${event.sessionId} delta ${event.event.type}${event.event.type === "text-delta" ? ` ${JSON.stringify(event.event.delta)}` : ""}`;
-    case "session-appended": return `${event.sessionId} appended #${event.event.seq} ${event.event.data.type}`;
-    case "session-changed": return `${event.info.id} changed${event.info.title === undefined ? "" : ` "${event.info.title}"`}`;
-    case "turn-started": return `${event.sessionId} turn started ${event.turnId}`;
-    case "turn-ended": return `${event.sessionId} turn ended ${event.turnId} (${event.reason})`;
-    case "interaction": return `question ${event.request.id} (${event.request.type}): ${event.request.title}`;
-    case "interaction-closed": return `question ${event.id} closed`;
-    case "plugins-changed": return `plugins: ${event.plugins.map((plugin) => `${plugin.id}=${plugin.state}`).join(" ")}`;
+    case "notice":
+      return `[${event.notice.level}]${event.notice.source === undefined ? "" : ` ${event.notice.source}:`} ${event.notice.message}`;
+    case "delta":
+      return `${event.sessionId} delta ${event.event.type}${event.event.type === "text-delta" ? ` ${JSON.stringify(event.event.delta)}` : ""}`;
+    case "session-appended":
+      return `${event.sessionId} appended #${event.event.seq} ${event.event.data.type}`;
+    case "session-changed":
+      return `${event.info.id} changed${event.info.title === undefined ? "" : ` "${event.info.title}"`}`;
+    case "turn-started":
+      return `${event.sessionId} turn started ${event.turnId}`;
+    case "turn-ended":
+      return `${event.sessionId} turn ended ${event.turnId} (${event.reason})`;
+    case "interaction":
+      return `question ${event.request.id} (${event.request.type}): ${event.request.title}`;
+    case "interaction-closed":
+      return `question ${event.id} closed`;
+    case "plugins-changed":
+      return `plugins: ${event.plugins.map((plugin) => `${plugin.id}=${plugin.state}`).join(" ")}`;
   }
 };
 
@@ -34,15 +43,31 @@ export function EventsDialog() {
       title="Event log"
       onClose={() => openDialog("plugins")}
       class="events-dialog"
-      footer={<>
-        <span class="muted small">{shown().length} of {eventLog().length} events since this page loaded</span>
-        <span class="spacer" />
-        <button class="button" onClick={clearEventLog}>Clear</button>
-      </>}
+      footer={
+        <>
+          <span class="muted small">
+            {shown().length} of {eventLog().length} events since this page loaded
+          </span>
+          <span class="spacer" />
+          <button class="button" onClick={clearEventLog}>
+            Clear
+          </button>
+        </>
+      }
     >
       <div class="events-bar">
-        <input class="field" placeholder="Filter (type, session, text)" aria-label="Filter events" value={query()} onInput={(event) => setQuery(event.currentTarget.value)} spellcheck={false} />
-        <label class="events-check"><input type="checkbox" checked={deltas()} onChange={(event) => setDeltas(event.currentTarget.checked)} />Stream deltas</label>
+        <input
+          class="field"
+          placeholder="Filter (type, session, text)"
+          aria-label="Filter events"
+          value={query()}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          spellcheck={false}
+        />
+        <label class="events-check">
+          <input type="checkbox" checked={deltas()} onChange={(event) => setDeltas(event.currentTarget.checked)} />
+          Stream deltas
+        </label>
       </div>
       <ol class="events-list">
         <For each={shown()}>
@@ -53,12 +78,16 @@ export function EventsDialog() {
                 <span class="events-type">{entry.event.type}</span>
                 <span class="events-text">{describe(entry.event)}</span>
               </button>
-              <Show when={open() === entry.seq}><pre class="events-json">{JSON.stringify(entry.event, null, 2)}</pre></Show>
+              <Show when={open() === entry.seq}>
+                <pre class="events-json">{JSON.stringify(entry.event, null, 2)}</pre>
+              </Show>
             </li>
           )}
         </For>
       </ol>
-      <Show when={shown().length === 0}><p class="muted small">No events yet. Send a prompt, reload config, or restart a plugin.</p></Show>
+      <Show when={shown().length === 0}>
+        <p class="muted small">No events yet. Send a prompt, reload config, or restart a plugin.</p>
+      </Show>
     </Dialog>
   );
 }

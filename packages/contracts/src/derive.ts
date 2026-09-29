@@ -34,11 +34,16 @@ export function deriveMessages(branch: readonly SessionEvent[]): Message[] {
     summary = { text: data.summary, at: branch[i]!.at };
     break;
   }
-  const messages: Message[] = summary === undefined ? [] : [{
-    role: "user",
-    content: [{ type: "text", text: `<summary>\nThe conversation so far, summarized:\n\n${summary.text}\n</summary>` }],
-    timestamp: summary.at,
-  }];
+  const messages: Message[] =
+    summary === undefined
+      ? []
+      : [
+          {
+            role: "user",
+            content: [{ type: "text", text: `<summary>\nThe conversation so far, summarized:\n\n${summary.text}\n</summary>` }],
+            timestamp: summary.at,
+          },
+        ];
   for (const event of branch.slice(start)) {
     if (event.data.type === "message") messages.push(event.data.message);
   }

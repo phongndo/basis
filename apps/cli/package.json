@@ -2,10 +2,10 @@
   "name": "@basis/cli",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "bin": {
     "basis": "./src/main.ts"
   },
+  "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
