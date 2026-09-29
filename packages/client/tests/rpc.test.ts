@@ -1,0 +1,45 @@
+import { describe, expect, test } from "vitest";
+import { Effect, Exit, Fiber, Layer, Option, Stream, TestClock, TestContext } from "effect";
+import { Socket } from "@effect/platform";
+import { makeHostRpc } from "../src/rpc.ts";
+
+/** A socket that opens and then goes silent, as a connection does across laptop sleep or a network change. */
+class SilentWebSocket extends EventTarget {
+  readyState = 0;
+  readonly sent: string[] = [];
+  constructor() {
+    super();
+    setTimeout(() => {
+      this.readyState = 1;
+      this.dispatchEvent(new Event("open"));
+    }, 0);
+  }
+  send(data: string) { this.sent.push(data); }
+  close() { this.readyState = 3; }
+}
+
+const tick = Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 10)));
+
+describe("makeHostRpc", () => {
+  test("a stalled connection fails the event subscription so the caller can reconnect and resync", async () => {
+    const sockets: SilentWebSocket[] = [];
+    const constructor = Layer.succeed(Socket.WebSocketConstructor, () => {
+      const socket = new SilentWebSocket();
+      sockets.push(socket);
+      return socket as unknown as globalThis.WebSocket;
+    });
+    const exit = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      const rpc = yield* makeHostRpc("ws://host.invalid/rpc", constructor);
+      const events = yield* Effect.fork(Stream.runDrain(rpc.Host.Events()));
+      yield* tick;
+      expect(sockets[0]?.sent.some((line) => line.includes("Host.Events"))).toBe(true);
+      // One ping goes unanswered; the next ping interval declares the connection dead.
+      for (let i = 0; i < 3; i++) {
+        yield* TestClock.adjust("10 seconds");
+        yield* tick;
+      }
+      return yield* Fiber.poll(events);
+    }).pipe(Effect.provide(TestContext.TestContext))));
+    expect(Option.isSome(exit) && Exit.isFailure(exit.value)).toBe(true);
+  });
+});

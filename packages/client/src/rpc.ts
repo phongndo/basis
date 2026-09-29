@@ -24,13 +24,16 @@ export const rpcUrl = (base: string, token: string | undefined): string => {
  * Connects for the lifetime of the scope over one multiplexed WebSocket with
  * JSON serialization. The socket reconnects by itself; calls in flight when it
  * drops fail with `RpcClientError`, and calls made while it is down fail fast.
+ * Transient errors are not retried silently: a ping timeout (a connection
+ * that died across sleep or a network change) must fail the `Host.Events`
+ * subscription, or it would wait forever on a stream the server has dropped.
  */
 export const makeHostRpc = (
   url: string,
   webSocket: Layer.Layer<Socket.WebSocketConstructor> = Socket.layerWebSocketConstructorGlobal,
 ): Effect.Effect<HostRpcClient, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const protocol = RpcClient.layerProtocolSocket({ retryTransientErrors: true }).pipe(
+    const protocol = RpcClient.layerProtocolSocket({ retryTransientErrors: false }).pipe(
       Layer.provide(Socket.layerWebSocket(url)),
       Layer.provide(webSocket),
       Layer.provide(RpcSerialization.layerJson),
