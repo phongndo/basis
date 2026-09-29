@@ -216,9 +216,14 @@ export interface InteractionsService {
   readonly open: Accessor<readonly InteractionRequest[]>;
   readonly answer: (id: string, answer: InteractionAnswer) => void;
   readonly dismiss: (id: string) => void;
-  /** Shows the questions somewhere else (the palette does while open): the question dialog stays hidden until released. */
-  readonly claim: () => () => void;
-  readonly claimed: Accessor<boolean>;
+  /**
+   * Shows questions somewhere else: all of them (the palette does while open)
+   * or those `which` picks (the Providers page, its logins' questions). The
+   * question dialog leaves them alone until released.
+   */
+  readonly claim: (which?: (request: InteractionRequest) => boolean) => () => void;
+  /** Some view shows this question itself. */
+  readonly claimed: (request: InteractionRequest) => boolean;
 }
 export class Interactions extends Context.Tag("lemma-ui/Interactions")<Interactions, InteractionsService>() {}
 

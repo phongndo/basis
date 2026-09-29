@@ -11,7 +11,7 @@ export default defineUiPlugin({
   setup: ({ client, notify }, plugin) => {
     const host = client.host;
     const [open, setOpen] = createSignal<readonly InteractionRequest[]>([]);
-    const [claims, setClaims] = createSignal(0);
+    const [claims, setClaims] = createSignal<readonly ((request: InteractionRequest) => boolean)[]>([]);
     /** Ids closed while a list is in flight, so its reply cannot bring them back. */
     let closedSince: Set<string> | undefined;
     const close = (id: string) => {
@@ -55,16 +55,13 @@ export default defineUiPlugin({
           close(id);
           host.interaction.dismiss(id).catch((error) => notify.report(error));
         },
-        claim: () => {
-          setClaims((count) => count + 1);
-          let released = false;
-          return () => {
-            if (released) return;
-            released = true;
-            setClaims((count) => count - 1);
-          };
+        claim: (which: (request: InteractionRequest) => boolean = () => true) => {
+          // A fresh function per claim, so releasing removes this one only.
+          const claim = (request: InteractionRequest) => which(request);
+          setClaims((all) => [...all, claim]);
+          return () => setClaims((all) => all.filter((other) => other !== claim));
         },
-        claimed: () => claims() > 0,
+        claimed: (request: InteractionRequest) => claims().some((claim) => claim(request)),
       },
     };
   },

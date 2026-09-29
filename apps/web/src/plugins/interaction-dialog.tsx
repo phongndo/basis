@@ -101,9 +101,9 @@ function Select(props: { interactions: InteractionsService; request: Of<"select"
   );
 }
 
-/** The oldest open question from the host; answering or dismissing reveals the next. A view that claims the questions (the palette) shows them itself. */
+/** The oldest open question from the host; answering or dismissing reveals the next. A view that claims questions (the palette, the Providers page) shows those itself. */
 function InteractionModal(props: { interactions: InteractionsService }) {
-  const current = () => (props.interactions.claimed() ? undefined : props.interactions.open()[0]);
+  const current = () => props.interactions.open().find((request) => !props.interactions.claimed(request));
   return (
     <Show when={current()} keyed>
       {(request) => (
