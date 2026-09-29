@@ -3,8 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import { join, relative, resolve, sep } from "node:path";
-import { Effect, Layer } from "effect";
-import type { Scope } from "effect";
+import { Effect, ExecutionStrategy, Layer, Scope } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import type { HttpApp, HttpServer, HttpServerError } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -64,6 +63,27 @@ const serveStatic = (root: string, pathname: string) => Effect.gen(function* () 
  */
 export const startServer = (options: ServerOptions, handlers: HostHandlers): Effect.Effect<HttpServer.TcpAddress, HttpServerError.ServeError, Scope.Scope> =>
   Effect.gen(function* () {
+    // Upgraded WebSockets are not closed by `server.close`, and the platform's
+    // WebSocket server (created lazily at the first upgrade) waits in its own
+    // finalizer until every client has gone. So the listener and its sockets
+    // live in an inner scope, and this outer finalizer, which runs before the
+    // inner scope closes, stops listening and destroys every socket first.
+    const sockets = new Set<Socket>();
+    const node = createServer();
+    node.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    const inner = yield* Scope.fork(yield* Effect.scope, ExecutionStrategy.sequential);
+    yield* Effect.addFinalizer(() => Effect.sync(() => {
+      node.close();
+      for (const socket of sockets) socket.destroy();
+    }));
+    return yield* serve(options, handlers, node).pipe(Scope.extend(inner));
+  });
+
+const serve = (options: ServerOptions, handlers: HostHandlers, node: ReturnType<typeof createServer>) =>
+  Effect.gen(function* () {
     const handlerContext = yield* Layer.build(handlers);
     const websocket = yield* RpcServer.toHttpAppWebsocket(HostRpcs).pipe(Effect.provide(RpcSerialization.layerJson), Effect.provide(handlerContext));
     const http = yield* RpcServer.toHttpApp(HostRpcs).pipe(Effect.provide(RpcSerialization.layerNdjson), Effect.provide(handlerContext));
@@ -89,18 +109,7 @@ export const startServer = (options: ServerOptions, handlers: HostHandlers): Eff
       return yield* serveStatic(root, path).pipe(Effect.provide(platform));
     });
 
-    // Upgraded WebSockets are not closed by `server.close`, so shutdown destroys every socket itself.
-    const sockets = new Set<Socket>();
-    const node = createServer();
-    node.on("connection", (socket) => {
-      sockets.add(socket);
-      socket.once("close", () => sockets.delete(socket));
-    });
     const server = yield* NodeHttpServer.make(() => node, { host: options.host, port: options.port });
-    yield* Effect.addFinalizer(() => Effect.sync(() => {
-      node.close();
-      for (const socket of sockets) socket.destroy();
-    }));
     yield* server.serve(app);
     const address = server.address;
     if (address._tag !== "TcpAddress") return yield* Effect.dieMessage("Expected a TCP listener");

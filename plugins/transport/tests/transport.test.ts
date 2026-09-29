@@ -5,8 +5,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { Duration, Effect, Exit, Fiber, Layer, Schedule } from "effect";
-import type { Mailbox, Scope } from "effect";
+import { Duration, Effect, Exit, Fiber, Layer, Schedule, Scope, Stream } from "effect";
+import type { Mailbox } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
@@ -359,6 +359,26 @@ describe("transport", () => {
     });
     } finally {
       await rm(home, { recursive: true, force: true });
+    }
+  });
+  test("stops promptly and frees the port while a client is still connected", async () => {
+    // The client outlives the host, as a browser tab does when a reload restarts the transport.
+    const clientScope = await Effect.runPromise(Scope.make());
+    try {
+      const started = Date.now();
+      const url = await withHost((host) => Effect.gen(function* () {
+        const client = yield* Scope.extend(host.connect("websocket"), clientScope);
+        yield* Effect.forkIn(Stream.runDrain(client.Host.Events()), clientScope);
+        yield* client.Host.Info();
+        return host.url;
+      }));
+      expect(Date.now() - started).toBeLessThan(5000);
+      const port = Number(new URL(url).port);
+      await new Promise<void>((resolve, reject) => {
+        const server = createServer().once("error", reject).listen(port, "127.0.0.1", () => server.close(() => resolve()));
+      });
+    } finally {
+      await Effect.runPromise(Scope.close(clientScope, Exit.void));
     }
   });
 });
