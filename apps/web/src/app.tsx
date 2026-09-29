@@ -1,6 +1,5 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { AddProjectDialog } from "./components/add-project.tsx";
-import { ConnectionBanner } from "./components/connection.tsx";
 import { focusPrompt } from "./components/composer.tsx";
 import { InteractionModal } from "./components/interaction.tsx";
 import { EventsDialog } from "./components/events.tsx";
@@ -132,7 +131,6 @@ export function App() {
         <div class="scrim" onClick={() => setDrawer(false)} />
       </Show>
       <div class="main-col">
-        <ConnectionBanner />
         <SessionView onToggleSidebar={toggleSidebar} />
       </div>
       <Show when={state.dialog === "palette"}>

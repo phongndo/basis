@@ -19,6 +19,7 @@ import {
   toggleFavorite,
 } from "../store.ts";
 import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, KeyIcon, SearchIcon, SendIcon, StarIcon, StopIcon, XIcon } from "./icons.tsx";
+import { ConnectionNotice } from "./connection.tsx";
 import { Popover } from "./popover.tsx";
 import type { Placement } from "./popover.tsx";
 import { WorkspaceBar } from "./workspace-bar.tsx";
@@ -159,6 +160,7 @@ export function Composer() {
 
   return (
     <div class="composer-wrap">
+      <ConnectionNotice />
       <Show when={state.providersLoaded && !hasConfiguredProvider()}>
         <div class="callout callout-info composer-callout">
           <KeyIcon />

@@ -333,6 +333,33 @@ textarea:focus-visible {
 .callout-info .button {
   margin-left: auto;
 }
+.callout-warn {
+  background: var(--warn-soft);
+  color: var(--text);
+}
+.callout-warn > .icon {
+  color: var(--warn);
+}
+.callout-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.callout-detail {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.callout .connection {
+  margin-top: 2px;
+}
+.callout .icon-button {
+  width: 22px;
+  height: 22px;
+  margin: -1px -4px -1px 0;
+}
 
 /* ---------------------------------------------------------------- layout */
 .app {
@@ -585,25 +612,6 @@ textarea:focus-visible {
   50% {
     opacity: 0.35;
   }
-}
-
-.banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 6px 12px;
-  background: var(--warn-soft);
-  color: var(--text);
-  font-size: 12.5px;
-  border-bottom: 1px solid var(--border);
-}
-.banner-strong {
-  padding: 10px 12px;
-}
-.banner code {
-  font-size: 12px;
 }
 
 /* ---------------------------------------------------------------- main */

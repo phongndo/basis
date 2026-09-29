@@ -1,5 +1,7 @@
 import { Show, createSignal } from "solid-js";
 import { state } from "../store.ts";
+import { AlertIcon, CheckIcon, CopyIcon } from "./icons.tsx";
+import { copyText } from "./markdown.tsx";
 
 const [now, setNow] = createSignal(Date.now());
 const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -28,26 +30,39 @@ export function ConnectionBadge() {
   );
 }
 
-/** Shown over the app until the first connection succeeds, and as a strip while reconnecting. */
-export function ConnectionBanner() {
+/** Sits above the composer while the host is unreachable, since nothing can be sent until it's back. */
+export function ConnectionNotice() {
   const status = () => state.status;
+  const unreachable = () => status().state === "connecting" && status().attempts >= 2;
+  const [copied, setCopied] = createSignal(false);
+  const copy = (error: string) =>
+    void copyText(`Can't reach the host: ${error}`).then((ok) => {
+      setCopied(ok);
+      setTimeout(() => setCopied(false), 1500);
+    });
   return (
-    <>
-      <Show when={status().state === "reconnecting"}>
-        <div class="banner" role="status">
-          Connection to the host lost. <ConnectionBadge />
+    <Show when={status().state === "reconnecting" || unreachable()}>
+      <div class="callout callout-warn composer-callout" role={unreachable() ? "alert" : "status"}>
+        <AlertIcon />
+        <div class="callout-text">
+          <span>{unreachable() ? "Can't reach the host." : "Connection to the host lost."}</span>
+          <Show when={unreachable()}>
+            <span class="muted">
+              Is it running? Open the link it printed — the page needs its <code>?token=</code>.
+            </span>
+          </Show>
+          <Show when={status().error}>{(error) => <code class="callout-detail">{error()}</code>}</Show>
         </div>
-      </Show>
-      <Show when={status().state === "connecting" && status().attempts >= 2}>
-        <div class="banner banner-strong" role="alert">
-          <span>Can't reach the host{status().error ? ` (${status().error})` : ""}.</span>
-          <span class="muted">
-            Is it running? Open the link it printed — the page needs its <code>?token=</code>.
-          </span>
-          <ConnectionBadge />
-        </div>
-      </Show>
-    </>
+        <ConnectionBadge />
+        <Show when={status().error}>
+          {(error) => (
+            <button class="icon-button" aria-label="Copy error" data-tip={copied() ? "Copied" : "Copy error"} onClick={() => copy(error())}>
+              {copied() ? <CheckIcon /> : <CopyIcon />}
+            </button>
+          )}
+        </Show>
+      </div>
+    </Show>
   );
 }
 
