@@ -1,0 +1,293 @@
+import { readFile } from "node:fs/promises";
+import { extname, resolve } from "node:path";
+import { Deferred, Duration, Effect, Fiber, Stream } from "effect";
+import { branchOf, contentText, ThinkingLevel, trajectory } from "@basis/contracts";
+import type { HostEvent, ImageContent, InteractionAnswer, InteractionRequest, PromptContent, TextContent, ThinkingLevel as Thinking, TurnOptions } from "@basis/contracts";
+import type { HostRpcClient } from "@basis/client";
+import { CliError, ExitCode, usage } from "./command.ts";
+import type { Command, Connection, Io, Options, Output } from "./command.ts";
+import { formatModels, formatProviders, formatQuestions, formatTurnResult } from "./format.ts";
+
+/**
+ * Commands that act on the host and, with `--follow`, watch it: they
+ * subscribe to `Host.Events` over a WebSocket, as the web app does, so they
+ * see streamed output and can answer the questions the host asks.
+ */
+
+// ------------------------------------------------------------------ questions
+
+const policyOf = (io: Io, options: Options) => options.questions ?? (io.ask === undefined ? "ignore" : "ask");
+
+/** The answer a typed value means for this question, or an error message. */
+export const toAnswer = (request: InteractionRequest, raw: string): InteractionAnswer | string => {
+  switch (request.type) {
+    case "confirm": {
+      if (/^(y|yes|true|1)$/i.test(raw.trim())) return { type: "confirm", value: true };
+      if (/^(n|no|false|0)$/i.test(raw.trim())) return { type: "confirm", value: false };
+      return `Answer yes or no to "${request.title}"`;
+    }
+    case "ask": return { type: "ask", value: raw };
+    case "select": {
+      const trimmed = raw.trim();
+      const option = request.options.find((candidate) => candidate.value === trimmed)
+        ?? request.options.find((candidate) => candidate.label.toLowerCase() === trimmed.toLowerCase())
+        ?? (/^\d+$/.test(trimmed) ? request.options[Number(trimmed) - 1] : undefined);
+      return option === undefined ? `Choose one of: ${request.options.map((candidate, i) => `${i + 1}. ${candidate.value}`).join(", ")}` : { type: "select", value: option.value };
+    }
+  }
+};
+
+const promptText = (request: InteractionRequest): string => {
+  switch (request.type) {
+    case "confirm": return `${request.title}${request.detail === undefined ? "" : `\n${request.detail}`} [y/n] `;
+    case "ask": return `${request.title}${request.placeholder === undefined ? "" : ` (${request.placeholder})`}: `;
+    case "select": return `${request.title}\n${request.options.map((option, i) => `  ${i + 1}. ${option.label}${option.description === undefined ? "" : ` — ${option.description}`}`).join("\n")}\n> `;
+  }
+};
+
+/**
+ * Handles a question per the policy: the next `--answer`, then the terminal
+ * (`ask`), `dismiss`, or `ignore` (leave it to another client, such as an
+ * open web app, and say how to answer it from the CLI).
+ */
+const questionHandler = (rpc: HostRpcClient, io: Io, options: Options) => {
+  const answers = [...options.answers];
+  const seen = new Set<string>();
+  return (request: InteractionRequest) => Effect.gen(function* () {
+    if (seen.has(request.id)) return;
+    seen.add(request.id);
+    const policy = policyOf(io, options);
+    const next = answers.shift();
+    if (next === undefined && policy === "dismiss") {
+      yield* rpc.Interaction.Dismiss({ id: request.id }).pipe(Effect.ignore);
+      io.err(`basis: dismissed question "${request.title}"`);
+      return;
+    }
+    if (next === undefined && (policy === "ignore" || io.ask === undefined)) {
+      io.err(`basis: the host asks "${request.title}" (${request.type}); answer with \`basis answer ${request.id} <value>\` or in the web app`);
+      return;
+    }
+    let raw = next;
+    for (;;) {
+      raw ??= yield* Effect.promise(() => io.ask!(promptText(request), request.type === "ask" && request.secret === true));
+      const answer = toAnswer(request, raw);
+      if (typeof answer !== "string") {
+        // Someone else may have answered first; that is not an error here.
+        yield* rpc.Interaction.Answer({ id: request.id, answer }).pipe(Effect.ignore);
+        return;
+      }
+      io.err(`basis: ${answer}`);
+      if (io.ask === undefined) return;
+      raw = undefined;
+    }
+  });
+};
+
+/**
+ * Subscribes to host events, then confirms the subscription with a call on
+ * the same socket (calls on one socket are handled in order), so nothing the
+ * command causes next is missed.
+ */
+const subscribe = (rpc: HostRpcClient, onEvent: (event: HostEvent) => Effect.Effect<void>) => Effect.gen(function* () {
+  const fiber = yield* rpc.Host.Events().pipe(
+    Stream.runForEach((event) => onEvent(event).pipe(Effect.catchAllCause(() => Effect.void))),
+    Effect.forkScoped,
+  );
+  yield* rpc.Host.Info();
+  return fiber;
+});
+
+const noticeLine = (event: Extract<HostEvent, { type: "notice" }>) => {
+  const notice = event.notice;
+  const links = notice.links?.map((link) => ` ${link.label === undefined ? link.url : `${link.label}: ${link.url}`}`).join("") ?? "";
+  return `[${notice.level}]${notice.source === undefined ? "" : ` ${notice.source}:`} ${notice.message}${notice.code === undefined ? "" : ` (code: ${notice.code})`}${links}`;
+};
+
+// ------------------------------------------------------------------ run / cancel
+
+const MIME: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+
+const readImage = (io: Io, path: string) => Effect.gen(function* () {
+  const file = resolve(io.cwd, path);
+  const mimeType = MIME[extname(file).toLowerCase()];
+  if (mimeType === undefined) return yield* usage(`${path}: images must be png, jpeg, gif, or webp`);
+  const data = yield* Effect.tryPromise({
+    try: () => readFile(file),
+    catch: () => new CliError({ code: "NotFound", message: `Cannot read image ${path}`, subject: path, exit: ExitCode.failed }),
+  });
+  return { type: "image", data: data.toString("base64"), mimeType } satisfies ImageContent;
+});
+
+const turnOptions = (options: Options): TurnOptions | CliError => {
+  if (options.thinking !== undefined && !(ThinkingLevel.literals as readonly string[]).includes(options.thinking)) {
+    return usage(`--thinking must be one of ${ThinkingLevel.literals.join(", ")}`);
+  }
+  return {
+    ...(options.model === undefined ? {} : { model: options.model }),
+    ...(options.thinking === undefined ? {} : { thinking: options.thinking as Thinking }),
+  };
+};
+
+/** How the session's last turn ended, from its log: the reply, the reason, usage, and time. */
+const lastTurn = (rpc: HostRpcClient, sessionId: string) => Effect.gen(function* () {
+  const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId }), rpc.Session.Events({ sessionId })], { concurrency: "unbounded" });
+  const turn = trajectory(branchOf(events, info.leaf)).at(-1);
+  const response = turn?.steps.filter((step) => step.response !== undefined).at(-1)?.response;
+  return {
+    session: sessionId,
+    turn: turn?.turnId,
+    reason: turn?.end?.reason ?? "running",
+    ...(turn?.end?.error === undefined ? {} : { error: turn.end.error }),
+    steps: turn?.steps.length ?? 0,
+    toolCalls: turn?.steps.reduce((sum, step) => sum + step.tools.length, 0) ?? 0,
+    usage: turn?.usage,
+    duration: turn?.endedAt === undefined ? undefined : turn.endedAt - turn.startedAt,
+    text: response === undefined ? "" : contentText(response.message.content),
+  };
+});
+export type TurnResult = Effect.Effect.Success<ReturnType<typeof lastTurn>>;
+
+/** `basis run <session|new> <prompt…>`: send a prompt and wait for the turn; `--follow` streams it. */
+export const runCommand = (target: string, words: readonly string[]): Command => (connection, io, options) => Effect.gen(function* () {
+  const turn = turnOptions(options);
+  if (turn instanceof CliError) return yield* turn;
+  const text = words.join(" ").trim();
+  const images = yield* Effect.forEach(options.images, (path) => readImage(io, path));
+  if (text === "" && images.length === 0) return yield* usage("run needs a prompt");
+  const content: PromptContent = [...(text === "" ? [] : [{ type: "text", text } satisfies TextContent]), ...images];
+
+  const sessionId = target === "new"
+    ? (yield* connection.rpc.Session.Create({ cwd: resolve(io.cwd, options.cwd ?? ".") })).id
+    : target;
+  if (target === "new" && !options.json) io.err(`basis: session ${sessionId}`);
+  const payload = { sessionId, content, ...(Object.keys(turn).length ? { options: turn } : {}) };
+
+  if (!options.follow) {
+    yield* connection.rpc.Agent.Prompt(payload);
+    return result(yield* lastTurn(connection.rpc, sessionId), options, false);
+  }
+
+  const ended = yield* Deferred.make<void>();
+  let midLine = false;
+  const line = (text: string) => { if (midLine) { io.write?.("\n"); midLine = false; } io.out(text); };
+  const rpc = yield* connection.live;
+  const answer = questionHandler(rpc, io, options);
+  yield* subscribe(rpc, (event) => Effect.gen(function* () {
+    if (event.type === "interaction") return yield* answer(event.request);
+    if (event.type === "notice") return options.json ? io.out(JSON.stringify(event)) : line(noticeLine(event));
+    if (!("sessionId" in event) || event.sessionId !== sessionId) return;
+    if (options.json) io.out(JSON.stringify(event));
+    else if (event.type === "delta" && event.event.type === "text-delta") { io.write?.(event.event.delta); midLine = !event.event.delta.endsWith("\n"); }
+    else if (event.type === "delta" && event.event.type === "toolcall-end") line(`→ ${event.event.toolCall.name} ${JSON.stringify(event.event.toolCall.arguments)}`);
+    else if (event.type === "delta" && event.event.type === "error") line(`✕ ${event.event.message.errorMessage ?? event.event.message.stopReason}`);
+    else if (event.type === "session-appended" && event.event.data.type === "message" && event.event.data.message.role === "toolResult") {
+      const message = event.event.data.message;
+      const timing = event.event.data.timing;
+      const first = contentText(message.content).trim().split("\n")[0] ?? "";
+      line(`← ${message.toolName} ${message.isError ? "error" : "ok"}${timing === undefined ? "" : ` ${timing.endedAt - timing.startedAt}ms`}${first ? `: ${first.slice(0, 120)}` : ""}`);
+    }
+    if (event.type === "turn-ended") yield* Deferred.succeed(ended, undefined);
+  }));
+  yield* rpc.Agent.Prompt(payload);
+  // `turn-ended` may trail the reply; the log is authoritative either way.
+  yield* Deferred.await(ended).pipe(Effect.timeout(Duration.seconds(2)), Effect.ignore);
+  if (midLine) io.write?.("\n");
+  return result(yield* lastTurn(connection.rpc, sessionId), options, true);
+});
+
+const result = (turn: TurnResult, options: Options, streamed: boolean): Output => ({
+  json: options.json && streamed ? { type: "result", ...turn } : turn,
+  text: formatTurnResult(turn, !streamed),
+  compact: options.json && streamed,
+  ...(turn.reason === "done" ? {} : { exit: ExitCode.failed }),
+});
+
+export const cancelCommand = (sessionId: string): Command => ({ rpc }) =>
+  Effect.as(rpc.Agent.Cancel({ sessionId }), { json: { cancelled: sessionId }, text: `cancelled any running turn in ${sessionId}` });
+
+// ------------------------------------------------------------------ events / questions
+
+/** `basis events`: follow everything the host publishes (optionally one session's), as the web app sees it. */
+export const eventsCommand: Command = (connection, io, options) => Effect.gen(function* () {
+  const rpc = yield* connection.live;
+  const answer = questionHandler(rpc, io, options);
+  const fiber = yield* subscribe(rpc, (event) => Effect.gen(function* () {
+    if (options.session !== undefined && "sessionId" in event && event.sessionId !== options.session) return;
+    if (options.json) io.out(JSON.stringify(event));
+    else io.out(eventLine(event));
+    // Watching never answers unless asked to.
+    if (event.type === "interaction" && options.questions !== undefined) yield* answer(event.request);
+  }));
+  yield* Fiber.join(fiber).pipe(Effect.ignore);
+  return undefined;
+});
+
+const eventLine = (event: HostEvent): string => {
+  switch (event.type) {
+    case "notice": return noticeLine(event);
+    case "delta": return `${event.sessionId} delta ${event.event.type}${event.event.type === "text-delta" ? ` ${JSON.stringify(event.event.delta)}` : ""}`;
+    case "session-appended": return `${event.sessionId} appended #${event.event.seq} ${event.event.data.type}`;
+    case "session-changed": return `${event.info.id} changed${event.info.title === undefined ? "" : ` "${event.info.title}"`}`;
+    case "turn-started": return `${event.sessionId} turn started ${event.turnId}`;
+    case "turn-ended": return `${event.sessionId} turn ended ${event.turnId} (${event.reason})`;
+    case "interaction": return `question ${event.request.id} (${event.request.type}): ${event.request.title}`;
+    case "interaction-closed": return `question ${event.id} closed`;
+    case "plugins-changed": return `plugins: ${event.plugins.map((plugin) => `${plugin.id}=${plugin.state}`).join(" ")}`;
+  }
+};
+
+/** Open questions: the host replays them to every new subscriber. */
+const openQuestions = (connection: Connection) => Effect.gen(function* () {
+  const found = new Map<string, InteractionRequest>();
+  const fiber = yield* subscribe(yield* connection.live, (event) => Effect.sync(() => {
+    if (event.type === "interaction") found.set(event.request.id, event.request);
+    if (event.type === "interaction-closed") found.delete(event.id);
+  }));
+  // Replays arrive right after subscribing; give them a moment.
+  yield* Effect.sleep(Duration.millis(300));
+  yield* Fiber.interrupt(fiber);
+  return [...found.values()];
+});
+
+export const questionsCommand: Command = (connection) =>
+  Effect.map(openQuestions(connection), (questions) => ({ json: questions, text: formatQuestions(questions) }));
+
+export const answerCommand = (id: string, words: readonly string[]): Command => (connection) => Effect.gen(function* () {
+  const request = (yield* openQuestions(connection)).find((candidate) => candidate.id === id);
+  if (request === undefined) return yield* new CliError({ code: "NotFound", message: `No open question ${id}`, subject: id, exit: ExitCode.failed });
+  const answer = toAnswer(request, words.join(" "));
+  if (typeof answer === "string") return yield* usage(answer);
+  yield* connection.rpc.Interaction.Answer({ id, answer });
+  return { json: { answered: id, answer }, text: `answered "${request.title}"` };
+});
+
+export const dismissCommand = (id: string): Command => ({ rpc }) =>
+  Effect.as(rpc.Interaction.Dismiss({ id }), { json: { dismissed: id }, text: `dismissed ${id}` });
+
+// ------------------------------------------------------------------ providers and models
+
+export const modelsCommand: Command = ({ rpc }, _io, options) =>
+  Effect.map(rpc.Llm.Models(options.all ? {} : { available: true }), (models) => ({ json: models, text: formatModels(models) }));
+
+export const providersCommand: Command = ({ rpc }) =>
+  Effect.map(rpc.Llm.Providers(), (providers) => ({ json: providers, text: formatProviders(providers) }));
+
+/** `basis login <provider>`: runs the provider's login, answering its questions per the policy and printing its notices. */
+export const loginCommand = (provider: string): Command => (connection, io, options) => Effect.gen(function* () {
+  const info = (yield* connection.rpc.Llm.Providers()).find((candidate) => candidate.id === provider);
+  if (info === undefined) return yield* new CliError({ code: "UnknownProvider", message: `No provider "${provider}"`, subject: provider, exit: ExitCode.failed });
+  const method = options.method ?? info.auth[0]?.type;
+  if (method !== "api_key" && method !== "oauth") return yield* usage(`--method must be one of ${info.auth.map((auth) => auth.type).join(", ")}`);
+  if (!info.auth.some((auth) => auth.type === method)) return yield* usage(`${provider} does not offer ${method}; it offers ${info.auth.map((auth) => auth.type).join(", ")}`);
+  const rpc = yield* connection.live;
+  const answer = questionHandler(rpc, io, options);
+  yield* subscribe(rpc, (event) => Effect.gen(function* () {
+    if (event.type === "notice") io.err(noticeLine(event));
+    if (event.type === "interaction") yield* answer(event.request);
+  }));
+  yield* rpc.Llm.Login({ provider, type: method });
+  return { json: { loggedIn: provider, method }, text: `logged in to ${info.name}` };
+});
+
+export const logoutCommand = (provider: string): Command => ({ rpc }) =>
+  Effect.as(rpc.Llm.Logout({ provider }), { json: { loggedOut: provider }, text: `logged out of ${provider}` });

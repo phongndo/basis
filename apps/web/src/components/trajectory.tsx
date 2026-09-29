@@ -1,11 +1,12 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
-import { rebuildRequest } from "@basis/contracts";
-import type { Timing, TrajectoryRequest } from "@basis/contracts";
+import {
+  RECORD_KIND_LABEL, contentText, ledger, ledgerSpans, parseLedgerFilter, promptDiff, rebuildRequest, recordDuration, recordFailed, recordName, recordRequest,
+  recordStart, recordStatus, sortRecords,
+} from "@basis/contracts";
+import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest, UserRecord } from "@basis/contracts";
 import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
-import { KIND_TEXT, durationOf, isError, ledger, lineDiff, parseFilter, requestOf, spans, textOf } from "../model/trajectory.ts";
-import type { AssistantRecord, LedgerRecord, Span, SystemRecord, ToolRecord, UserRecord } from "../model/trajectory.ts";
-import { activeBranch, isBusy, reportError, state, trajectory } from "../store.ts";
+import { activeBranch, checkoutSession, isBusy, reportError, state, trajectory } from "../store.ts";
 import { CopyIcon, XIcon } from "./icons.tsx";
 import { Markdown } from "./markdown.tsx";
 
@@ -22,7 +23,7 @@ import { Markdown } from "./markdown.tsx";
 type Selection = { readonly type: "record"; readonly id: string } | { readonly type: "request"; readonly eventId: string };
 type Kind = LedgerRecord["kind"];
 type TypeFilter = "all" | Kind | "error";
-type SortKey = "time" | "name" | "status" | "type" | "tokens" | "duration";
+type SortKey = LedgerSort;
 
 const [selection, setSelection] = createSignal<Selection>();
 const [tab, setTab] = createSignal<string>();
@@ -74,42 +75,11 @@ const useNow = (active: () => boolean) => {
   return now;
 };
 
-const startOf = (record: LedgerRecord): number => {
-  switch (record.kind) {
-    case "user": return record.at;
-    case "system": return record.request.at;
-    case "assistant": return record.timing?.startedAt ?? record.step.request?.at ?? record.step.startedAt;
-    case "tool": return record.run.timing?.startedAt ?? record.step.startedAt;
-  }
-};
-const tokensOf = (record: LedgerRecord) => (record.kind === "assistant" ? inputTokens(record.message.usage) + record.message.usage.output : undefined);
-const statusOf = (record: LedgerRecord): string => {
-  switch (record.kind) {
-    case "user": return "sent";
-    case "system": return record.previous === undefined ? "initial" : "changed";
-    case "assistant": return record.failed ? record.message.stopReason : record.message.stopReason === "toolUse" ? "tool use" : record.message.stopReason;
-    case "tool": return record.run.result === undefined ? (isBusy() ? "running" : "no result") : record.run.result.isError ? "error" : "ok";
-  }
-};
-const nameOf = (record: LedgerRecord): string => {
-  switch (record.kind) {
-    case "user": return firstLine(textOf(record.message.content)) || "[image]";
-    case "system": return record.previous === undefined ? "initial system prompt" : `system prompt changed: ${[...record.request.sections.filter((s) => s.changed).map((s) => s.id), ...record.request.removed].join(", ")}`;
-    case "assistant": {
-      if (record.failed) return record.message.errorMessage ?? `model call ${record.message.stopReason}`;
-      const text = firstLine(textOf(record.message.content));
-      if (text) return text;
-      const thinking = firstLine(thinkingOf(record));
-      if (thinking) return thinking;
-      return callsOf(record).length ? `→ ${callsOf(record).join(", ")}` : "(no output)";
-    }
-    case "tool": return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)}`;
-  }
-};
+const statusOf = (record: LedgerRecord) => recordStatus(record, isBusy());
 
 const typeMatches = (record: LedgerRecord) => {
   const filter = typeFilter();
-  return filter === "all" || (filter === "error" ? isError(record) : record.kind === filter);
+  return filter === "all" || (filter === "error" ? recordFailed(record) : record.kind === filter);
 };
 
 // ------------------------------------------------------------------ time scale
@@ -122,7 +92,7 @@ const GAP = 0.012;
  * with the idle time between turns (the user reading, typing, or away)
  * collapsed to a fixed gap so one long pause does not squash every turn.
  */
-function timeScale(all: readonly Span[], now: number) {
+function timeScale(all: readonly LedgerSpan[], now: number) {
   const byTurn = new Map<string, { from: number; to: number }>();
   for (const span of all) {
     const key = span.record.turn.turnId;
@@ -216,18 +186,18 @@ function Toolbar() {
 
 const LANE_TOP = 18;
 
-function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; matches: (record: LedgerRecord) => boolean }) {
+function Overview(props: { ledgerSpans: readonly LedgerSpan[]; scale: Scale; now: number; matches: (record: LedgerRecord) => boolean }) {
   let track!: HTMLDivElement;
   const [width, setWidth] = createSignal(600);
-  const [hover, setHover] = createSignal<{ span: Span; x: number }>();
+  const [hover, setHover] = createSignal<{ span: LedgerSpan; x: number }>();
   const [drag, setDrag] = createSignal<{ from: number; to: number }>();
   const [pan, setPan] = createSignal<{ x: number; start: number; end: number }>();
   const observer = new ResizeObserver(([entry]) => { if (entry) setWidth(entry.contentRect.width); });
   onCleanup(() => observer.disconnect());
 
-  const order = createMemo(() => new Map(props.spans.map((span, index) => [span, index])));
-  const fractionOf = (span: Span, end: boolean) => {
-    if (equalDurations()) return (order().get(span)! + (end ? 0.8 : 0)) / Math.max(1, props.spans.length);
+  const order = createMemo(() => new Map(props.ledgerSpans.map((span, index) => [span, index])));
+  const fractionOf = (span: LedgerSpan, end: boolean) => {
+    if (equalDurations()) return (order().get(span)! + (end ? 0.8 : 0)) / Math.max(1, props.ledgerSpans.length);
     return props.scale.fraction(end ? span.end ?? props.now : span.start);
   };
   const x = (f: number) => place(f, width());
@@ -292,7 +262,7 @@ function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; ma
         <Show when={!equalDurations()}>
           <For each={props.scale.boundaries}>{(f) => <div class="trj-turn-boundary" style={{ left: `${x(f)}px` }} />}</For>
         </Show>
-        <For each={props.spans}>
+        <For each={props.ledgerSpans}>
           {(span) => {
             const left = () => x(fractionOf(span, false));
             const right = () => x(fractionOf(span, true));
@@ -323,7 +293,7 @@ function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; ma
         <Show when={hover()}>
           {(h) => (
             <div class="trj-tip" role="tooltip" style={{ left: `${Math.min(Math.max(h().x, 90), width() - 90)}px` }}>
-              <strong>{h().span.record.kind === "tool" ? (h().span.record as ToolRecord).run.call.name : h().span.record.kind === "assistant" ? `Request #${(h().span.record as AssistantRecord).requestNumber}` : KIND_TEXT[h().span.record.kind]}</strong>
+              <strong>{h().span.record.kind === "tool" ? (h().span.record as ToolRecord).run.call.name : h().span.record.kind === "assistant" ? `Request #${(h().span.record as AssistantRecord).requestNumber}` : RECORD_KIND_LABEL[h().span.record.kind]}</strong>
               <span>{clock(h().span.start)} · {h().span.end === undefined ? "running" : formatDuration(h().span.end! - h().span.start)}</span>
               <Show when={h().span.ttft !== undefined && h().span.end !== undefined}>
                 <span>TTFT {formatDuration(h().span.ttft!)} · decoding {formatDuration(h().span.end! - h().span.start - h().span.ttft!)}</span>
@@ -331,7 +301,7 @@ function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; ma
             </div>
           )}
         </Show>
-        <Show when={props.spans.length === 0}><div class="trj-empty-track">No timing yet</div></Show>
+        <Show when={props.ledgerSpans.length === 0}><div class="trj-empty-track">No timing yet</div></Show>
       </div>
     </div>
   );
@@ -340,7 +310,7 @@ function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; ma
 // ------------------------------------------------------------------ table
 
 /** One row's bar in the waterfall column, on the same axis and zoom as the overview. */
-function Waterfall(props: { record: LedgerRecord; span: Span | undefined; scale: Scale; index: number; count: number; now: number }) {
+function Waterfall(props: { record: LedgerRecord; span: LedgerSpan | undefined; scale: Scale; index: number; count: number; now: number }) {
   const bounds = () => {
     const span = props.span;
     if (span === undefined) return undefined;
@@ -370,8 +340,8 @@ function NameCell(props: { record: LedgerRecord }) {
   const r = props.record;
   return (
     <span class="trj-name">
-      <i class="trj-dot" data-kind={r.kind} data-error={isError(r)} />
-      <Switch fallback={<span class="trj-text" classList={{ "trj-muted": r.kind === "system" || (r.kind === "assistant" && !firstLine(textOf(r.message.content)) && !r.failed), "trj-error": isError(r) }}>{nameOf(r)}</span>}>
+      <i class="trj-dot" data-kind={r.kind} data-error={recordFailed(r)} />
+      <Switch fallback={<span class="trj-text" classList={{ "trj-muted": r.kind === "system" || (r.kind === "assistant" && !firstLine(contentText(r.message.content)) && !r.failed), "trj-error": recordFailed(r) }}>{recordName(r)}</span>}>
         <Match when={r.kind === "tool" && r}>
           {(tool) => (
             <span class="trj-text">
@@ -397,32 +367,14 @@ const COLUMNS: readonly { key: SortKey | "initiator" | "waterfall"; label: strin
   { key: "waterfall", label: "Waterfall", class: "trj-c-wf", sortable: false },
 ];
 
-function Table(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; scale: Scale; spans: ReadonlyMap<string, Span>; now: number; compact: boolean }) {
+function Table(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; scale: Scale; ledgerSpans: ReadonlyMap<string, LedgerSpan>; now: number; compact: boolean }) {
   const inRange = (record: LedgerRecord) => {
     const r = range();
     if (r === undefined) return true;
-    const span = props.spans.get(record.id);
+    const span = props.ledgerSpans.get(record.id);
     return span !== undefined && (span.end ?? props.now) >= r.from && span.start <= r.to;
   };
-  const sorted = createMemo(() => {
-    const { key, desc } = sort();
-    if (key === "time") return desc ? [...props.visible].reverse() : props.visible;
-    const value = (record: LedgerRecord): string | number => {
-      switch (key) {
-        case "name": return nameOf(record).toLowerCase();
-        case "status": return statusOf(record);
-        case "type": return KIND_TEXT[record.kind];
-        case "tokens": return tokensOf(record) ?? -1;
-        case "duration": return durationOf(record) ?? -1;
-      }
-    };
-    return [...props.visible].sort((a, b) => {
-      const x = value(a);
-      const y = value(b);
-      const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
-      return desc ? -order : order;
-    });
-  });
+  const sorted = createMemo(() => sortRecords(props.visible, sort().key, sort().desc, isBusy()));
   // Group rows open each turn, in time order only; a sorted table is flat, as in DevTools.
   const rows = createMemo(() => {
     const out: Row[] = [];
@@ -478,7 +430,7 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
                       <td colSpan={columns().length}><div class="trj-group-row">
                         <span class="trj-caret" data-open={open()}>▶</span>
                         <span class="trj-group-label">Turn {turn().index}</span>
-                        <span class="trj-group-prompt">{turn().prompt === undefined ? "" : firstLine(textOf(turn().prompt!.content))}</span>
+                        <span class="trj-group-prompt">{turn().prompt === undefined ? "" : firstLine(contentText(turn().prompt!.content))}</span>
                         <span class="trj-group-meta">
                           {group().count} records · {turn().steps.length} requests
                           {turn().endedAt === undefined ? " · running" : ` · ${formatDuration(turn().endedAt! - turn().startedAt)}`}
@@ -496,19 +448,19 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
                   const initiator = r.kind === "tool" || r.kind === "assistant" ? r.step.request : r.kind === "system" ? r.request : undefined;
                   const number = r.kind === "assistant" || r.kind === "system" ? r.requestNumber
                     : r.kind === "tool" ? props.records.find((c): c is AssistantRecord => c.kind === "assistant" && c.step === r.step)?.requestNumber : undefined;
-                  const duration = durationOf(r);
+                  const duration = recordDuration(r);
                   const usage = assistant?.message.usage;
                   return (
                     <tr
-                      id={`trj-row-${r.id}`} tabindex="-1" data-kind={r.kind} data-error={isError(r)}
+                      id={`trj-row-${r.id}`} tabindex="-1" data-kind={r.kind} data-error={recordFailed(r)}
                       data-selected={selectedId() === r.id} data-dim={!inRange(r)}
                       onClick={() => select({ type: "record", id: r.id })}
                       onContextMenu={(event) => { event.preventDefault(); select({ type: "record", id: r.id }); setMenu({ x: event.clientX, y: event.clientY, record: r }); }}
                     >
                       <td class="trj-c-name"><NameCell record={r} /></td>
                       <Show when={!props.compact}>
-                        <td class="trj-c-status" classList={{ "trj-error": isError(r) }}>{statusOf(r)}</td>
-                        <td class="trj-c-type">{KIND_TEXT[r.kind]}</td>
+                        <td class="trj-c-status" classList={{ "trj-error": recordFailed(r) }}>{statusOf(r)}</td>
+                        <td class="trj-c-type">{RECORD_KIND_LABEL[r.kind]}</td>
                         <td class="trj-c-init">
                           <Show when={initiator !== undefined && number !== undefined} fallback={<span class="trj-muted">turn {r.turn.index}</span>}>
                             <button class="trj-link-cell" data-active={selectedRequest() === initiator!.eventId}
@@ -519,7 +471,7 @@ function Table(props: { records: readonly LedgerRecord[]; visible: readonly Ledg
                           {usage === undefined ? "" : `${formatTokens(inputTokens(usage))} / ${formatTokens(usage.output)}`}
                         </td>
                         <td class="trj-c-time trj-num">{duration === undefined ? (r.kind === "assistant" || r.kind === "tool" ? "(pending)" : "") : formatDuration(duration)}</td>
-                        <td class="trj-c-wf"><Waterfall record={r} span={props.spans.get(r.id)} scale={props.scale} index={item().index} count={props.records.length} now={props.now} /></td>
+                        <td class="trj-c-wf"><Waterfall record={r} span={props.ledgerSpans.get(r.id)} scale={props.scale} index={item().index} count={props.records.length} now={props.now} /></td>
                       </Show>
                     </tr>
                   );
@@ -543,18 +495,22 @@ function ContextMenu() {
     onCleanup(() => { window.removeEventListener("pointerdown", close); window.removeEventListener("blur", close); });
   });
   const items = (record: LedgerRecord): { label: string; run: () => void }[] => {
-    const request = requestOf(record);
+    const request = recordRequest(record);
     const out: { label: string; run: () => void }[] = [];
     if (request !== undefined) out.push({ label: "Inspect request", run: () => select({ type: "request", eventId: request.eventId }) });
     if (request !== undefined) out.push({ label: "Copy exact request", run: () => { const rebuilt = rebuildRequest(activeBranch(), request.eventId); if (rebuilt !== undefined) void copy(json(rebuilt)); } });
     if (record.kind === "tool") {
       out.push({ label: "Copy payload", run: () => void copy(json(record.run.call.arguments)) });
-      if (record.run.result !== undefined) out.push({ label: "Copy result", run: () => void copy(textOf(record.run.result!.content)) });
+      if (record.run.result !== undefined) out.push({ label: "Copy result", run: () => void copy(contentText(record.run.result!.content)) });
       out.push({ label: `Filter: tool:${record.run.call.name}`, run: () => setQuery(`tool:${record.run.call.name}`) });
     }
-    if (record.kind === "assistant" || record.kind === "user") out.push({ label: "Copy text", run: () => void copy(textOf(record.message.content)) });
+    if (record.kind === "assistant" || record.kind === "user") out.push({ label: "Copy text", run: () => void copy(contentText(record.message.content)) });
     out.push({ label: "Copy as JSON", run: () => void copy(json(record.kind === "tool" ? record.run : record.kind === "system" ? record.request : record.message)) });
     out.push({ label: `Filter: turn:${record.turn.index}`, run: () => setQuery(`turn:${record.turn.index}`) });
+    // Records of model calls and tool runs are log events; the next prompt can continue from one of them.
+    if (record.kind === "assistant" || record.kind === "tool") {
+      out.push({ label: "Branch from here", run: () => void checkoutSession(record.id) });
+    }
     return out;
   };
   return (
@@ -584,7 +540,7 @@ function StatusBar(props: { records: readonly LedgerRecord[]; visible: readonly 
         cost += record.message.usage.cost.total;
       }
       if (record.kind === "tool") tools++;
-      if (isError(record)) errors++;
+      if (recordFailed(record)) errors++;
     }
     for (const turn of new Set(props.visible.map((record) => record.turn))) {
       first = Math.min(first, turn.startedAt);
@@ -667,22 +623,27 @@ function ToolsList(props: { request: TrajectoryRequest }) {
   );
 }
 
-function Diff(props: { record: SystemRecord }) {
+/** How a request's system prompt differs from the request before it (`basis inspect --request N --diff`). */
+function Diff(props: { previous: TrajectoryRequest | undefined; request: TrajectoryRequest }) {
+  const sections = createMemo(() => promptDiff(props.previous, props.request));
   return (
-    <>
-      <For each={props.record.request.sections.filter((section) => section.changed)}>
-        {(section) => (
-          <Section title={section.id} aside={<span class="trj-source">{section.source}</span>}>
-            <pre class="trj-pre trj-diff">
-              <For each={lineDiff(props.record.previous?.get(section.id) ?? "", section.text ?? "")}>
-                {(line) => <span class={`trj-diff-${line.kind}`}>{line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}{line.text}{"\n"}</span>}
-              </For>
-            </pre>
-          </Section>
-        )}
-      </For>
-      <Show when={props.record.request.removed.length > 0}><p class="trj-desc">Removed: {props.record.request.removed.join(", ")}</p></Show>
-    </>
+    <Switch>
+      <Match when={props.previous === undefined}><p class="trj-desc">This is the first request; everything in it is new (see System Prompt).</p></Match>
+      <Match when={sections().length === 0}><p class="trj-desc">The system prompt is unchanged from the request before.</p></Match>
+      <Match when={true}>
+        <For each={sections()}>
+          {(section) => (
+            <Section title={section.id} aside={<><span class="trj-source">{section.source}</span>{section.status}</>}>
+              <pre class="trj-pre trj-diff">
+                <For each={section.lines}>
+                  {(line) => <span class={`trj-diff-${line.kind}`}>{line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}{line.text}{"\n"}</span>}
+                </For>
+              </pre>
+            </Section>
+          )}
+        </For>
+      </Match>
+    </Switch>
   );
 }
 
@@ -736,7 +697,7 @@ function TimingFacts(props: { timing: Timing; output?: number | undefined }) {
   );
 }
 
-function requestTabs(request: TrajectoryRequest, assistant: AssistantRecord | undefined, system: SystemRecord | undefined): Tab[] {
+function requestTabs(request: TrajectoryRequest, assistant: AssistantRecord | undefined, previous: TrajectoryRequest | undefined): Tab[] {
   const usage = assistant?.message.usage;
   const timing = assistant?.timing;
   return [
@@ -760,7 +721,7 @@ function requestTabs(request: TrajectoryRequest, assistant: AssistantRecord | un
     },
     { id: "system", label: "System Prompt", render: () => <SystemPrompt request={request} /> },
     { id: "tools", label: "Tools", render: () => <ToolsList request={request} /> },
-    ...(system?.previous === undefined ? [] : [{ id: "diff", label: "Diff", render: () => <Diff record={system} /> }]),
+    { id: "diff", label: "Diff", render: () => <Diff previous={previous} request={request} /> },
     ...(usage === undefined ? [] : [{
       id: "usage", label: "Usage", render: () => (
         <Facts rows={[
@@ -778,24 +739,24 @@ function requestTabs(request: TrajectoryRequest, assistant: AssistantRecord | un
   ];
 }
 
-function recordTabs(record: LedgerRecord, system: SystemRecord | undefined): Tab[] {
+function recordTabs(record: LedgerRecord, previous: TrajectoryRequest | undefined): Tab[] {
   switch (record.kind) {
     case "system":
       return [
         { id: "system", label: "System Prompt", render: () => <SystemPrompt request={record.request} /> },
-        ...(record.previous === undefined ? [] : [{ id: "diff", label: "Diff", render: () => <Diff record={record} /> }]),
+        { id: "diff", label: "Diff", render: () => <Diff previous={previous} request={record.request} /> },
         { id: "tools", label: "Tools", render: () => <ToolsList request={record.request} /> },
         { id: "sources", label: "Sources", render: () => <Sources request={record.request} /> },
       ];
     case "user":
       return [
-        { id: "summary", label: "Summary", render: () => <><Facts rows={[["Turn", String(record.turn.index)], ["Sent", clock(record.at)]]} /><Pre text={textOf(record.message.content)} /></> },
+        { id: "summary", label: "Summary", render: () => <><Facts rows={[["Turn", String(record.turn.index)], ["Sent", clock(record.at)]]} /><Pre text={contentText(record.message.content)} /></> },
         { id: "raw", label: "Raw", render: () => <Pre text={json(record.message)} /> },
       ];
     case "assistant": {
       const message = record.message;
       const thinking = thinkingOf(record);
-      const text = textOf(message.content);
+      const text = contentText(message.content);
       return [
         {
           id: "summary", label: "Summary", render: () => (
@@ -830,7 +791,7 @@ function recordTabs(record: LedgerRecord, system: SystemRecord | undefined): Tab
     }
     case "tool": {
       const run = record.run;
-      const result = run.result === undefined ? undefined : textOf(run.result.content);
+      const result = run.result === undefined ? undefined : contentText(run.result.content);
       const timing = run.timing;
       return [
         {
@@ -877,6 +838,16 @@ function Tabs(props: { tabs: readonly Tab[]; lead?: JSX.Element; title?: JSX.Ele
 function Details(props: { records: readonly LedgerRecord[] }) {
   const systemFor = (eventId: string | undefined) =>
     eventId === undefined ? undefined : props.records.find((record): record is SystemRecord => record.kind === "system" && record.request.eventId === eventId);
+  // Requests in log order, for each one's predecessor (the Diff tab).
+  const requests = createMemo(() => {
+    const seen = new Map<string, TrajectoryRequest>();
+    for (const record of props.records) { const request = recordRequest(record); if (request !== undefined && !seen.has(request.eventId)) seen.set(request.eventId, request); }
+    return [...seen.values()];
+  });
+  const previousOf = (eventId: string | undefined) => {
+    const index = requests().findIndex((request) => request.eventId === eventId);
+    return index > 0 ? requests()[index - 1] : undefined;
+  };
   const view = createMemo(() => {
     const s = selection();
     if (s === undefined) return undefined;
@@ -890,7 +861,7 @@ function Details(props: { records: readonly LedgerRecord[] }) {
         kind: record.kind as LedgerRecord["kind"] | "request",
         name: record.kind === "tool" ? record.run.call.name : "",
         where,
-        tabs: recordTabs(record, systemFor(requestOf(record)?.eventId)),
+        tabs: recordTabs(record, previousOf(recordRequest(record)?.eventId)),
       };
     }
     const assistant = props.records.find((record): record is AssistantRecord => record.kind === "assistant" && !record.failed && record.step.request?.eventId === s.eventId);
@@ -900,7 +871,7 @@ function Details(props: { records: readonly LedgerRecord[] }) {
       kind: "request" as const,
       name: assistant === undefined ? "" : `#${assistant.requestNumber}`,
       where: assistant === undefined ? "" : `Turn ${assistant.turn.index} · Step ${assistant.step.index}`,
-      tabs: requestTabs(request, assistant, systemFor(s.eventId)),
+      tabs: requestTabs(request, assistant, previousOf(s.eventId)),
     };
   });
   return (
@@ -912,7 +883,7 @@ function Details(props: { records: readonly LedgerRecord[] }) {
             lead={<button class="trj-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}><XIcon /></button>}
             title={<>
               <span class="trj-dot" data-kind={v().kind} />
-              <span class="trj-details-kind">{v().kind === "request" ? "request" : KIND_TEXT[v().kind as Kind]}</span>
+              <span class="trj-details-kind">{v().kind === "request" ? "request" : RECORD_KIND_LABEL[v().kind as Kind]}</span>
               <Show when={v().name}><span class="trj-mono">{v().name}</span></Show>
               <span class="trj-details-where">{v().where}</span>
             </>}
@@ -928,10 +899,10 @@ function Details(props: { records: readonly LedgerRecord[] }) {
 export function Trajectory(): JSX.Element {
   const records = createMemo(() => ledger(trajectory()));
   const now = useNow(isBusy);
-  const allSpans = createMemo(() => spans(records()));
+  const allSpans = createMemo(() => ledgerSpans(records()));
   const spanById = createMemo(() => new Map(allSpans().map((span) => [span.record.id, span])));
   const scale = createMemo(() => timeScale(allSpans(), now()));
-  const matchesQuery = createMemo(() => parseFilter(query()));
+  const matchesQuery = createMemo(() => parseLedgerFilter(query()));
   const matches = (record: LedgerRecord) => typeMatches(record) && matchesQuery()(record);
   const visible = createMemo(() => records().filter(matches));
   let root!: HTMLDivElement;
@@ -968,11 +939,11 @@ export function Trajectory(): JSX.Element {
   return (
     <div class="trj" ref={root} tabindex="-1" onKeyDown={onKeyDown}>
       <Toolbar />
-      <Overview spans={allSpans()} scale={scale()} now={now()} matches={matches} />
+      <Overview ledgerSpans={allSpans()} scale={scale()} now={now()} matches={matches} />
       <div class="trj-body">
         <div class="trj-scroll">
           <Show when={records().length > 0} fallback={<p class="trj-empty">{state.activeId === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>}>
-            <Table records={records()} visible={visible()} scale={scale()} spans={spanById()} now={now()} compact={selection() !== undefined} />
+            <Table records={records()} visible={visible()} scale={scale()} ledgerSpans={spanById()} now={now()} compact={selection() !== undefined} />
           </Show>
         </div>
         <Details records={records()} />

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { emptyUsage, trajectory } from "@basis/contracts";
-import type { AssistantMessage, Contribution, EventData, SessionEvent } from "@basis/contracts";
-import { ledger, lineDiff, parseFilter, spans } from "../src/model/trajectory.ts";
+import { emptyUsage } from "../src/llm.ts";
+import { trajectory } from "../src/trajectory.ts";
+import type { AssistantMessage } from "../src/llm.ts";
+import type { Contribution, EventData, SessionEvent } from "../src/sessions.ts";
+import { ledger, ledgerSpans, lineDiff, parseLedgerFilter, promptDiff, recordSummary } from "../src/ledger.ts";
 
 const log = (...items: EventData[]): SessionEvent[] =>
   items.map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: 1000 * (i + 1), data }));
@@ -54,7 +56,7 @@ describe("ledger", () => {
   });
 
   it("places records on the input, model, and tool lanes", () => {
-    expect(spans(records).map((span) => [span.record.kind, span.lane, span.start, span.end, span.ttft, span.error])).toEqual([
+    expect(ledgerSpans(records).map((span) => [span.record.kind, span.lane, span.start, span.end, span.ttft, span.error])).toEqual([
       ["user", 0, 1000, 1000, undefined, false],
       ["assistant", 1, 5000, 6000, 500, false],
       ["tool", 2, 6000, 6100, undefined, true],
@@ -74,8 +76,8 @@ describe("lineDiff", () => {
   });
 });
 
-describe("parseFilter", () => {
-  const kinds = (input: string) => records.filter(parseFilter(input)).map((record) => record.kind);
+describe("parseLedgerFilter", () => {
+  const kinds = (input: string) => records.filter(parseLedgerFilter(input)).map((record) => record.kind);
 
   it("matches everything when empty", () => {
     expect(kinds("")).toHaveLength(records.length);
@@ -93,5 +95,33 @@ describe("parseFilter", () => {
     expect(kinds("turn:1 -kind:tool")).toEqual(["user", "system", "assistant", "assistant"]);
     expect(kinds("again")).toEqual(["user"]);
     expect(kinds("-is:error kind:model")).toEqual(["assistant", "assistant"]);
+  });
+});
+
+describe("recordSummary", () => {
+  it("flattens a record to serializable data without its turn", () => {
+    const summaries = records.map((record) => recordSummary(record));
+    expect(() => JSON.stringify(summaries)).not.toThrow();
+    expect(summaries[3]).toMatchObject({ kind: "tool", turn: 1, step: 1, tool: "bash", arguments: { command: "ls" }, result: "a", status: "error", error: true, duration: 100 });
+    expect(summaries[2]).toMatchObject({ kind: "assistant", request: 1, ttft: 500, duration: 1000, toolCalls: ["bash"], status: "tool use" });
+    expect(JSON.stringify(summaries).length).toBeLessThan(4000);
+  });
+});
+
+describe("promptDiff", () => {
+  const requests = trajectory(events).flatMap((turn) => turn.steps.flatMap((step) => (step.request === undefined ? [] : [step.request])));
+
+  it("reports changed sections with their lines, and nothing for an unchanged prompt", () => {
+    expect(promptDiff(requests[0], requests[1]!)).toEqual([]);
+    expect(promptDiff(requests[1], requests[2]!)).toEqual([
+      { id: "environment", source: "agent", status: "changed", lines: [{ kind: "del", text: "day 1" }, { kind: "add", text: "day 2" }] },
+    ]);
+  });
+
+  it("marks sections added and removed", () => {
+    const [first] = requests;
+    const without = { ...first!, sections: first!.sections.filter((section) => section.id === "base") };
+    expect(promptDiff(undefined, first!).map((section) => [section.id, section.status])).toEqual([["base", "added"], ["environment", "added"]]);
+    expect(promptDiff(first, without).map((section) => [section.id, section.status])).toEqual([["environment", "removed"]]);
   });
 });

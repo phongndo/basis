@@ -3,6 +3,7 @@ import { AddProjectDialog } from "./components/add-project.tsx";
 import { ConnectionBanner } from "./components/connection.tsx";
 import { focusPrompt, openModelPicker } from "./components/composer.tsx";
 import { InteractionModal } from "./components/interaction.tsx";
+import { EventsDialog } from "./components/events.tsx";
 import { PluginsDialog } from "./components/plugins.tsx";
 import { ProvidersDialog } from "./components/providers.tsx";
 import { SessionView } from "./components/session-view.tsx";
@@ -96,6 +97,7 @@ export function App() {
       </div>
       <Show when={state.dialog === "providers"}><ProvidersDialog /></Show>
       <Show when={state.dialog === "plugins"}><PluginsDialog /></Show>
+      <Show when={state.dialog === "events"}><EventsDialog /></Show>
       <Show when={state.dialog === "add-project"}><AddProjectDialog /></Show>
       <InteractionModal />
       <Toasts />

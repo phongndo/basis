@@ -1,24 +1,40 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
+import type { AddressInfo } from "node:net";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { trajectory } from "@basis/contracts";
+import { ledger, promptDiff, trajectory } from "@basis/contracts";
 import type { SessionEvent, SessionInfo } from "@basis/contracts";
-import { ExitCode, run } from "../src/cli.ts";
-import { formatSession, formatStep, formatTrajectory } from "../src/format.ts";
+import { ExitCode, parseOffset, run } from "../src/cli.ts";
+import { toAnswer } from "../src/live.ts";
+import { formatDiff, formatRecords, formatSession, formatStep, formatSystem, formatTrajectory } from "../src/format.ts";
 
 const hostMain = fileURLToPath(new URL("../../host/src/main.ts", import.meta.url));
 
 const invoke = async (argv: readonly string[], home: string, cwd = "/") => {
-  const out: string[] = [];
+  let out = "";
   const err: string[] = [];
-  const code = await run(argv, { env: { BASIS_HOME: home }, cwd, out: (text) => out.push(text), err: (text) => err.push(text) });
-  return { code, out: out.join("\n"), err: err.join("\n") };
+  const code = await run(argv, {
+    env: { BASIS_HOME: home }, cwd,
+    out: (text) => { out += `${text}\n`; }, write: (text) => { out += text; }, err: (text) => err.push(text),
+  });
+  return { code, out: out.replace(/\n$/, ""), err: err.join("\n") };
 };
+
+const mockProvider = fileURLToPath(new URL("../../../scripts/fixtures/mock-openai.ts", import.meta.url));
+
+const freePort = () => new Promise<number>((resolve) => {
+  const server = createServer();
+  server.listen(0, "127.0.0.1", () => {
+    const { port } = server.address() as AddressInfo;
+    server.close(() => resolve(port));
+  });
+});
 
 describe("without a host", () => {
   let home: string;
@@ -32,7 +48,14 @@ describe("without a host", () => {
   });
 
   test("rejects bad usage before connecting", async () => {
-    for (const argv of [[], ["bogus"], ["status", "extra"], ["session", "show"], ["session", "list", "--all", "--cwd", "/x"], ["--nope"]]) {
+    for (const argv of [
+      [], ["bogus"], ["status", "extra"], ["session", "show"], ["session", "list", "--all", "--cwd", "/x"], ["--nope"],
+      ["inspect", "s", "--system"], ["inspect", "s", "--request", "1", "--system", "--diff"], ["inspect", "s", "--request", "1", "--records"],
+      ["inspect", "s", "--request", "1", "--step", "2"], ["inspect", "s", "--sort", "bogus"], ["inspect", "s", "--range", "5"],
+      ["run"], ["run", "s"], ["run", "s", "hi", "--thinking", "huge"], ["answer", "q"], ["login"], ["logout"], ["cancel"],
+      ["workspace", "checkout"], ["workspace", "nope"], ["session", "title", "s"], ["session", "checkout", "s"], ["events", "x"],
+      ["events", "--questions", "maybe"],
+    ]) {
       expect((await invoke(argv, home)).code, argv.join(" ")).toBe(ExitCode.usage);
     }
   });
@@ -47,10 +70,20 @@ describe("without a host", () => {
 describe("against a running host", () => {
   let home: string;
   let host: ChildProcess;
+  let mock: ChildProcess;
 
   beforeAll(async () => {
     home = await mkdtemp(join(tmpdir(), "basis-cli-"));
-    await writeFile(join(home, "config.jsonc"), JSON.stringify({ plugins: { transport: { config: { port: 0 } } } }));
+    // A scripted provider: a prompt gets a bash call, the tool result gets a streamed answer.
+    const port = await freePort();
+    mock = spawn(process.execPath, [mockProvider], { env: { ...process.env, PORT: String(port) }, stdio: ["ignore", "pipe", "ignore"] });
+    await new Promise<void>((resolve) => mock.stdout!.once("data", () => resolve()));
+    await writeFile(join(home, "config.jsonc"), JSON.stringify({
+      plugins: {
+        transport: { config: { port: 0 } },
+        llm: { config: { providers: [{ id: "mock", api: "openai-completions", baseUrl: `http://127.0.0.1:${port}/v1`, models: [{ id: "scripted" }] }] } },
+      },
+    }));
     host = spawn(process.execPath, ["--conditions=source", hostMain, "--no-open"], {
       env: { ...process.env, BASIS_HOME: home, INIT_CWD: home }, stdio: "ignore",
     });
@@ -62,6 +95,7 @@ describe("against a running host", () => {
   }, 30_000);
 
   afterAll(async () => {
+    mock.kill();
     if (host.exitCode === null) {
       const exited = new Promise((resolve) => host.once("exit", resolve));
       host.kill("SIGTERM");
@@ -80,10 +114,42 @@ describe("against a running host", () => {
     expect(status.running).toEqual([]);
   });
 
+  test("run sends a prompt and prints the reply; --follow --json streams events and ends with the result", async () => {
+    const session = (await invoke(["session", "new", "--cwd", home], home)).out;
+    expect(await invoke(["session", "title", session, "CLI", "test"], home)).toMatchObject({ code: ExitCode.ok, out: `${session}  CLI test` });
+
+    const plain = await invoke(["run", session, "check", "the", "shell", "--model", "mock/scripted"], home);
+    expect(plain.code).toBe(ExitCode.ok);
+    expect(plain.out).toContain("Everything works end to end.");
+    expect(plain.out).toMatch(/── turn done · 2 steps · 1 tool call/);
+
+    const followed = await invoke(["run", session, "again", "--model", "mock/scripted", "--follow", "--json"], home);
+    const lines = followed.out.split("\n").map((line) => JSON.parse(line));
+    expect(lines.some((event) => event.type === "turn-started")).toBe(true);
+    expect(lines.some((event) => event.type === "delta" && event.event.type === "toolcall-end")).toBe(true);
+    expect(lines.at(-1)).toMatchObject({ type: "result", session, reason: "done", steps: 2, toolCalls: 1 });
+
+    const tools = JSON.parse((await invoke(["inspect", session, "--filter", "kind:tool", "--json"], home)).out);
+    expect(tools.map((record: { tool: string; status: string }) => [record.tool, record.status])).toEqual([["bash", "ok"], ["bash", "ok"]]);
+    expect(JSON.parse((await invoke(["inspect", session, "--records", "--sort", "duration", "--desc", "--json"], home)).out)[0].kind).toBe("assistant");
+    expect((await invoke(["cancel", session], home)).code).toBe(ExitCode.ok);
+  }, 30_000);
+
+  test("lists providers, models, and open questions", async () => {
+    expect(JSON.parse((await invoke(["models", "--json"], home)).out).map((model: { ref: string }) => model.ref)).toEqual(["mock/scripted"]);
+    expect(JSON.parse((await invoke(["providers", "--json"], home)).out).some((provider: { id: string }) => provider.id === "mock")).toBe(true);
+    expect(await invoke(["questions"], home)).toMatchObject({ code: ExitCode.ok, out: "No open questions." });
+    expect((await invoke(["answer", "nope", "yes", "--json"], home)).code).toBe(ExitCode.failed);
+  });
+
   test("session list is scoped to a directory unless --all", async () => {
-    const list = await invoke(["session", "list"], home, home);
-    expect(list).toMatchObject({ code: ExitCode.ok, out: `No sessions in ${home}.` });
-    expect(JSON.parse((await invoke(["session", "list", "--all", "--json"], home)).out)).toEqual([]);
+    const empty = await mkdtemp(join(tmpdir(), "basis-cli-empty-"));
+    try {
+      expect(await invoke(["session", "list"], home, empty)).toMatchObject({ code: ExitCode.ok, out: `No sessions in ${empty}.` });
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+    expect(JSON.parse((await invoke(["session", "list", "--all", "--json"], home)).out)).toBeInstanceOf(Array);
   });
 
   test("a domain error keeps the host's code", async () => {
@@ -178,6 +244,26 @@ describe("inspect formatting", () => {
     ].join("\n"));
   });
 
+  test("records list as a table with step, request, kind, status, time, tokens, and name", () => {
+    expect(formatRecords(ledger(turns), false).split("\n")).toEqual([
+      "step  req  kind    status    time   tokens   name",
+      "1          user    sent                      Run ls",
+      "1     #1   system  initial                   initial system prompt",
+      "1.1   #1   model   tool use  2.0s   1.2k/40  → bash",
+      '1.1        tool    ok        300ms           bash {"command":"ls"}',
+    ]);
+    expect(formatRecords([], false)).toBe("No records match.");
+  });
+
+  test("the system view prints each section under its plugin, and the diff view prints changed lines", () => {
+    const request = turns[0]!.steps[0]!.request!;
+    expect(formatSystem(request)).toBe("── base from agent, 4 chars (changed)\nBASE\n\n── project-context from project-context, 3 chars (changed)\nCTX");
+    expect(formatDiff(promptDiff(undefined, request), true)).toContain("first request");
+    const edited = { ...request, sections: request.sections.map((section) => (section.id === "base" ? { ...section, text: "BASE 2" } : section)) };
+    expect(formatDiff(promptDiff(request, edited), false)).toBe("── base from agent (changed)\n- BASE\n+ BASE 2");
+    expect(formatDiff([], false)).toContain("unchanged");
+  });
+
   test("a step names the plugin behind every part of the request", () => {
     const output = formatStep(turns[0]!, turns[0]!.steps[0]!);
     expect(output).toContain("  base from agent, 4 chars (changed)\n    BASE");
@@ -185,5 +271,26 @@ describe("inspect formatting", () => {
     expect(output).toMatch(/ {2}bash {2}from bash {2}\d+ chars {2}\(changed\)/);
     expect(output).toContain("composition  abc");
     expect(output).toMatch(/Tool runs:\n {2}bash {2}ok {2}300ms/);
+  });
+});
+
+describe("argument parsing", () => {
+  test("offsets accept seconds, units, and combinations", () => {
+    expect(parseOffset("90")).toBe(90_000);
+    expect(parseOffset("1m30s")).toBe(90_000);
+    expect(parseOffset("500ms")).toBe(500);
+    expect(parseOffset("2h")).toBe(7_200_000);
+    expect(parseOffset("soon")).toBeUndefined();
+  });
+
+  test("answers are checked against the question", () => {
+    const select = { type: "select" as const, id: "q", title: "Pick", options: [{ value: "api_key", label: "API key" }, { value: "oauth", label: "Subscription" }] };
+    expect(toAnswer(select, "oauth")).toEqual({ type: "select", value: "oauth" });
+    expect(toAnswer(select, "api key")).toEqual({ type: "select", value: "api_key" });
+    expect(toAnswer(select, "2")).toEqual({ type: "select", value: "oauth" });
+    expect(toAnswer(select, "other")).toContain("Choose one of");
+    expect(toAnswer({ type: "confirm", id: "c", title: "Go?" }, "Yes")).toEqual({ type: "confirm", value: true });
+    expect(toAnswer({ type: "confirm", id: "c", title: "Go?" }, "maybe")).toContain("yes or no");
+    expect(toAnswer({ type: "ask", id: "a", title: "Key" }, " sk ")).toEqual({ type: "ask", value: " sk " });
   });
 });

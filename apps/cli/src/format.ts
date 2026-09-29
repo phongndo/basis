@@ -1,4 +1,9 @@
-import type { HostInfo, PluginStatus, SessionEvent, SessionInfo, TrajectoryStep, TrajectoryTurn, Usage } from "@basis/contracts";
+import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@basis/contracts";
+import type {
+  DirectoryListing, GitBranch, HostInfo, InteractionRequest, LedgerRecord, ModelInfo, PluginStatus, ProviderInfo, SectionDiff, SessionEvent, SessionInfo,
+  TrajectoryRequest, TrajectoryStep, TrajectoryTurn, Usage, WorkspaceStatus,
+} from "@basis/contracts";
+import type { TurnResult } from "./live.ts";
 import type { Discovery } from "@basis/plugin-transport";
 
 /** Human-readable output. `--json` bypasses all of this and prints the contract shapes. */
@@ -218,3 +223,112 @@ export const formatStep = (turn: TrajectoryTurn, step: TrajectoryStep): string =
   }
   return lines.join("\n");
 };
+
+const NAME_CHARS = 100;
+
+/** The ledger as a table, one row per record: where it is, what it is, how it went, and what it said or did. */
+export const formatRecords = (records: readonly LedgerRecord[], running: boolean): string => {
+  if (records.length === 0) return "No records match.";
+  const rows = records.map((record) => {
+    const step = record.kind === "assistant" || record.kind === "tool" ? `${record.turn.index}.${record.step.index}` : `${record.turn.index}`;
+    const request = record.kind === "assistant" || record.kind === "system" ? `#${record.requestNumber}` : "";
+    const duration = recordDuration(record);
+    const usage = record.kind === "assistant" ? record.message.usage : undefined;
+    const name = recordName(record).replace(/\s+/g, " ");
+    return [
+      step, request, RECORD_KIND_LABEL[record.kind], recordStatus(record, running),
+      duration === undefined ? "" : seconds(duration),
+      usage === undefined ? "" : `${tokens(usage.input + usage.cacheRead + usage.cacheWrite)}/${tokens(usage.output)}`,
+      name.length > NAME_CHARS ? `${name.slice(0, NAME_CHARS - 1)}…` : name,
+    ];
+  });
+  return pad([["step", "req", "kind", "status", "time", "tokens", "name"], ...rows]);
+};
+
+/** Every system section in full, headed by the plugin that contributed it. */
+export const formatSystem = (request: TrajectoryRequest): string => {
+  const blocks = request.sections.map((section) =>
+    [`── ${section.id} from ${section.source}, ${count(section.chars)} chars${section.changed ? " (changed)" : ""}`, section.text ?? "(not recoverable from the log)"].join("\n"));
+  if (request.sections.every((section) => section.text === undefined) && request.system !== undefined) {
+    blocks.push(["── whole prompt (the logged prompt does not split by the recorded sizes)", request.system].join("\n"));
+  }
+  return blocks.join("\n\n");
+};
+
+/** Every tool definition, headed by the plugin that contributed it. */
+export const formatTools = (request: TrajectoryRequest): string =>
+  request.tools.map((tool) => [
+    `── ${tool.name} from ${tool.source}, ${count(tool.chars)} chars${tool.changed ? " (changed)" : ""}`,
+    ...(tool.spec === undefined ? [] : [tool.spec.description, JSON.stringify(tool.spec.parameters, null, 2)]),
+  ].join("\n")).join("\n\n") || "No tools.";
+
+/** Section-by-section changes to the system prompt, as unified-style lines. */
+export const formatDiff = (diff: readonly SectionDiff[], first: boolean): string => {
+  if (first) return "This is the first request; everything in it is new. Use --system to read it.";
+  if (diff.length === 0) return "The system prompt is unchanged from the request before.";
+  return diff.map((section) => [
+    `── ${section.id} from ${section.source} (${section.status})`,
+    ...section.lines.map((line) => `${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "} ${line.text}`),
+  ].join("\n")).join("\n\n");
+};
+
+export const formatModels = (models: readonly ModelInfo[]): string =>
+  models.length === 0 ? "No models. Log in to a provider (basis providers, basis login <provider>), or use --all." : pad([
+    ["model", "name", "context", "thinking", "input", "$/M in/out"],
+    ...models.map((model) => [
+      model.ref, model.name, tokens(model.contextWindow), model.reasoning ? model.thinkingLevels.join(",") : "no", model.input.join(","),
+      model.cost.input === 0 && model.cost.output === 0 ? "" : `${model.cost.input}/${model.cost.output}`,
+    ]),
+  ]);
+
+export const formatProviders = (providers: readonly ProviderInfo[]): string =>
+  pad([
+    ["provider", "name", "configured", "from", "login"],
+    ...providers.map((provider) => [provider.id, provider.name, provider.configured ? "yes" : "no", provider.source ?? "", provider.auth.map((auth) => auth.type).join(", ")]),
+  ]);
+
+export const formatQuestions = (questions: readonly InteractionRequest[]): string =>
+  questions.length === 0 ? "No open questions." : questions.map((question) => [
+    `${question.id}  ${question.type}  ${question.title}`,
+    ...(question.type === "select" ? question.options.map((option, i) => `    ${i + 1}. ${option.value}${option.label === option.value ? "" : ` (${option.label})`}`) : []),
+    ...(question.type === "confirm" && question.detail !== undefined ? [`    ${question.detail}`] : []),
+  ].join("\n")).join("\n");
+
+/** The reply (unless it was streamed) and a one-line summary of how the turn ended. */
+export const formatTurnResult = (turn: TurnResult, withText: boolean): string => {
+  const summary = [
+    `turn ${turn.reason}`,
+    `${turn.steps} step${turn.steps === 1 ? "" : "s"}`,
+    `${turn.toolCalls} tool call${turn.toolCalls === 1 ? "" : "s"}`,
+    ...(turn.usage === undefined ? [] : [usageText(turn.usage)]),
+    ...(turn.duration === undefined ? [] : [seconds(turn.duration)]),
+    `session ${turn.session}`,
+  ].join(" · ");
+  return [
+    ...(withText && turn.text ? [turn.text.trimEnd(), ""] : []),
+    `── ${summary}`,
+    ...(turn.error === undefined ? [] : [`error: ${turn.error}`]),
+  ].join("\n");
+};
+
+export const formatWorkspace = (status: WorkspaceStatus): string => {
+  if (!status.exists) return `${status.path}: does not exist`;
+  const git = status.git;
+  if (git === undefined) return `${status.path}: not a git repository`;
+  return pad([
+    ["path", status.path],
+    ["branch", git.branch ?? `(detached at ${git.head ?? "?"})`],
+    ["head", git.head ?? "(no commits)"],
+    ["changes", String(git.changes)],
+    ...(git.upstream === undefined ? [] : [["upstream", `${git.upstream} (ahead ${git.ahead}, behind ${git.behind})`]]),
+    ...(git.worktreeOf === undefined ? [] : [["worktree of", git.worktreeOf]]),
+  ]);
+};
+
+export const formatBranches = (branches: readonly GitBranch[]): string =>
+  branches.length === 0 ? "No branches." : pad(branches.map((branch) => [
+    branch.current ? "*" : " ", branch.name, branch.remote ? "remote" : "", time(branch.updatedAt), branch.worktree === undefined ? "" : `in ${branch.worktree}`,
+  ]));
+
+export const formatListing = (listing: DirectoryListing): string =>
+  [listing.parent, ...listing.entries.map((entry) => `  ${entry.name}/${entry.git ? "  (git)" : ""}`), ...(listing.truncated ? ["  …"] : [])].join("\n");

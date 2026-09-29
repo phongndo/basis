@@ -30,7 +30,7 @@ export interface Toast {
   readonly code?: string;
 }
 
-export type Dialog = "providers" | "plugins" | "models" | "add-project" | undefined;
+export type Dialog = "providers" | "plugins" | "models" | "add-project" | "events" | undefined;
 /** Main-area views of a session, over the same log. The choice carries over when switching sessions. */
 export type SessionViewKind = "chat" | "trajectory";
 
@@ -214,6 +214,13 @@ export const refreshPlugins = async (): Promise<void> => {
   setState("plugins", await client().host.plugins());
 };
 
+/** Every model the host knows, usable or not (`basis models --all`); loaded when the providers dialog asks. */
+const [allModelsSignal, setAllModels] = createSignal<readonly ModelInfo[] | undefined>();
+export const allModels = allModelsSignal;
+export const loadAllModels = async (): Promise<void> => {
+  try { setAllModels(await client().llm.models()); } catch (error) { reportError(error, "Could not list models"); }
+};
+
 export const refreshProviders = async (): Promise<void> => {
   const [providers, models] = await Promise.all([client().llm.providers(), client().llm.models(true)]);
   setState({ providers, providersLoaded: true, models, modelsLoaded: true });
@@ -231,7 +238,16 @@ const updateLive = (sessionId: string, update: (state: LiveState) => LiveState):
 /** The last ended turn per session, so a late `turn-started` cannot mark it running again (see `trackTurn`). */
 let endedTurns: Readonly<Record<string, string>> = {};
 
+/** The most recent host events, newest last, for the event log (`basis events`). */
+export interface LoggedEvent { readonly seq: number; readonly at: number; readonly event: HostEvent }
+const EVENT_LOG = 500;
+let eventSeq = 0;
+const [eventLogSignal, setEventLog] = createSignal<readonly LoggedEvent[]>([]);
+export const eventLog = eventLogSignal;
+export const clearEventLog = (): void => { setEventLog([]); };
+
 export const onEvent = (event: HostEvent): void => {
+  setEventLog((log) => [...(log.length >= EVENT_LOG ? log.slice(log.length - EVENT_LOG + 1) : log), { seq: ++eventSeq, at: Date.now(), event }]);
   switch (event.type) {
     case "session-appended": {
       if (log !== undefined && log.sessionId === event.sessionId) log.apply(event.event);
@@ -526,5 +542,18 @@ export const reloadConfig = async (): Promise<void> => {
 };
 
 export const setView = (view: SessionViewKind): void => { setState("view", view); };
+
+/** Moves the active session's leaf to `eventId`: the next prompt branches from there (`basis session checkout`). */
+export const checkoutSession = async (eventId: string): Promise<void> => {
+  const sessionId = state.activeId;
+  if (sessionId === undefined) return;
+  try {
+    const info = await client().session.checkout(sessionId, eventId);
+    setState("sessions", (sessions) => upsertSession(sessions, info));
+    toast({ level: "info", message: "The next prompt continues from the chosen event, on a new branch." });
+  } catch (error) {
+    reportError(error, "Could not branch the session");
+  }
+};
 
 export const openDialog = (dialog: Dialog): void => { setState({ dialog, ...(dialog === undefined ? { welcome: false } : {}) }); };

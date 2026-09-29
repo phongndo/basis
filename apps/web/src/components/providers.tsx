@@ -1,6 +1,6 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, onMount } from "solid-js";
 import type { ProviderInfo } from "@basis/contracts";
-import { login, logout, openDialog, state } from "../store.ts";
+import { allModels, loadAllModels, login, logout, openDialog, state } from "../store.ts";
 import { Dialog } from "./dialog.tsx";
 import { ChevronDownIcon, MoreIcon, SearchIcon, Spinner } from "./icons.tsx";
 import { Popover } from "./popover.tsx";
@@ -29,6 +29,8 @@ const methodLabel = (method: Method) => (method.type === "oauth" ? method.name :
 
 export function ProvidersDialog() {
   const [query, setQuery] = createSignal("");
+  // Every known model, usable or not, as `basis models --all` lists them.
+  onMount(() => { if (allModels() === undefined) void loadAllModels(); });
   const matching = createMemo(() => {
     const q = query().trim().toLowerCase();
     return state.providers.filter((provider) => q === "" || provider.name.toLowerCase().includes(q) || provider.id.includes(q));
@@ -86,6 +88,8 @@ function ProviderRow(props: { provider: ProviderInfo }) {
   const busy = () => state.loggingIn === props.provider.id;
   const locked = () => state.loggingIn !== undefined;
   const methods = () => props.provider.auth;
+  const [showModels, setShowModels] = createSignal(false);
+  const models = () => (allModels() ?? []).filter((model) => model.provider === props.provider.id);
   return (
     <li class="provider" classList={{ configured: props.provider.configured }}>
       <span class="provider-mark" aria-hidden="true">
@@ -94,7 +98,15 @@ function ProviderRow(props: { provider: ProviderInfo }) {
       </span>
       <span class="provider-info">
         <span class="provider-name">{props.provider.name}</span>
-        <span class="provider-desc">{describe(props.provider)}</span>
+        <span class="provider-desc">
+          {describe(props.provider)}
+          <Show when={models().length > 0}>
+            {" · "}
+            <button class="link-button provider-models-toggle" aria-expanded={showModels()} onClick={() => setShowModels(!showModels())}>
+              {models().length} model{models().length === 1 ? "" : "s"}
+            </button>
+          </Show>
+        </span>
       </span>
       <Show
         when={props.provider.configured}
@@ -155,6 +167,19 @@ function ProviderRow(props: { provider: ProviderInfo }) {
             </>
           )}
         </Popover>
+      </Show>
+      <Show when={showModels()}>
+        <ul class="provider-models">
+          <For each={models()}>
+            {(model) => (
+              <li>
+                <span class="provider-model-ref">{model.ref}</span>
+                <span class="muted">{Math.round(model.contextWindow / 1000)}k ctx{model.reasoning ? " · thinking" : ""}{model.input.includes("image") ? " · images" : ""}</span>
+                <Show when={model.cost.input > 0 || model.cost.output > 0}><span class="muted">${model.cost.input}/${model.cost.output} per M</span></Show>
+              </li>
+            )}
+          </For>
+        </ul>
       </Show>
     </li>
   );

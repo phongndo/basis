@@ -50,7 +50,7 @@ export function environment(facts: EnvironmentFacts, now: Date = new Date()): st
     `Platform: ${os.platform()} (${os.arch()})`,
     `Basis session: ${facts.sessionId}`,
     ...(facts.cli === undefined ? [] : [
-      `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, and \`inspect <session> [--step last]\` (the requests you were sent and which plugin contributed each part). Add \`--json\` for structured output; run it with \`--help\` for the rest.`,
+      `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
     ]),
     "</environment>",
   ].join("\n");

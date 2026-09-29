@@ -1,5 +1,6 @@
 import { For, Show, createSignal } from "solid-js";
 import { openDialog, reloadConfig, restartPlugin, state } from "../store.ts";
+import { tildePath } from "../model/format.ts";
 import { Dialog } from "./dialog.tsx";
 import { RefreshIcon, Spinner } from "./icons.tsx";
 
@@ -15,13 +16,24 @@ export function PluginsDialog() {
       onClose={() => openDialog(undefined)}
       class="plugins-dialog"
       footer={<>
-        <span class="muted small">{state.info?.composition.id ? `composition ${state.info.composition.id.slice(0, 10)}` : ""}</span>
+        <button class="button" onClick={() => openDialog("events")} data-tip="Everything the host publishes, as `basis events` shows it">Event log</button>
         <span class="spacer" />
         <button class="button" disabled={busy() !== undefined} onClick={() => void run("reload", reloadConfig)} data-tip="Re-read config files and apply them">
           <Show when={busy() === "reload"} fallback={<RefreshIcon />}><Spinner /></Show> Reload config
         </button>
       </>}
     >
+      <Show when={state.info}>
+        {(info) => (
+          <dl class="host-facts">
+            <dt>Host</dt><dd>{location.host} · transport {info().version}</dd>
+            <dt>Home</dt><dd>{info().home}</dd>
+            <dt>Project</dt><dd>{tildePath(info().cwd, info().home)}</dd>
+            <dt>Composition</dt><dd class="mono" data-tip={info().composition.id}>{info().composition.id.slice(0, 16)}</dd>
+            <dt>Running</dt><dd>{state.running.length === 0 ? "no turns" : `${state.running.length} turn${state.running.length === 1 ? "" : "s"}`}</dd>
+          </dl>
+        )}
+      </Show>
       <ul class="plugin-list">
         <For each={state.plugins}>
           {(plugin) => (
@@ -32,11 +44,11 @@ export function PluginsDialog() {
                 <Show when={plugin.version}><span class="muted small">{plugin.version}</span></Show>
                 <span class="spacer" />
                 <span class={`status-pill state-${plugin.state}`}>{plugin.state}</span>
-                <Show when={plugin.state === "failed" || plugin.state === "closed"}>
-                  <button class="button small" disabled={busy() !== undefined} onClick={() => void run(plugin.id, () => restartPlugin(plugin.id))}>
-                    <Show when={busy() === plugin.id} fallback="Restart"><Spinner /></Show>
-                  </button>
-                </Show>
+                <button class="button small" classList={{ "plugin-restart": plugin.state !== "failed" && plugin.state !== "closed" }}
+                  disabled={busy() !== undefined} onClick={() => void run(plugin.id, () => restartPlugin(plugin.id))}
+                  data-tip="Restart this plugin and the plugins that depend on it">
+                  <Show when={busy() === plugin.id} fallback="Restart"><Spinner /></Show>
+                </button>
               </div>
               <Show when={plugin.fault}>
                 {(fault) => (
