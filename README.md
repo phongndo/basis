@@ -39,7 +39,10 @@ With no config, every bundled plugin runs. `~/.basis/config.jsonc` and
 `<project>/.basis/config.jsonc` patch that by plugin id (`enabled: false`, or a
 replacement `config`). Plugin files in `~/.basis/plugins/` or
 `<project>/.basis/plugins/` load automatically and shadow a bundled plugin with
-the same id. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the
+the same id. Project files and plugins can run code and redirect credentials, so
+they load only for projects listed (or under a directory listed) in
+`"trustedProjects"` in `~/.basis/config.jsonc`; otherwise the host warns and
+ignores them. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the
 key icon in the web app, or set a provider's API key environment variable.
 
 The session log is the source of truth: every model request can be rebuilt from

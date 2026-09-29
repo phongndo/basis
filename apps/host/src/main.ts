@@ -5,7 +5,7 @@ import { Cause, Deferred, Effect, Exit, Option, Stream } from "effect";
 import { HostControl } from "@basis/contracts";
 import { Diagnostic, makeLoader, ReloadError } from "@basis/core";
 import type { Loader, Plugin, PluginSource, ReloadReport } from "@basis/core";
-import { compositionInfo, hostPlugin, loadComposition, resolvePaths, watchConfig } from "@basis/plugin-host";
+import { compositionInfo, hostPlugin, loadComposition, projectPluginsDir, resolvePaths, watchConfig } from "@basis/plugin-host";
 import type { HostControlService } from "@basis/plugin-host";
 import { readDiscovery } from "@basis/plugin-transport";
 import { bundled, withDefaults } from "./bundled.ts";
@@ -14,7 +14,7 @@ import { loadLocalPlugins } from "./local.ts";
 const args = new Set(process.argv.slice(2));
 // `pnpm start` runs from apps/host; INIT_CWD is where the user invoked it.
 const paths = resolvePaths({ env: process.env, cwd: process.env.INIT_CWD ?? process.cwd() });
-const localDirs = [join(paths.home, "plugins"), join(paths.cwd, ".basis", "plugins")];
+const userPluginsDir = join(paths.home, "plugins");
 
 const log = (message: string) => Effect.sync(() => { console.log(`basis: ${message}`); });
 const printDiagnostics = (diagnostics: readonly Diagnostic[]) => Effect.sync(() => {
@@ -32,15 +32,16 @@ const source: PluginSource = {
     return plugin ? Effect.succeed(plugin) : Effect.fail(new Diagnostic({
       severity: "error", pluginId: id,
       message: `No plugin "${id}"`,
-      suggestion: `Known plugins: ${[...definitions.keys()].join(", ")}. Local plugins go in ${localDirs.join(" or ")}.`,
+      suggestion: `Known plugins: ${[...definitions.keys()].join(", ")}. Local plugins go in ${userPluginsDir} or, in a trusted project, ${projectPluginsDir(paths)}.`,
     }));
   },
 };
 
 /** Read config files and local plugins into the next composition. Warnings print here; errors fail. */
 const load = (host: Plugin) => Effect.gen(function* () {
-  const local = yield* loadLocalPlugins(localDirs);
   const loaded = yield* loadComposition(paths);
+  // Project plugins run only in a project the user config trusts; see `loadComposition`.
+  const local = yield* loadLocalPlugins(loaded.trusted ? [userPluginsDir, projectPluginsDir(paths)] : [userPluginsDir]);
   const diagnostics = [...local.diagnostics, ...loaded.diagnostics];
   yield* printDiagnostics(diagnostics.filter((diagnostic) => diagnostic.severity === "warning"));
   const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");

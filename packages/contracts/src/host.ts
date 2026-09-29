@@ -25,8 +25,11 @@ export class Paths extends Context.Tag("basis/Paths")<Paths, {
 /**
  * Composition file (JSONC). User and project files merge: project rows override
  * user rows by plugin id; `config` objects are replaced, not deep-merged.
+ * A project's file and plugins load only when the user file trusts the project.
  */
 export const ConfigFile = Schema.Struct({
+  /** User file only: absolute directories whose projects (and their subdirectories) may configure the host and load plugins. */
+  trustedProjects: Schema.optional(Schema.Array(Schema.String)),
   plugins: Schema.optional(Schema.Record({
     key: Schema.String,
     value: Schema.Struct({ enabled: Schema.optional(Schema.Boolean), config: Schema.optional(Schema.Unknown) }),

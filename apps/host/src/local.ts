@@ -7,9 +7,9 @@ import { Diagnostic } from "@basis/core";
 import type { Plugin } from "@basis/core";
 
 /**
- * Local plugins are `.ts` or `.js` files in `<home>/plugins` and
- * `<cwd>/.basis/plugins` whose default export is a plugin or an array of
- * plugins. They run with the host's permissions, like every plugin.
+ * Local plugins are `.ts` or `.js` files in `<home>/plugins` and, for a
+ * trusted project, `<cwd>/.basis/plugins`, whose default export is a plugin or
+ * an array of plugins. They run with the host's permissions, like every plugin.
  *
  * Bare imports that the file's own location cannot resolve (`effect`,
  * `@basis/core`, `@basis/contracts`) fall back to the host's packages, so a
