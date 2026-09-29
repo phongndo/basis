@@ -171,6 +171,8 @@ export const attach = (next: Host): void => {
   host = next;
   next.onStatus((status) => {
     setState("status", status);
+    // Interactions may close while no connection can report it; the next subscription replays the ones still open.
+    if (status.state === "reconnecting") setState("interactions", []);
     if (status.state === "connected" && status.generation !== lastGeneration) {
       lastGeneration = status.generation;
       void resync(status.generation === 1);
