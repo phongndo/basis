@@ -59,6 +59,7 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
           onKeyDown={(event) => {
             if (event.key === "Enter") commit(event.currentTarget.value);
             else if (event.key === "Escape") {
+              event.preventDefault();
               event.stopPropagation();
               setEditing(false);
             }
@@ -119,6 +120,7 @@ export function Sidebar(props: { onPick: () => void }) {
             onInput={(event) => setQuery(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape" && query() !== "") {
+                event.preventDefault();
                 event.stopPropagation();
                 setQuery("");
               }
