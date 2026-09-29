@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 import type { Scope } from "effect";
-import { Socket } from "@effect/platform";
+import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
 import { HostRpcs } from "@basis/contracts";
@@ -37,6 +37,25 @@ export const makeHostRpc = (
       Layer.provide(Socket.layerWebSocket(url)),
       Layer.provide(webSocket),
       Layer.provide(RpcSerialization.layerJson),
+    );
+    const context = yield* Layer.build(protocol);
+    return yield* RpcClient.make(HostRpcs).pipe(Effect.provide(context));
+  });
+
+/**
+ * Connects over streaming HTTP (`POST <base>/rpc/http`, NDJSON), one request
+ * per call: for scripts and CLIs that make a few calls and exit. A non-2xx
+ * response (a wrong token's `401`) fails the call instead of being parsed as
+ * NDJSON, which would wait forever.
+ */
+export const makeHostRpcHttp = (base: string, token: string | undefined): Effect.Effect<HostRpcClient, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const authorize = token === undefined || token === "" ? (request: HttpClientRequest.HttpClientRequest) => request : HttpClientRequest.bearerToken(token);
+    const protocol = RpcClient.layerProtocolHttp({ url: new URL("/rpc/http", base).toString() }).pipe(
+      Layer.provide(Layer.effect(HttpClient.HttpClient, Effect.map(HttpClient.HttpClient, (client) =>
+        client.pipe(HttpClient.mapRequest(authorize), HttpClient.filterStatusOk)))),
+      Layer.provide(FetchHttpClient.layer),
+      Layer.provide(RpcSerialization.layerNdjson),
     );
     const context = yield* Layer.build(protocol);
     return yield* RpcClient.make(HostRpcs).pipe(Effect.provide(context));

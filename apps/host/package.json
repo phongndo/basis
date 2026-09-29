@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "basis": "./src/main.ts"
+  "exports": {
+    ".": "./src/main.ts"
   },
   "scripts": {
     "start": "node --conditions=source src/main.ts",

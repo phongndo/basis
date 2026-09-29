@@ -30,9 +30,11 @@ of it, including the agent loop, is a plugin that can be replaced by id.
 | [`plugins/*`](plugins) | The default plugins, one README each |
 | [`apps/host`](apps/host/src/main.ts) | Reads config, loads plugins, hot-reloads on config change |
 | [`apps/web`](apps/web) | The web client, served by the `transport` plugin |
+| [`apps/cli`](apps/cli/README.md) | The `basis` command: runs the host and queries or controls a running one |
 
 ```sh
 nix develop -c pnpm start          # build the web app, start the host, print its URL
+nix develop -c pnpm basis status   # query the running host; `pnpm basis --help` lists commands
 ```
 
 With no config, every bundled plugin runs. `~/.basis/config.jsonc` and
