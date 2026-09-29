@@ -116,6 +116,11 @@ export const FolderIcon = () => (
     <path d="M2.5 4.5a1 1 0 011-1h3l1.5 1.5h4.5a1 1 0 011 1v6a1 1 0 01-1 1h-9a1 1 0 01-1-1z" />
   </Icon>
 );
+export const FilterIcon = () => (
+  <Icon>
+    <path d="M2.5 4h11M4.5 8h7M6.5 12h3" />
+  </Icon>
+);
 export const SearchIcon = () => (
   <Icon>
     <circle cx="7" cy="7" r="4.25" />

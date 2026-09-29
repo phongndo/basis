@@ -116,6 +116,59 @@ const MODELS: ModelInfo[] = [
     maxTokens: 128_000,
     cost: { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
   },
+  // From OpenCode's catalogs, so connecting either one shows models as the real host does.
+  ...(
+    [
+      ["opencode", "claude-sonnet-4-5", "Claude Sonnet 4.5", "anthropic-messages", 200_000, 3, 15],
+      ["opencode", "gpt-5", "GPT-5", "openai-responses", 400_000, 1.25, 10],
+      // OpenCode Go's current models as of 2026-09-29 (its /models, less what models.dev has retired).
+      ["opencode-go", "minimax-m3", "MiniMax-M3", "anthropic-messages", 1000000, 0.3, 1.2],
+      ["opencode-go", "minimax-m2.7", "MiniMax-M2.7", "anthropic-messages", 204800, 0.3, 1.2],
+      ["opencode-go", "kimi-k3", "Kimi K3", "openai-completions", 1048576, 3, 15],
+      ["opencode-go", "kimi-k2.7-code", "Kimi K2.7 Code", "openai-completions", 262144, 0.95, 4],
+      ["opencode-go", "kimi-k2.6", "Kimi K2.6", "openai-completions", 262144, 0.95, 4],
+      ["opencode-go", "longcat-2.0", "LongCat-2.0", "openai-completions", 1000000, 0.3, 1.2],
+      ["opencode-go", "glm-5.2", "GLM-5.2", "openai-completions", 1000000, 1.4, 4.4],
+      ["opencode-go", "glm-5.3-flash", "GLM-5.3-Flash", "openai-completions", 1000000, 0.15, 0.5],
+      ["opencode-go", "glm-5.3", "GLM-5.3", "openai-completions", 1000000, 1.4, 4.4],
+      ["opencode-go", "deepseek-v4-pro", "DeepSeek V4 Pro (New)", "openai-completions", 1000000, 0.66, 1.98],
+      ["opencode-go", "deepseek-v4-flash", "DeepSeek V4 Flash", "openai-completions", 1000000, 0.15, 0.6],
+      ["opencode-go", "deepseek-v4.1-flash", "DeepSeek V4.1 Flash", "openai-completions", 1000000, 0.15, 0.6],
+      ["opencode-go", "deepseek-v4-flash-vision-exp", "DeepSeek V4 Flash Vision Exp", "openai-completions", 1000000, 0.15, 0.6],
+      ["opencode-go", "qwen3.7-max", "Qwen3.7 Max", "openai-completions", 1000000, 2.5, 7.5],
+      ["opencode-go", "qwen3.8-max", "Qwen3.8 Max", "openai-completions", 1000000, 2, 6],
+      ["opencode-go", "qwen3.8-flash", "Qwen3.8 Flash", "anthropic-messages", 1000000, 0.15, 0.47],
+      ["opencode-go", "qwen3.7-plus", "Qwen3.7 Plus", "openai-completions", 1000000, 0.4, 1.6],
+      ["opencode-go", "qwen3.6-plus", "Qwen3.6 Plus", "openai-completions", 1000000, 0.5, 3],
+      ["opencode-go", "mimo-v2.6-pro", "MiMo-V2.6-Pro", "openai-completions", 1048576, 0.435, 0.87],
+      ["opencode-go", "mimo-v2.6-flash", "MiMo-V2.6-Flash", "openai-completions", 1048576, 0.14, 0.28],
+      ["opencode-go", "space-bunny-free", "Space Bunny Free", "openai-completions", 1048576, 0, 0],
+      ["opencode-go", "longcat-2.5-preview-free", "LongCat 2.5 Preview Free", "openai-completions", 1000000, 0, 0],
+      ["opencode-go", "mimo-v2.5-pro", "MiMo V2.5 Pro", "openai-completions", 1048576, 0.435, 0.87],
+      ["opencode-go", "mimo-v2.5", "MiMo V2.5", "openai-completions", 1000000, 0.14, 0.28],
+      ["opencode-go", "hy4-preview", "Hy4 preview", "openai-completions", 1024000, 0.834, 2.501],
+      ["opencode-go", "hy3", "Hy3", "openai-completions", 256000, 0.14, 0.58],
+      ["opencode-go", "gpt-5.6-luna", "GPT-5.6 Luna", "openai-responses", 1050000, 0.2, 1.2],
+      ["opencode-go", "grok-4.5", "Grok 4.5", "openai-responses", 500000, 2, 6],
+      ["opencode-go", "grok-4.7", "Grok 4.7", "openai-responses", 500000, 2, 6],
+      ["opencode-go", "grok-4.6", "Grok 4.6", "openai-responses", 500000, 2, 6],
+      ["opencode-go", "muse-spark-1.3-contributor", "Muse Spark 1.3 Contributor", "openai-responses", 1048576, 0.1, 0.2],
+      ["opencode-go", "muse-spark-1.2-contributor", "Muse Spark 1.2 Contributor", "openai-responses", 1048576, 0.1, 0.2],
+      ["opencode-go", "gpt-6-luna", "GPT-6 Luna", "openai-responses", 1050000, 0.1, 0.5],
+    ] as const
+  ).map(([provider, id, name, api, contextWindow, input, output]): ModelInfo => ({
+    ref: `${provider}/${id}`,
+    provider,
+    id,
+    name,
+    api,
+    reasoning: true,
+    thinkingLevels: ["low", "medium", "high"],
+    input: ["text"],
+    contextWindow,
+    maxTokens: 32_000,
+    cost: { input, output, cacheRead: 0, cacheWrite: 0 },
+  })),
 ];
 
 const MOCK_COMMANDS = [
@@ -138,26 +191,44 @@ const MOCK_COMMANDS = [
 
 export const createMockHost = (): Host => {
   const fresh = new URLSearchParams(location.search).get("mock") === "fresh";
+  const key = { type: "api_key", name: "API key", interactive: true } as const;
+  const oauth = (name: string) => ({ type: "oauth", name, interactive: true }) as const;
+  /** The real llm plugin's providers (pi-ai's built-ins), as `Llm.providers` reports them. */
   const providers: ProviderInfo[] = [
-    {
-      id: "anthropic",
-      name: "Anthropic",
-      // As in the real llm plugin: Anthropic's subscription OAuth (Claude Pro/Max) is excluded by policy.
-      auth: [{ type: "api_key", name: "API key", interactive: true }],
-      configured: false,
-    },
-    {
-      id: "openai",
-      name: "OpenAI",
-      auth: [
-        { type: "oauth", name: "ChatGPT Plus/Pro", interactive: true },
-        { type: "api_key", name: "API key", interactive: true },
-      ],
-      configured: false,
-    },
-    { id: "github-copilot", name: "GitHub Copilot", auth: [{ type: "oauth", name: "GitHub login", interactive: true }], configured: false },
-    { id: "google", name: "Google Gemini", auth: [{ type: "api_key", name: "API key", interactive: true }], configured: false },
-  ];
+    ["amazon-bedrock", "Amazon Bedrock", [key]],
+    ["ant-ling", "Ant Ling", [key]],
+    // As in the real llm plugin: Anthropic's subscription OAuth (Claude Pro/Max) is excluded by policy.
+    ["anthropic", "Anthropic", [key]],
+    ["azure-openai-responses", "Azure OpenAI", [key]],
+    ["baseten", "Baseten", [key]],
+    ["cerebras", "Cerebras", [key]],
+    ["cloudflare-workers-ai", "Cloudflare Workers AI", [key]],
+    ["deepseek", "DeepSeek", [key]],
+    ["fireworks", "Fireworks", [key]],
+    ["github-copilot", "GitHub Copilot", [oauth("GitHub Copilot"), key]],
+    ["google", "Google", [key]],
+    ["google-vertex", "Google Vertex AI", [key]],
+    ["groq", "Groq", [key]],
+    ["huggingface", "Hugging Face", [key]],
+    ["kimi-coding", "Kimi For Coding", [oauth("Kimi Code (subscription)"), key]],
+    ["meta", "Meta", [oauth("Meta (Muse subscription)"), key]],
+    ["minimax", "MiniMax", [key]],
+    ["mistral", "Mistral", [key]],
+    ["moonshotai", "Moonshot AI", [key]],
+    ["nvidia", "NVIDIA", [key]],
+    ["openai", "OpenAI", [key]],
+    ["openai-codex", "OpenAI Codex", [oauth("OpenAI (ChatGPT Plus/Pro)")]],
+    ["opencode", "OpenCode Zen", [key]],
+    ["opencode-go", "OpenCode Go", [key]],
+    ["openrouter", "OpenRouter", [oauth("OpenRouter OAuth"), key]],
+    ["qwen-token-plan", "Qwen Token Plan", [key]],
+    ["radius", "Radius", [oauth("Radius"), key]],
+    ["together", "Together", [key]],
+    ["vercel-ai-gateway", "Vercel AI Gateway", [key]],
+    ["xai", "xAI", [oauth("xAI (Grok/X subscription)"), key]],
+    ["xiaomi", "Xiaomi", [key]],
+    ["zai", "Z.AI", [key]],
+  ].map(([id, name, auth]) => ({ id: id as string, name: name as string, auth: auth as ProviderInfo["auth"], configured: false }));
   const bundled = (id: string, extra: Partial<PluginStatus> = {}): PluginStatus => ({
     id,
     version: "0.1.0",
@@ -645,7 +716,7 @@ export const createMockHost = (): Host => {
         if (type === "api_key") {
           const answer = await ask({
             type: "interaction",
-            request: { type: "ask", id: id("i"), title: `${p.name} API key`, placeholder: "sk-…", secret: true },
+            request: { type: "ask", id: id("i"), origin: `login:${p.id}`, title: `${p.name} API key`, placeholder: "sk-…", secret: true },
           });
           if (answer === undefined || answer.type !== "ask" || answer.value === "") throw new Error("Login cancelled");
         } else {
@@ -654,6 +725,7 @@ export const createMockHost = (): Host => {
             request: {
               type: "select",
               id: id("i"),
+              origin: `login:${p.id}`,
               title: `Log in to ${p.name}`,
               options: [
                 { value: "browser", label: "Open browser", description: "Sign in on the provider's site" },
@@ -798,6 +870,26 @@ export const createMockHost = (): Host => {
           if (plugins[i]!.locked !== undefined && row.enabled === false) {
             throw new HostError({ code: "ReloadError", message: `error [${id}]: "${id}" cannot be turned off: ${plugins[i]!.locked}`, subject: id });
           }
+          // Custom providers: items of the llm plugin's `providers`, listed like built-ins.
+          for (const item of row.add?.providers ?? []) {
+            const entry = item as { id: string; name?: string; apiKey?: unknown };
+            const at = providers.findIndex((p) => p.id === entry.id);
+            const info: ProviderInfo = {
+              id: entry.id,
+              name: entry.name ?? entry.id,
+              auth: [{ type: "api_key", name: `${entry.name ?? entry.id} API key`, interactive: true }],
+              configured: entry.apiKey === undefined,
+              ...(entry.apiKey === undefined ? { source: "no key required" } : {}),
+              custom: true,
+            };
+            if (at === -1) providers.push(info);
+            else providers[at] = info;
+          }
+          for (const removed of row.remove?.providers ?? []) {
+            const at = providers.findIndex((p) => p.id === removed && p.custom);
+            if (at !== -1) providers.splice(at, 1);
+          }
+          if (row.add !== undefined || row.remove !== undefined) return { started: [], restarted: [id], stopped: [] };
           if (row.values !== undefined) {
             const next = { ...configRows[id] };
             for (const [key, value] of Object.entries(row.values)) {

@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import type { PluginStatus } from "@lemma/contracts";
+import type { PluginChange, PluginStatus } from "@lemma/contracts";
 import { Client, HostPlugins, Notify } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 
@@ -36,6 +36,11 @@ export default defineUiPlugin({
         },
         setConfig: async (target: PluginStatus, values: Readonly<Record<string, unknown>>) => {
           const result = await host.host.configure({ [target.id]: { values } }, target.configScope === "project" ? { scope: "project" } : undefined);
+          if (!result.deferred) await refresh();
+          return result;
+        },
+        edit: async (target: PluginStatus, change: Pick<PluginChange, "add" | "remove">) => {
+          const result = await host.host.configure({ [target.id]: change }, target.configScope === "project" ? { scope: "project" } : undefined);
           if (!result.deferred) await refresh();
           return result;
         },

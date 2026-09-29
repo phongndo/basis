@@ -3961,14 +3961,53 @@ button {
 }
 
 /* ---------------------------------------------------------------- providers */
+.providers-top {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.providers-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.providers-search:focus-within {
+  border-color: var(--text-3);
+}
+.providers-search-field {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+}
+.providers-search-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+}
+.providers-search-field input::placeholder {
+  color: var(--text-3);
+}
+.providers-search-field input::-webkit-search-cancel-button {
+  display: none;
+}
 .provider {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 6px 10px;
-  border-radius: 10px;
+  column-gap: 14px;
+  row-gap: 8px;
+  min-height: 48px;
+  padding: 6px 0;
 }
 .provider-models-toggle {
   font-size: 12px;
@@ -3976,7 +4015,7 @@ button {
 .provider-models {
   flex-basis: 100%;
   list-style: none;
-  margin: 0 0 4px 42px;
+  margin: 0 0 4px 36px;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -3995,38 +4034,36 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.provider:hover {
-  background: var(--bg-hover);
-}
 .provider-mark {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
   flex: none;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  background: var(--bg-active);
   color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
 }
 .provider.configured .provider-mark {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
   color: var(--text);
 }
-.provider-dot {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ok);
-  border: 2px solid var(--bg-raised);
+.provider-logo,
+.provider-logo svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
-.provider:hover .provider-dot {
-  border-color: color-mix(in srgb, var(--bg-raised) 94%, white);
+/* Logos with a file per theme. */
+.logo-dark,
+:root[data-theme="dark"] .logo-light {
+  display: none;
+}
+:root[data-theme="dark"] .logo-dark {
+  display: block;
+}
+.provider-initial {
+  font-size: 15px;
+  font-weight: 600;
 }
 .provider-info {
   display: flex;
@@ -4048,19 +4085,91 @@ button {
   white-space: nowrap;
 }
 .provider-connect {
-  width: 104px;
-  justify-content: center;
-  gap: 4px;
   flex: none;
+  min-width: 76px;
+  justify-content: center;
 }
-.provider-connect .icon {
-  width: 13px;
-  height: 13px;
-  margin-right: -3px;
+/* Adding a custom provider: label and field per line, under the name. */
+.provider-form {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 36px;
+}
+.provider-form label,
+.provider-form-row {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.provider-logo-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.provider-form .field {
+  height: 30px;
+}
+.provider-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+.provider-form-actions .provider-question-note {
+  flex: 1;
+}
+.provider-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   color: var(--text-3);
 }
-.provider-more {
-  flex: none;
+/* A login's question sits under the provider's name, lined up with it. */
+.provider-question {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 36px;
+}
+.provider-key,
+.provider-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.provider-key .field {
+  flex: 1;
+  min-width: 180px;
+  height: 30px;
+}
+.provider-question-title {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-right: 4px;
+}
+.provider-question-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.provider-question-note .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+}
+.provider-question-note .icon {
+  width: 11px;
+  height: 11px;
 }
 .menu-danger {
   color: var(--err);
@@ -4211,17 +4320,6 @@ button {
 /* Rows sit on the page, divided by hairlines; no boxes around them. */
 .settings-rows > * + * {
   border-top: 1px solid var(--border);
-}
-.settings-rows .provider {
-  padding: 10px 0;
-  border-radius: 0;
-}
-.settings-rows .provider:hover {
-  background: none;
-}
-.settings-rows .provider-dot,
-.settings-rows .provider:hover .provider-dot {
-  border-color: var(--bg);
 }
 .settings-rows .plugin {
   padding: 10px 0;

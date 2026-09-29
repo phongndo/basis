@@ -10,6 +10,7 @@ import type {
   InteractionRequest,
   ModelInfo,
   NoticePayload,
+  PluginChange,
   PluginStatus,
   PromptContent,
   ProviderInfo,
@@ -189,8 +190,13 @@ export interface PluginsService {
   /** Sets config fields (null unsets one) in the file that sets the plugin's config. */
   readonly setConfig: (plugin: PluginStatus, values: Readonly<Record<string, unknown>>) => Promise<ReloadResult>;
 }
+export interface HostPluginsService extends PluginsService {
+  readonly reload: () => Promise<ReloadResult>;
+  /** Adds or removes items of a list config key by their `id`, in the file that sets the plugin's config, without reading the list. */
+  readonly edit: (plugin: PluginStatus, change: Pick<PluginChange, "add" | "remove">) => Promise<ReloadResult>;
+}
 /** The host's plugins. */
-export class HostPlugins extends Context.Tag("lemma-ui/HostPlugins")<HostPlugins, PluginsService & { readonly reload: () => Promise<ReloadResult> }>() {}
+export class HostPlugins extends Context.Tag("lemma-ui/HostPlugins")<HostPlugins, HostPluginsService>() {}
 
 export interface UiPluginsService extends PluginsService {
   /** Files loaded from `~/.lemma/ui` and a trusted project's `.lemma/ui`. */
