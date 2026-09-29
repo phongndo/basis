@@ -28,17 +28,30 @@ export function basePrompt(toolNames: ReadonlySet<string>): string {
   ].join("\n\n");
 }
 
+export interface EnvironmentFacts {
+  readonly cwd: string;
+  /** The session this turn belongs to, so the agent can inspect its own log. */
+  readonly sessionId: string;
+  /** How to run the `basis` CLI from a shell, when the host app knows. */
+  readonly cli?: string;
+}
+
 /**
- * Where and when the agent runs. The date has day precision so the system
- * prompt, and with it the provider's prompt cache, stays stable within a day.
+ * Where and when the agent runs, and how it can inspect itself. The date has
+ * day precision and the session id is fixed per session, so the system prompt
+ * (and with it the provider's prompt cache) stays stable within a session and day.
  */
-export function environment(cwd: string, now: Date = new Date()): string {
+export function environment(facts: EnvironmentFacts, now: Date = new Date()): string {
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   return [
     "<environment>",
-    `Current working directory: ${cwd}`,
+    `Current working directory: ${facts.cwd}`,
     `Current date: ${date}`,
     `Platform: ${os.platform()} (${os.arch()})`,
+    `Basis session: ${facts.sessionId}`,
+    ...(facts.cli === undefined ? [] : [
+      `Basis CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, and \`inspect <session> [--step last]\` (the requests you were sent and which plugin contributed each part). Add \`--json\` for structured output; run it with \`--help\` for the rest.`,
+    ]),
     "</environment>",
   ].join("\n");
 }
@@ -46,8 +59,8 @@ export function environment(cwd: string, now: Date = new Date()): string {
 export const baseSection = (source: string, toolNames: ReadonlySet<string>, override?: string): SystemSection =>
   ({ id: "base", source, text: override ?? basePrompt(toolNames) });
 
-export const environmentSection = (source: string, cwd: string): SystemSection =>
-  ({ id: "environment", source, text: environment(cwd) });
+export const environmentSection = (source: string, facts: EnvironmentFacts): SystemSection =>
+  ({ id: "environment", source, text: environment(facts) });
 
 const TITLE_CHARS = 60;
 

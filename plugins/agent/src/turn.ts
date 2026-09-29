@@ -25,6 +25,8 @@ export interface TurnServices {
 
 export interface TurnSettings {
   readonly systemPrompt?: string;
+  /** Shell command for the `basis` CLI, named in the environment section. */
+  readonly cli?: string;
   readonly maxSteps: number;
 }
 
@@ -144,7 +146,7 @@ export function runTurn(services: TurnServices, settings: TurnSettings, input: T
       ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
       sections: [
         baseSection(source, new Set(listed.map((tool) => tool.spec.name)), settings.systemPrompt),
-        environmentSection(source, cwd),
+        environmentSection(source, { cwd, sessionId, ...(settings.cli === undefined ? {} : { cli: settings.cli }) }),
       ],
       tools: listed,
       history: deriveMessages(branch),

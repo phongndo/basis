@@ -5,6 +5,7 @@ import type { ModelInfo, PromptContent, TurnOptions } from "@basis/contracts";
 import { newId, runTurn } from "./turn.ts";
 
 export { basePrompt, environment, titleFrom } from "./prompt.ts";
+export type { EnvironmentFacts } from "./prompt.ts";
 export { runTurn } from "./turn.ts";
 
 export const AgentConfig = Schema.Struct({
@@ -12,6 +13,8 @@ export const AgentConfig = Schema.Struct({
   defaultModel: Schema.optional(Schema.String),
   /** Replaces the default base prompt; the environment section is still added. */
   systemPrompt: Schema.optional(Schema.String),
+  /** Shell command that runs the `basis` CLI; named in the environment section so the agent can inspect itself. */
+  cli: Schema.optional(Schema.String),
   /** Model calls allowed in one turn before it ends with `max-steps`. */
   maxSteps: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 200 }),
 });
@@ -35,7 +38,11 @@ export default definePlugin({
       sessions: yield* Sessions, llm: yield* Llm, tools: yield* Tools, host: yield* HostControl,
       hooks: yield* Hooks, events: yield* Events, source: owner.id,
     };
-    const settings = { maxSteps: config.maxSteps, ...(config.systemPrompt === undefined ? {} : { systemPrompt: config.systemPrompt }) };
+    const settings = {
+      maxSteps: config.maxSteps,
+      ...(config.systemPrompt === undefined ? {} : { systemPrompt: config.systemPrompt }),
+      ...(config.cli === undefined ? {} : { cli: config.cli }),
+    };
     // Turns belong to the plugin, not the caller: they outlive an interrupted `prompt` and end with the plugin.
     const scope = yield* Effect.scope;
     const running = new Map<string, Running>();

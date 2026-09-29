@@ -16,6 +16,7 @@ yield* agent.cancel(sessionId);
 | `defaultModel` | first of `Llm.models({ available: true })` | `<provider>/<model>` for turns that name none. |
 | `systemPrompt` | pi-style base prompt | Replaces the base section; the environment section is still added. |
 | `maxSteps` | `200` | Model calls per turn before it ends with `max-steps`. |
+| `cli` | set by `apps/host` to this checkout's CLI | Shell command for the `basis` CLI, named in the environment section so the agent can inspect itself. |
 
 ## A turn
 
@@ -25,7 +26,8 @@ yield* agent.cancel(sessionId);
 2. Appends `turn-start`, the user `message`, and a `title` from the prompt if the
    session has none.
 3. Each step: `step-start`; a `RequestDraft` with the base section and an
-   environment section (cwd, date, platform; source `agent`), `Tools.list`, and
+   environment section (cwd, date, platform, session id, and the `cli` command
+   when configured; source `agent`), `Tools.list`, and
    `deriveMessages(branch)`; `AgentRequestHook`; the `request` event with
    per-section and per-tool `contributions`, the `HostControl.composition` id, and
    `system`/`tools` only when they differ from `requestState(branch)`. The request

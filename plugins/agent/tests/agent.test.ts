@@ -256,6 +256,17 @@ describe("agent", () => {
       yield* Effect.flatMap(Agent, (a) => a.prompt(id, text("go"), { thinking: "high" }));
       expect(requests[0]).toMatchObject({ model: "fake/m2", thinking: "high" });
       expect(requests[0]!.system!.startsWith("Custom base.\n\n<environment>")).toBe(true);
+      expect(requests[0]!.system).toContain(`Basis session: ${id}`);
+      expect(requests[0]!.system).not.toContain("Basis CLI:");
+    }));
+  });
+
+  it("names the configured CLI in the environment section", async () => {
+    await withAgent({ scripts: [reply("hi")], models: ["fake/m1"], config: { cli: "basis-test" } }, ({ requests }) => Effect.gen(function* () {
+      const { id } = yield* newSession;
+      yield* Effect.flatMap(Agent, (a) => a.prompt(id, text("go")));
+      expect(requests[0]!.system).toContain("Basis CLI: `basis-test`");
+      expect(requests[0]!.system).toContain(`Basis session: ${id}`);
     }));
   });
 

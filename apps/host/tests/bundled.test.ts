@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { webDist, withDefaults } from "../src/bundled.ts";
+import { cliCommand, webDist, withDefaults } from "../src/bundled.ts";
 
 describe("withDefaults", () => {
-  test("enables every plugin, with the web app served by default", () => {
+  test("enables every plugin, with the web app served and the CLI named to the agent by default", () => {
     expect(withDefaults(["agent", "transport"], { plugins: {} }).plugins).toEqual({
-      agent: {},
+      agent: { config: { cli: cliCommand } },
       transport: { config: { staticDir: webDist } },
     });
   });
@@ -18,8 +18,13 @@ describe("withDefaults", () => {
       .toEqual({ enabled: false, config: { staticDir: webDist } });
   });
 
+  test("an agent config row keeps the CLI unless it sets cli itself", () => {
+    expect(withDefaults(["agent"], { plugins: { agent: { config: { maxSteps: 5 } } } }).plugins.agent)
+      .toEqual({ config: { cli: cliCommand, maxSteps: 5 } });
+  });
+
   test("other plugins' config rows replace their config", () => {
-    expect(withDefaults(["agent"], { plugins: { agent: { config: { maxSteps: 5 } }, extra: {} } }).plugins)
-      .toEqual({ agent: { config: { maxSteps: 5 } }, extra: {} });
+    expect(withDefaults(["tools"], { plugins: { tools: { config: { timeoutMs: 5 } }, extra: {} } }).plugins)
+      .toEqual({ tools: { config: { timeoutMs: 5 } }, extra: {} });
   });
 });
