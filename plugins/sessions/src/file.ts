@@ -141,22 +141,38 @@ export const infoOf = (
 /**
  * Append-only handle on one file. Each write is followed by `fdatasync`, so a
  * returned append survives a crash or power loss, not just a process exit.
+ * A failed write may leave bytes behind (a torn line, or a whole line that was
+ * never confirmed); the next write first truncates back to the last confirmed
+ * line, so the file keeps matching what callers were told was appended.
  */
 export interface Writer {
   readonly write: (line: Line) => Effect.Effect<void, SessionError>;
   readonly close: Effect.Effect<void>;
 }
 
-const writerFor = (handle: fs.FileHandle, file: string, sessionId: string): Writer => ({
-  write: (line) => Effect.tryPromise({
-    try: async () => {
-      await handle.appendFile(encodeLine(line));
-      await handle.datasync();
-    },
-    catch: io(sessionId, `Cannot write ${file}`),
-  }),
-  close: Effect.promise(() => handle.close()).pipe(Effect.ignore),
-});
+const writerFor = (handle: fs.FileHandle, file: string, sessionId: string, confirmed: number): Writer => {
+  let end = confirmed;
+  let dirty = false;
+  return {
+    write: (line) => Effect.tryPromise({
+      try: async () => {
+        if (dirty) {
+          await handle.truncate(end);
+          await handle.datasync();
+          dirty = false;
+        }
+        const text = encodeLine(line);
+        dirty = true;
+        await handle.appendFile(text);
+        await handle.datasync();
+        dirty = false;
+        end += Buffer.byteLength(text);
+      },
+      catch: io(sessionId, `Cannot write ${file}`),
+    }),
+    close: Effect.promise(() => handle.close()).pipe(Effect.ignore),
+  };
+};
 
 /** Makes a new file's directory entry durable too. Best effort: some platforms cannot fsync a directory. */
 const syncDirectory = async (dir: string) => {
@@ -172,7 +188,8 @@ export function createFile(file: string, header: Header): Effect.Effect<Writer, 
   return Effect.tryPromise({
     try: async () => {
       await fs.mkdir(path.dirname(file), { recursive: true });
-      const handle = await fs.open(file, "wx");
+      // Append mode, like `openFile`: writes land at the end even after a failed write is truncated away.
+      const handle = await fs.open(file, "ax");
       try {
         await handle.appendFile(encodeLine(header));
         await handle.datasync();
@@ -184,7 +201,7 @@ export function createFile(file: string, header: Header): Effect.Effect<Writer, 
       return handle;
     },
     catch: io(header.id, `Cannot create ${file}`),
-  }).pipe(Effect.map((handle) => writerFor(handle, file, header.id)));
+  }).pipe(Effect.map((handle) => writerFor(handle, file, header.id, Buffer.byteLength(encodeLine(header)))));
 }
 
 /** Opens an existing file for appending, first cutting a torn final line so the next record starts on its own line. */
@@ -205,5 +222,5 @@ export function openFile(file: string, sessionId: string, validBytes: number): E
       return handle;
     },
     catch: io(sessionId, `Cannot open ${file}`),
-  }).pipe(Effect.map((handle) => writerFor(handle, file, sessionId)));
+  }).pipe(Effect.map((handle) => writerFor(handle, file, sessionId, validBytes)));
 }

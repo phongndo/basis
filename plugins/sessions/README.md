@@ -33,7 +33,9 @@ event appended or the last checkout, whichever is later. The title is the latest
   one session are serialized by a semaphore. The cost is one sync per event, and
   the agent appends only settled events (never stream deltas).
 - **Crash tolerance.** Bytes after the last newline are a torn write: they are
-  ignored when reading and cut off before the next append. Any *complete* line
+  ignored when reading and cut off before the next append. A write that fails at
+  runtime (full disk, failed sync) fails the append, and the next write first
+  truncates the file back to the last confirmed line. Any *complete* line
   that does not decode, an unknown parent, a seq gap, or a checkout to nowhere
   makes the session `Corrupt`. Skipping such a line would silently change what the
   model saw.

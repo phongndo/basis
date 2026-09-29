@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Chunk, Effect, Fiber, Layer, Stream } from "effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { definePlugin, Events, makeCore } from "@basis/core";
 import { Notice, Paths, SessionAppended, SessionChanged, Sessions } from "@basis/contracts";
 import type { EventData } from "@basis/contracts";
@@ -10,7 +10,7 @@ import sessions, { encodeCwd } from "../src/index.ts";
 
 let dir: string;
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), "basis-sessions-")); });
-afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); await fs.rm(dir, { recursive: true, force: true }); });
 
 const paths = () => definePlugin({
   id: "paths",
@@ -223,6 +223,35 @@ describe("sessions", () => {
       all.slice(1).forEach((event, i) => expect(event.parent).toBe(all[i]!.id));
       expect(Chunk.toArray(yield* Fiber.join(appended)).map((payload) => payload.event.seq)).toEqual(all.map((event) => event.seq));
       expect(Chunk.toArray(yield* Fiber.join(changed)).at(-1)!.info.lastSeq).toBe(20);
+    }));
+  });
+  it("recovers from a failed write: the next append follows the last good line, and the file stays loadable", async () => {
+    const probe = await fs.open(path.join(dir, "probe"), "w");
+    const FileHandle = Object.getPrototypeOf(probe) as fs.FileHandle;
+    await probe.close();
+    const appendFile = FileHandle.appendFile;
+    const id = await run(Effect.gen(function* () {
+      const store = yield* Sessions;
+      const { id } = yield* store.create();
+      yield* store.append(id, custom(1));
+
+      // A full disk tears the line: some bytes land, then the write fails.
+      vi.spyOn(FileHandle, "appendFile").mockImplementationOnce(async function (this: fs.FileHandle, data) {
+        await appendFile.call(this, String(data).slice(0, 10));
+        throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+      });
+      expect((yield* Effect.flip(store.append(id, custom(2)))).reason).toBe("Io");
+      expect((yield* store.append(id, custom(3))).seq).toBe(2);
+
+      // The line lands but is not confirmed durable; the append failed, so its seq is reused.
+      vi.spyOn(FileHandle, "datasync").mockRejectedValueOnce(Object.assign(new Error("I/O error"), { code: "EIO" }));
+      expect((yield* Effect.flip(store.append(id, custom(4)))).reason).toBe("Io");
+      expect((yield* store.append(id, custom(5))).seq).toBe(3);
+      return id;
+    }));
+    await run(Effect.gen(function* () {
+      const store = yield* Sessions;
+      expect((yield* store.events(id)).map((event) => event.data)).toEqual([custom(1), custom(3), custom(5)]);
     }));
   });
 });
