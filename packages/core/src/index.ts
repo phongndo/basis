@@ -1,5 +1,5 @@
 export { makeCore } from "./core.ts";
-export type { Core, CoreOptions, CoreSnapshot, PluginSnapshot, PluginState } from "./core.ts";
+export type { Core, CoreOptions, CoreSnapshot, PluginSnapshot, PluginState, RestartOptions } from "./core.ts";
 export type { ReportedFault } from "./errors.ts";
 export {
   CapabilityMismatch,

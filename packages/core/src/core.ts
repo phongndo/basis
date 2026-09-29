@@ -48,6 +48,11 @@ export interface CoreOptions {
   readonly shutdownTimeout?: Duration.DurationInput;
 }
 
+export interface RestartOptions {
+  /** Also replace an active plugin (and restart its dependents), as a config change would. Default false. */
+  readonly force?: boolean;
+}
+
 export interface Core<Capabilities = never> {
   /**
    * Provide the composition to an Effect, preserving other caller requirements.
@@ -58,8 +63,8 @@ export interface Core<Capabilities = never> {
   readonly inspect: Effect.Effect<CoreSnapshot>;
   /** Ordered live faults; retains 256 entries, dropping oldest without blocking. Sequence gaps reveal loss. */
   readonly faults: Stream.Stream<ReportedFault>;
-  /** Reactivate a failed plugin and the dependents it halted. Active plugins are left alone. */
-  readonly restart: (pluginId: string) => Effect.Effect<void, ReloadError | CoreClosed>;
+  /** Reactivate a failed plugin and the dependents it halted. Active plugins are left alone unless `force` is set. */
+  readonly restart: (pluginId: string, options?: RestartOptions) => Effect.Effect<void, ReloadError | CoreClosed>;
 }
 
 /**

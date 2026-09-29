@@ -122,6 +122,14 @@ describe("supervision", () => {
         expect(log).toHaveLength(7);
         const unknown = yield* Effect.flip(core.restart("nope"));
         expect(unknown._tag).toBe("ReloadError");
+        // Forced, it replaces the active plugin and its dependents like a reload: staged first, then the old instances close.
+        yield* core.restart("db", { force: true });
+        expect(log.slice(7)).toEqual(["db+", "api+", "api-", "db-"]);
+        expect((yield* core.inspect).plugins.map((p) => [p.id, p.state])).toEqual([
+          ["db", "active"],
+          ["api", "active"],
+          ["bystander", "active"],
+        ]);
       }),
     );
   });

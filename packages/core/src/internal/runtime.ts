@@ -637,14 +637,14 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
         events: bus.inspect(),
       })),
       faults: Stream.fromPubSub(faults, { maxChunkSize: 1 }),
-      restart: (id) =>
+      restart: (id, options) =>
         Effect.suspend((): Effect.Effect<void, ReloadError | CoreClosed> => {
           if (state !== "active") return Effect.fail(new CoreClosed());
           const instance = instances.get(id);
           if (!instance) {
             return Effect.fail(new ReloadError({ diagnostics: [new Diagnostic({ severity: "error", pluginId: id, message: `No plugin "${id}" is loaded` })] }));
           }
-          if (instance.state === "active") return Effect.void;
+          if (instance.state === "active" && !options?.force) return Effect.void;
           drivers.delete(id);
           return supervised((operation) => applyLocked(currentMembers(), new Set([id]), true, operation)).pipe(Effect.mapError(toReloadError), Effect.asVoid);
         }),
