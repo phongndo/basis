@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyUsage, trajectory } from "@basis/contracts";
 import type { AssistantMessage, Contribution, EventData, SessionEvent } from "@basis/contracts";
-import { ledger, lineDiff, spans } from "../src/model/trajectory.ts";
+import { ledger, lineDiff, parseFilter, spans } from "../src/model/trajectory.ts";
 
 const log = (...items: EventData[]): SessionEvent[] =>
   items.map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: 1000 * (i + 1), data }));
@@ -71,5 +71,27 @@ describe("lineDiff", () => {
     expect(lineDiff("a\nb\nc", "a\nx\nc")).toEqual([
       { kind: "same", text: "a" }, { kind: "del", text: "b" }, { kind: "add", text: "x" }, { kind: "same", text: "c" },
     ]);
+  });
+});
+
+describe("parseFilter", () => {
+  const kinds = (input: string) => records.filter(parseFilter(input)).map((record) => record.kind);
+
+  it("matches everything when empty", () => {
+    expect(kinds("")).toHaveLength(records.length);
+  });
+
+  it("understands is:, kind:, tool:, turn:, and req:", () => {
+    expect(kinds("is:error")).toEqual(["tool", "assistant"]);
+    expect(kinds("kind:model")).toEqual(["assistant", "assistant", "assistant"]);
+    expect(kinds("tool:bash")).toEqual(["tool"]);
+    expect(kinds("turn:2")).toEqual(["user", "system", "assistant"]);
+    expect(kinds("req:2")).toEqual(["assistant"]);
+  });
+
+  it("combines terms and negates with a leading dash", () => {
+    expect(kinds("turn:1 -kind:tool")).toEqual(["user", "system", "assistant", "assistant"]);
+    expect(kinds("again")).toEqual(["user"]);
+    expect(kinds("-is:error kind:model")).toEqual(["assistant", "assistant"]);
   });
 });

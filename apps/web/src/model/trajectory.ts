@@ -162,3 +162,37 @@ export const searchText = (record: LedgerRecord): string => {
     case "tool": return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)} ${record.run.result === undefined ? "" : textOf(record.run.result.content)}`;
   }
 };
+
+export const KIND_TEXT = { system: "system", user: "user", assistant: "model", tool: "tool" } as const;
+
+export const isError = (record: LedgerRecord) => (record.kind === "assistant" && record.failed) || (record.kind === "tool" && record.run.result?.isError === true);
+export const durationOf = (record: LedgerRecord): number | undefined => {
+  if (record.kind === "assistant") return record.timing === undefined ? undefined : record.timing.endedAt - record.timing.startedAt;
+  if (record.kind === "tool") return record.run.timing === undefined ? undefined : record.run.timing.endedAt - record.run.timing.startedAt;
+  return undefined;
+};
+/**
+ * The filter box, after DevTools': space-separated terms that must all hold.
+ * `is:error`, `is:running`, `kind:tool` (user, model, tool, system),
+ * `tool:bash`, `turn:2`, `req:5`, plain text, and `-term` to negate any of them.
+ */
+export const parseFilter = (input: string) => {
+  const terms = input.trim().split(/\s+/).filter(Boolean).map((raw) => {
+    const negate = raw.startsWith("-") && raw.length > 1;
+    const term = (negate ? raw.slice(1) : raw).toLowerCase();
+    const [key, value] = term.includes(":") ? [term.slice(0, term.indexOf(":")), term.slice(term.indexOf(":") + 1)] : ["", term];
+    const test = (record: LedgerRecord): boolean => {
+      switch (key) {
+        case "is": return value === "error" ? isError(record) : value === "running" ? durationOf(record) === undefined && (record.kind === "tool" || record.kind === "assistant") : false;
+        case "kind": case "type": return KIND_TEXT[record.kind].startsWith(value) || record.kind.startsWith(value);
+        case "tool": return record.kind === "tool" && record.run.call.name.toLowerCase().includes(value);
+        case "turn": return String(record.turn.index) === value;
+        case "req": return record.kind !== "user" && String(record.kind === "system" ? record.requestNumber : record.kind === "assistant" ? record.requestNumber : "") === value;
+        default: return searchText(record).toLowerCase().includes(term);
+      }
+    };
+    return { negate, test };
+  });
+  return (record: LedgerRecord) => terms.every((term) => term.test(record) !== term.negate);
+};
+

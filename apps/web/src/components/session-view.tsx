@@ -36,7 +36,7 @@ export function SessionView(props: { onToggleSidebar: () => void }) {
           <Trajectory />
         </Match>
       </Switch>
-      <Composer />
+      <Show when={state.view === "chat" || state.activeId === undefined}><Composer /></Show>
     </main>
   );
 }

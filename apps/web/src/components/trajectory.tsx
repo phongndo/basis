@@ -1,33 +1,43 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { rebuildRequest } from "@basis/contracts";
 import type { Timing, TrajectoryRequest } from "@basis/contracts";
-import { formatDuration, formatTokens } from "../model/format.ts";
-import { ledger, lineDiff, requestOf, searchText, spans, textOf } from "../model/trajectory.ts";
+import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
+import { KIND_TEXT, durationOf, isError, ledger, lineDiff, parseFilter, requestOf, spans, textOf } from "../model/trajectory.ts";
 import type { AssistantRecord, LedgerRecord, Span, SystemRecord, ToolRecord, UserRecord } from "../model/trajectory.ts";
 import { activeBranch, isBusy, reportError, state, trajectory } from "../store.ts";
-import { CopyIcon, SearchIcon, XIcon } from "./icons.tsx";
+import { CopyIcon, XIcon } from "./icons.tsx";
 import { Markdown } from "./markdown.tsx";
 
 /**
- * The Trajectory view, after DeepSeek Harness's: a toolbar, a three-lane
- * timing overview (input, model, tools), a ledger with one row per record,
- * and an event-details panel with tabs for the selected record or request.
- * Everything is projected from the session log (`trajectory` → `ledger`).
+ * The Trajectory view, modeled on Chrome DevTools' Network panel and on
+ * DeepSeek Harness's trajectory: a filter toolbar, a zoomable three-lane
+ * overview, a sortable table with a waterfall column, a details panel with
+ * tabs, a context menu, and a status bar. Everything is projected from the
+ * session log (`trajectory` → `ledger`).
  */
 
 // ------------------------------------------------------------------ state
 
 type Selection = { readonly type: "record"; readonly id: string } | { readonly type: "request"; readonly eventId: string };
+type Kind = LedgerRecord["kind"];
+type TypeFilter = "all" | Kind | "error";
+type SortKey = "time" | "name" | "status" | "type" | "tokens" | "duration";
 
 const [selection, setSelection] = createSignal<Selection>();
 const [tab, setTab] = createSignal<string>();
 const [equalDurations, setEqualDurations] = createSignal(false);
-const [collapseTurns, setCollapseTurns] = createSignal(false);
-const [collapseCalls, setCollapseCalls] = createSignal(false);
+const [groupTurns, setGroupTurns] = createSignal(true);
+const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+const [typeFilter, setTypeFilter] = createSignal<TypeFilter>("all");
 const [query, setQuery] = createSignal("");
-/** A time range dragged on the timeline; rows outside it fade. */
+const [sort, setSort] = createSignal<{ key: SortKey; desc: boolean }>({ key: "time", desc: false });
+/** A time range dragged on the overview; rows outside it fade. */
 const [range, setRange] = createSignal<{ readonly from: number; readonly to: number }>();
+/** The visible slice of the time axis, as fractions of its full width. */
+const [zoom, setZoom] = createSignal({ start: 0, end: 1 });
+const [menu, setMenu] = createSignal<{ x: number; y: number; record: LedgerRecord }>();
+let filterInput: HTMLInputElement | undefined;
 
 const select = (next: Selection | undefined, initialTab?: string) => {
   setSelection(next);
@@ -48,13 +58,12 @@ const thinkingOf = (record: AssistantRecord) =>
   record.message.content.flatMap((part) => (part.type === "thinking" ? [part.thinking] : [])).join("\n\n");
 const callsOf = (record: AssistantRecord) => record.message.content.flatMap((part) => (part.type === "toolCall" ? [part.name] : []));
 
-const KIND_LABEL = { system: "SYSTEM", user: "USER", assistant: "ASSISTANT", tool: "TOOL" } as const;
 
 const copy = async (text: string) => {
   try { await navigator.clipboard.writeText(text); } catch (error) { reportError(error, "Could not copy"); }
 };
 
-/** Current time while a turn runs, so running spans grow. */
+/** Current time while a turn runs, so running bars grow. */
 const useNow = (active: () => boolean) => {
   const [now, setNow] = createSignal(Date.now());
   createEffect(() => {
@@ -65,137 +74,228 @@ const useNow = (active: () => boolean) => {
   return now;
 };
 
-// ------------------------------------------------------------------ toolbar
-
-function Toolbar() {
-  return (
-    <div class="trj-toolbar" role="toolbar" aria-label="Trajectory toolbar">
-      <button class="trj-tool" aria-pressed={!equalDurations()} onClick={() => setEqualDurations(!equalDurations())}
-        data-tip={equalDurations() ? "Use actual duration" : "Give every record equal width"}>Duration</button>
-      <button class="trj-tool" aria-pressed={collapseTurns()} onClick={() => setCollapseTurns(!collapseTurns())}
-        data-tip={collapseTurns() ? "Expand turns" : "Collapse turns"}>Turns</button>
-      <button class="trj-tool" aria-pressed={collapseCalls()} onClick={() => setCollapseCalls(!collapseCalls())}
-        data-tip={collapseCalls() ? "Show tool calls" : "Collapse calls"}>Calls</button>
-      <Show when={range()}>
-        {(r) => (
-          <button class="trj-tool trj-range" onClick={() => setRange(undefined)} data-tip="Clear the timeline selection">
-            {formatDuration(r().to - r().from)} selected <XIcon />
-          </button>
-        )}
-      </Show>
-      <label class="trj-search">
-        <SearchIcon />
-        <input type="search" placeholder="Search" aria-label="Search trajectory" value={query()} onInput={(event) => setQuery(event.currentTarget.value)} />
-      </label>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ timeline
-
-const PAD = 6;
-
-function Timeline(props: { spans: readonly Span[]; now: number; matches: (record: LedgerRecord) => boolean }) {
-  let track!: HTMLDivElement;
-  const [width, setWidth] = createSignal(600);
-  const [hover, setHover] = createSignal<{ span: Span; x: number }>();
-  const [drag, setDrag] = createSignal<{ from: number; to: number }>();
-  const observer = new ResizeObserver(([entry]) => { if (entry) setWidth(entry.contentRect.width); });
-  onCleanup(() => observer.disconnect());
-
-  // Actual time within each turn; the idle time between turns (the user reading, typing, or away) collapses
-  // into a fixed gap, so one long pause does not squash every turn. Equal: every span gets the same slot.
-  const GAP = 10;
-  const segments = createMemo(() => {
-    const byTurn = new Map<string, { from: number; to: number }>();
-    for (const span of props.spans) {
-      const key = span.record.turn.turnId;
-      const end = span.end ?? props.now;
-      const current = byTurn.get(key);
-      byTurn.set(key, current === undefined ? { from: span.start, to: end } : { from: Math.min(current.from, span.start), to: Math.max(current.to, end) });
+const startOf = (record: LedgerRecord): number => {
+  switch (record.kind) {
+    case "user": return record.at;
+    case "system": return record.request.at;
+    case "assistant": return record.timing?.startedAt ?? record.step.request?.at ?? record.step.startedAt;
+    case "tool": return record.run.timing?.startedAt ?? record.step.startedAt;
+  }
+};
+const tokensOf = (record: LedgerRecord) => (record.kind === "assistant" ? inputTokens(record.message.usage) + record.message.usage.output : undefined);
+const statusOf = (record: LedgerRecord): string => {
+  switch (record.kind) {
+    case "user": return "sent";
+    case "system": return record.previous === undefined ? "initial" : "changed";
+    case "assistant": return record.failed ? record.message.stopReason : record.message.stopReason === "toolUse" ? "tool use" : record.message.stopReason;
+    case "tool": return record.run.result === undefined ? (isBusy() ? "running" : "no result") : record.run.result.isError ? "error" : "ok";
+  }
+};
+const nameOf = (record: LedgerRecord): string => {
+  switch (record.kind) {
+    case "user": return firstLine(textOf(record.message.content)) || "[image]";
+    case "system": return record.previous === undefined ? "initial system prompt" : `system prompt changed: ${[...record.request.sections.filter((s) => s.changed).map((s) => s.id), ...record.request.removed].join(", ")}`;
+    case "assistant": {
+      if (record.failed) return record.message.errorMessage ?? `model call ${record.message.stopReason}`;
+      const text = firstLine(textOf(record.message.content));
+      if (text) return text;
+      const thinking = firstLine(thinkingOf(record));
+      if (thinking) return thinking;
+      return callsOf(record).length ? `→ ${callsOf(record).join(", ")}` : "(no output)";
     }
-    const list = [...byTurn.values()].sort((a, b) => a.from - b.from);
-    let active = 0;
-    return list.map((segment) => {
-      const out = { ...segment, before: active, index: 0 };
-      active += Math.max(1, segment.to - segment.from);
-      return out;
-    }).map((segment, index) => ({ ...segment, index }));
+    case "tool": return `${record.run.call.name} ${JSON.stringify(record.run.call.arguments)}`;
+  }
+};
+
+const typeMatches = (record: LedgerRecord) => {
+  const filter = typeFilter();
+  return filter === "all" || (filter === "error" ? isError(record) : record.kind === filter);
+};
+
+// ------------------------------------------------------------------ time scale
+
+/** Pixels the idle time between two turns collapses to, per 1000px of width. */
+const GAP = 0.012;
+
+/**
+ * Maps times to fractions of the full axis: actual time within each turn,
+ * with the idle time between turns (the user reading, typing, or away)
+ * collapsed to a fixed gap so one long pause does not squash every turn.
+ */
+function timeScale(all: readonly Span[], now: number) {
+  const byTurn = new Map<string, { from: number; to: number }>();
+  for (const span of all) {
+    const key = span.record.turn.turnId;
+    const end = span.end ?? now;
+    const current = byTurn.get(key);
+    byTurn.set(key, current === undefined ? { from: span.start, to: end } : { from: Math.min(current.from, span.start), to: Math.max(current.to, end) });
+  }
+  let active = 0;
+  const segments = [...byTurn.values()].sort((a, b) => a.from - b.from).map((segment, index) => {
+    const out = { ...segment, before: active, index };
+    active += Math.max(1, segment.to - segment.from);
+    return out;
   });
-  const totalActive = () => { const last = segments().at(-1); return last === undefined ? 1 : last.before + Math.max(1, last.to - last.from); };
-  const usable = () => width() - PAD * 2 - GAP * Math.max(0, segments().length - 1);
-  const x = (at: number) => {
-    const list = segments();
-    const segment = list.filter((candidate) => candidate.from <= at).at(-1) ?? list[0];
-    if (segment === undefined) return PAD;
+  const total = Math.max(1, active);
+  const usable = 1 - GAP * Math.max(0, segments.length - 1);
+  const fraction = (at: number) => {
+    const segment = segments.filter((candidate) => candidate.from <= at).at(-1) ?? segments[0];
+    if (segment === undefined) return 0;
     const within = Math.min(Math.max(at - segment.from, 0), Math.max(1, segment.to - segment.from));
-    return PAD + segment.index * GAP + ((segment.before + within) / totalActive()) * usable();
+    return segment.index * GAP + ((segment.before + within) / total) * usable;
   };
-  const order = createMemo(() => new Map(props.spans.map((span, index) => [span, index])));
-  const geometry = (span: Span) => {
-    if (equalDurations()) {
-      const slot = (width() - PAD * 2) / Math.max(1, props.spans.length);
-      return { left: PAD + slot * order().get(span)!, width: Math.max(2, Math.min(8, slot - 1)) };
-    }
-    const left = x(span.start);
-    return { left, width: Math.max(2, x(span.end ?? props.now) - left - 1) };
-  };
-  const timeAt = (clientX: number) => {
-    const px = clientX - track.getBoundingClientRect().left;
-    const list = segments();
-    for (const segment of list) {
-      const left = x(segment.from);
-      const right = x(segment.to);
-      if (px <= right || segment === list.at(-1)) {
-        if (px <= left) return segment.from;
-        return segment.from + ((px - left) / Math.max(1, right - left)) * (segment.to - segment.from);
+  const timeAt = (f: number) => {
+    for (const segment of segments) {
+      const left = fraction(segment.from);
+      const right = fraction(segment.to);
+      if (f <= right || segment === segments.at(-1)) {
+        if (f <= left) return segment.from;
+        return segment.from + ((f - left) / Math.max(1e-9, right - left)) * (segment.to - segment.from);
       }
     }
     return 0;
   };
-  const boundaries = () => segments().slice(1).map((segment) => x(segment.from) - GAP / 2);
+  /** Milliseconds of active time per unit of fraction, for the ruler. */
+  const msPerFraction = total / usable;
+  return { fraction, timeAt, boundaries: segments.slice(1).map((segment) => fraction(segment.from) - GAP / 2), msPerFraction, empty: segments.length === 0 };
+}
+type Scale = ReturnType<typeof timeScale>;
+
+/** Position of a fraction inside a box of `width` px under the current zoom. */
+const place = (f: number, width: number) => ((f - zoom().start) / (zoom().end - zoom().start)) * width;
+
+/** Wheel zooms around the pointer; horizontal wheel pans. */
+const wheelZoom = (event: WheelEvent, box: DOMRect) => {
+  event.preventDefault();
+  const current = zoom();
+  const span = current.end - current.start;
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+    const start = Math.min(Math.max(0, current.start + (event.deltaX / box.width) * span), 1 - span);
+    setZoom({ start, end: start + span });
+    return;
+  }
+  const anchor = current.start + ((event.clientX - box.left) / box.width) * span;
+  const next = Math.min(1, Math.max(0.002, span * Math.exp(event.deltaY * 0.0015)));
+  const start = Math.min(Math.max(0, anchor - ((anchor - current.start) / span) * next), 1 - next);
+  setZoom({ start, end: start + next });
+};
+
+// ------------------------------------------------------------------ toolbar
+
+const TYPES: readonly { id: TypeFilter; label: string }[] = [
+  { id: "all", label: "All" }, { id: "user", label: "User" }, { id: "assistant", label: "Model" },
+  { id: "tool", label: "Tool" }, { id: "system", label: "System" }, { id: "error", label: "Errors" },
+];
+
+function Toolbar() {
+  return (
+    <div class="trj-toolbar" role="toolbar" aria-label="Trajectory toolbar">
+      <label class="trj-filter">
+        <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z" /></svg>
+        <input ref={(el) => { filterInput = el; }} type="search" placeholder="Filter  (is:error  tool:bash  turn:2  -text)" aria-label="Filter trajectory"
+          value={query()} onInput={(event) => setQuery(event.currentTarget.value)} spellcheck={false} />
+      </label>
+      <span class="trj-sep" />
+      <For each={TYPES}>
+        {(type) => <button class="trj-chip" aria-pressed={typeFilter() === type.id} onClick={() => setTypeFilter(type.id)}>{type.label}</button>}
+      </For>
+      <span class="trj-sep" />
+      <label class="trj-check" data-tip="Group rows under their turn"><input type="checkbox" checked={groupTurns()} onChange={(event) => setGroupTurns(event.currentTarget.checked)} />Group by turn</label>
+      <label class="trj-check" data-tip="Every record gets the same width in the overview and waterfall"><input type="checkbox" checked={equalDurations()} onChange={(event) => setEqualDurations(event.currentTarget.checked)} />Equal widths</label>
+      <Show when={zoom().start > 0 || zoom().end < 1}>
+        <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole session (or double-click the overview)">Reset zoom</button>
+      </Show>
+      <Show when={range()}>
+        {(r) => <button class="trj-chip trj-accent" onClick={() => setRange(undefined)} data-tip="Clear the selected time range">{formatDuration(r().to - r().from)} range <XIcon /></button>}
+      </Show>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ overview
+
+const LANE_TOP = 18;
+
+function Overview(props: { spans: readonly Span[]; scale: Scale; now: number; matches: (record: LedgerRecord) => boolean }) {
+  let track!: HTMLDivElement;
+  const [width, setWidth] = createSignal(600);
+  const [hover, setHover] = createSignal<{ span: Span; x: number }>();
+  const [drag, setDrag] = createSignal<{ from: number; to: number }>();
+  const [pan, setPan] = createSignal<{ x: number; start: number; end: number }>();
+  const observer = new ResizeObserver(([entry]) => { if (entry) setWidth(entry.contentRect.width); });
+  onCleanup(() => observer.disconnect());
+
+  const order = createMemo(() => new Map(props.spans.map((span, index) => [span, index])));
+  const fractionOf = (span: Span, end: boolean) => {
+    if (equalDurations()) return (order().get(span)! + (end ? 0.8 : 0)) / Math.max(1, props.spans.length);
+    return props.scale.fraction(end ? span.end ?? props.now : span.start);
+  };
+  const x = (f: number) => place(f, width());
+  const timeAt = (clientX: number) => {
+    const box = track.getBoundingClientRect();
+    const f = zoom().start + ((clientX - box.left) / box.width) * (zoom().end - zoom().start);
+    return props.scale.timeAt(f);
+  };
+  // Ruler: ticks every "nice" amount of active time across the visible slice.
+  const ticks = createMemo(() => {
+    if (equalDurations() || props.scale.empty) return [];
+    const visibleMs = (zoom().end - zoom().start) * props.scale.msPerFraction;
+    const raw = visibleMs / Math.max(1, width() / 90);
+    const steps = [100, 250, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
+    const step = steps.find((candidate) => candidate >= raw) ?? 600_000;
+    const stepFraction = step / props.scale.msPerFraction;
+    const out: { left: number; label: string }[] = [];
+    for (let f = Math.ceil(zoom().start / stepFraction) * stepFraction; f <= zoom().end; f += stepFraction) {
+      out.push({ left: x(f), label: formatDuration(f * props.scale.msPerFraction) });
+    }
+    return out;
+  });
 
   const onPointerDown = (event: PointerEvent) => {
-    if (event.button === 2) { setRange(undefined); return; }
+    if (event.button === 2) { setPan({ x: event.clientX, ...zoom() }); track.setPointerCapture(event.pointerId); return; }
     if (event.button !== 0 || equalDurations()) return;
     const start = timeAt(event.clientX);
     setDrag({ from: start, to: start });
     track.setPointerCapture(event.pointerId);
   };
   const onPointerMove = (event: PointerEvent) => {
+    const panning = pan();
+    if (panning !== undefined) {
+      const span = panning.end - panning.start;
+      const start = Math.min(Math.max(0, panning.start - ((event.clientX - panning.x) / width()) * span), 1 - span);
+      setZoom({ start, end: start + span });
+      return;
+    }
     const current = drag();
     if (current !== undefined) setDrag({ from: current.from, to: timeAt(event.clientX) });
   };
-  const onPointerUp = () => {
+  const onPointerUp = (event: PointerEvent) => {
+    const panning = pan();
+    setPan(undefined);
+    if (panning !== undefined) { if (Math.abs(event.clientX - panning.x) < 3) setRange(undefined); return; }
     const current = drag();
     setDrag(undefined);
     if (current === undefined) return;
     const from = Math.min(current.from, current.to);
     const to = Math.max(current.from, current.to);
-    // A click (no real drag) clears; a drag selects.
-    if (x(to) - x(from) < 4) setRange(undefined); else setRange({ from, to });
+    if (Math.abs(x(props.scale.fraction(to)) - x(props.scale.fraction(from))) < 4) setRange(undefined); else setRange({ from, to });
   };
   const shown = () => (equalDurations() ? undefined : drag() ?? range());
 
-  const tip = (span: Span): string[] => {
-    const record = span.record;
-    const title = record.kind === "tool" ? record.run.call.name : record.kind === "assistant" ? `Request #${record.requestNumber}` : KIND_LABEL[record.kind];
-    const lines = [title, `${clock(span.start)} · ${span.end === undefined ? "running" : formatDuration(span.end - span.start)}`];
-    if (span.ttft !== undefined && span.end !== undefined) lines.push(`TTFT ${formatDuration(span.ttft)} · decoding ${formatDuration(span.end - span.start - span.ttft)}`);
-    return lines;
-  };
-
   return (
-    <div class="trj-timeline" role="region" aria-label="Trajectory timeline">
-      <div class="trj-lane-labels" aria-hidden="true"><span>Input</span><span>Model</span><span>Tools</span></div>
-      <div class="trj-track" ref={(el) => { track = el; observer.observe(el); }} data-panning={drag() !== undefined}
+    <div class="trj-overview" role="region" aria-label="Trajectory overview">
+      <div class="trj-lane-labels" aria-hidden="true"><span>in</span><span>model</span><span>tools</span></div>
+      <div class="trj-track" ref={(el) => { track = el; observer.observe(el); }} data-panning={pan() !== undefined}
+        onWheel={(event) => wheelZoom(event, track.getBoundingClientRect())} onDblClick={() => setZoom({ start: 0, end: 1 })}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(event) => event.preventDefault()}>
+        <For each={ticks()}>{(tick) => <><div class="trj-tick" style={{ left: `${tick.left}px` }} /><span class="trj-tick-label" style={{ left: `${tick.left + 3}px` }}>{tick.label}</span></>}</For>
         <Show when={!equalDurations()}>
-          <For each={boundaries()}>{(left) => <div class="trj-turn-boundary" style={{ left: `${left}px` }} />}</For>
+          <For each={props.scale.boundaries}>{(f) => <div class="trj-turn-boundary" style={{ left: `${x(f)}px` }} />}</For>
         </Show>
         <For each={props.spans}>
           {(span) => {
-            const g = () => geometry(span);
+            const left = () => x(fractionOf(span, false));
+            const right = () => x(fractionOf(span, true));
             const ttft = () => (span.ttft === undefined || span.end === undefined || span.end <= span.start ? undefined : Math.min(100, (span.ttft / (span.end - span.start)) * 100));
             const current = () => { const s = selection(); return s?.type === "record" && s.id === span.record.id; };
             const outside = () => { const r = range(); return r !== undefined && ((span.end ?? props.now) < r.from || span.start > r.to); };
@@ -204,22 +304,30 @@ function Timeline(props: { spans: readonly Span[]; now: number; matches: (record
                 class="trj-span" data-kind={span.record.kind} data-error={span.error} data-current={current()}
                 data-dim={outside() || !props.matches(span.record)} data-running={span.end === undefined}
                 classList={{ "has-ttft": ttft() !== undefined && !equalDurations() }}
-                style={{ left: `${g().left}px`, width: `${g().width}px`, top: `${7 + span.lane * 14}px`, "--ttft": `${ttft() ?? 0}%` }}
+                style={{ left: `${left()}px`, width: `${Math.max(2, right() - left() - 1)}px`, top: `${LANE_TOP + span.lane * 11}px`, "--ttft": `${ttft() ?? 0}%` }}
                 onPointerEnter={(event) => setHover({ span, x: event.clientX - track.getBoundingClientRect().left })}
                 onPointerLeave={() => setHover(undefined)}
-                onPointerDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => { if (event.button === 0) event.stopPropagation(); }}
                 onClick={() => { select({ type: "record", id: span.record.id }); document.getElementById(`trj-row-${span.record.id}`)?.scrollIntoView({ block: "nearest" }); }}
               />
             );
           }}
         </For>
         <Show when={shown()}>
-          {(r) => <div class="trj-selection" data-dragging={drag() !== undefined} style={{ left: `${x(Math.min(r().from, r().to))}px`, width: `${Math.abs(x(r().to) - x(r().from))}px` }} />}
+          {(r) => {
+            const a = () => x(props.scale.fraction(Math.min(r().from, r().to)));
+            const b = () => x(props.scale.fraction(Math.max(r().from, r().to)));
+            return <div class="trj-selection" style={{ left: `${a()}px`, width: `${Math.max(1, b() - a())}px` }} />;
+          }}
         </Show>
         <Show when={hover()}>
           {(h) => (
-            <div class="trj-tip" role="tooltip" style={{ left: `${Math.min(Math.max(h().x, 80), width() - 80)}px` }}>
-              <For each={tip(h().span)}>{(line, index) => (index() === 0 ? <strong>{line}</strong> : <span>{line}</span>)}</For>
+            <div class="trj-tip" role="tooltip" style={{ left: `${Math.min(Math.max(h().x, 90), width() - 90)}px` }}>
+              <strong>{h().span.record.kind === "tool" ? (h().span.record as ToolRecord).run.call.name : h().span.record.kind === "assistant" ? `Request #${(h().span.record as AssistantRecord).requestNumber}` : KIND_TEXT[h().span.record.kind]}</strong>
+              <span>{clock(h().span.start)} · {h().span.end === undefined ? "running" : formatDuration(h().span.end! - h().span.start)}</span>
+              <Show when={h().span.ttft !== undefined && h().span.end !== undefined}>
+                <span>TTFT {formatDuration(h().span.ttft!)} · decoding {formatDuration(h().span.end! - h().span.start - h().span.ttft!)}</span>
+              </Show>
             </div>
           )}
         </Show>
@@ -229,131 +337,190 @@ function Timeline(props: { spans: readonly Span[]; now: number; matches: (record
   );
 }
 
-// ------------------------------------------------------------------ ledger
+// ------------------------------------------------------------------ table
 
-function KindTag(props: { kind: LedgerRecord["kind"] | "request"; error?: boolean }) {
-  return <span class="trj-kind" data-kind={props.kind} data-error={props.error === true}>{props.kind === "request" ? "REQUEST" : KIND_LABEL[props.kind]}</span>;
-}
-
-function RowContent(props: { record: LedgerRecord }): JSX.Element {
+/** One row's bar in the waterfall column, on the same axis and zoom as the overview. */
+function Waterfall(props: { record: LedgerRecord; span: Span | undefined; scale: Scale; index: number; count: number; now: number }) {
+  const bounds = () => {
+    const span = props.span;
+    if (span === undefined) return undefined;
+    if (equalDurations()) return { from: props.index / props.count, to: (props.index + 0.8) / props.count };
+    return { from: props.scale.fraction(span.start), to: props.scale.fraction(span.end ?? props.now) };
+  };
+  const pct = (f: number) => ((f - zoom().start) / (zoom().end - zoom().start)) * 100;
+  const ttft = () => {
+    const span = props.span;
+    return span?.ttft === undefined || span.end === undefined || span.end <= span.start ? undefined : Math.min(100, (span.ttft / (span.end - span.start)) * 100);
+  };
   return (
-    <Switch>
-      <Match when={props.record.kind === "system" && (props.record as SystemRecord)}>
-        {(record) => {
-          const changed = () => [...record().request.sections.filter((s) => s.changed).map((s) => s.id), ...record().request.removed];
-          return <span class="trj-text trj-muted">{record().previous === undefined ? "Initial System Prompt" : `System prompt changed · ${changed().join(", ")}`}</span>;
-        }}
-      </Match>
-      <Match when={props.record.kind === "user" && (props.record as UserRecord)}>
-        {(record) => <span class="trj-text">{firstLine(textOf(record().message.content)) || "[image]"}</span>}
-      </Match>
-      <Match when={props.record.kind === "assistant" && (props.record as AssistantRecord)}>
-        {(record) => {
-          const text = () => firstLine(textOf(record().message.content));
-          const thinking = () => firstLine(thinkingOf(record()));
-          return (
-            <Switch fallback={<span class="trj-text trj-muted">{callsOf(record()).length ? `→ ${callsOf(record()).join(", ")}` : "(no output)"}</span>}>
-              <Match when={record().failed}><span class="trj-text trj-error">{record().message.errorMessage ?? `Model call ${record().message.stopReason}`}</span></Match>
-              <Match when={text()}><span class="trj-text">{text()}</span></Match>
-              <Match when={thinking()}><span class="trj-text trj-muted">{thinking()}</span></Match>
-            </Switch>
-          );
-        }}
-      </Match>
-      <Match when={props.record.kind === "tool" && (props.record as ToolRecord)}>
-        {(record) => {
-          const run = () => record().run;
-          const result = () => (run().result === undefined ? undefined : firstLine(textOf(run().result!.content)));
-          return (
-            <span class="trj-tool-row">
-              <span class="trj-call"><span class="trj-call-name">{run().call.name}</span><span class="trj-call-args">{JSON.stringify(run().call.arguments)}</span></span>
-              <span class="trj-result" classList={{ "trj-error": run().result?.isError === true }}>
-                <span class="trj-arrow">→</span>
-                <span class="trj-text">{run().result === undefined ? (isBusy() ? "running…" : "no result") : result() || "(no output)"}</span>
-              </span>
-            </span>
-          );
-        }}
-      </Match>
-    </Switch>
+    <div class="trj-wf">
+      <Show when={bounds()}>
+        {(b) => (
+          <div class="trj-wf-bar" data-kind={props.record.kind} data-error={props.span!.error} data-running={props.span!.end === undefined}
+            classList={{ "has-ttft": ttft() !== undefined && !equalDurations() }}
+            style={{ left: `${pct(b().from)}%`, width: `max(2px, ${pct(b().to) - pct(b().from)}%)`, "--ttft": `${ttft() ?? 0}%` }}
+            data-tip={`${clock(props.span!.start)}${props.span!.end === undefined ? " · running" : ` · ${formatDuration(props.span!.end - props.span!.start)}`}${props.span!.ttft === undefined ? "" : ` · TTFT ${formatDuration(props.span!.ttft)}`}`} />
+        )}
+      </Show>
+    </div>
   );
 }
 
-type Row = { readonly type: "record"; readonly record: LedgerRecord } | { readonly type: "turn"; readonly records: LedgerRecord[] };
+function NameCell(props: { record: LedgerRecord }) {
+  const r = props.record;
+  return (
+    <span class="trj-name">
+      <i class="trj-dot" data-kind={r.kind} data-error={isError(r)} />
+      <Switch fallback={<span class="trj-text" classList={{ "trj-muted": r.kind === "system" || (r.kind === "assistant" && !firstLine(textOf(r.message.content)) && !r.failed), "trj-error": isError(r) }}>{nameOf(r)}</span>}>
+        <Match when={r.kind === "tool" && r}>
+          {(tool) => (
+            <span class="trj-text">
+              <span class="trj-call-name">{tool().run.call.name}</span>
+              <span class="trj-call-args"> {JSON.stringify(tool().run.call.arguments)}</span>
+            </span>
+          )}
+        </Match>
+      </Switch>
+    </span>
+  );
+}
 
-function Ledger(props: { records: readonly LedgerRecord[]; matches: (record: LedgerRecord) => boolean; now: number }) {
-  const spansById = createMemo(() => new Map(spans(props.records).map((span) => [span.record.id, span])));
+type Row = { readonly type: "record"; readonly record: LedgerRecord; readonly index: number } | { readonly type: "turn"; readonly turn: LedgerRecord["turn"]; readonly count: number };
+
+const COLUMNS: readonly { key: SortKey | "initiator" | "waterfall"; label: string; class: string; sortable: boolean }[] = [
+  { key: "name", label: "Name", class: "trj-c-name", sortable: true },
+  { key: "status", label: "Status", class: "trj-c-status", sortable: true },
+  { key: "type", label: "Type", class: "trj-c-type", sortable: true },
+  { key: "initiator", label: "Initiator", class: "trj-c-init", sortable: false },
+  { key: "tokens", label: "Tokens", class: "trj-c-tok", sortable: true },
+  { key: "duration", label: "Time", class: "trj-c-time", sortable: true },
+  { key: "waterfall", label: "Waterfall", class: "trj-c-wf", sortable: false },
+];
+
+function Table(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; scale: Scale; spans: ReadonlyMap<string, Span>; now: number; compact: boolean }) {
   const inRange = (record: LedgerRecord) => {
     const r = range();
     if (r === undefined) return true;
-    const span = spansById().get(record.id);
+    const span = props.spans.get(record.id);
     return span !== undefined && (span.end ?? props.now) >= r.from && span.start <= r.to;
   };
+  const sorted = createMemo(() => {
+    const { key, desc } = sort();
+    if (key === "time") return desc ? [...props.visible].reverse() : props.visible;
+    const value = (record: LedgerRecord): string | number => {
+      switch (key) {
+        case "name": return nameOf(record).toLowerCase();
+        case "status": return statusOf(record);
+        case "type": return KIND_TEXT[record.kind];
+        case "tokens": return tokensOf(record) ?? -1;
+        case "duration": return durationOf(record) ?? -1;
+      }
+    };
+    return [...props.visible].sort((a, b) => {
+      const x = value(a);
+      const y = value(b);
+      const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+      return desc ? -order : order;
+    });
+  });
+  // Group rows open each turn, in time order only; a sorted table is flat, as in DevTools.
   const rows = createMemo(() => {
     const out: Row[] = [];
-    for (const record of props.records) {
-      if (collapseCalls() && record.kind === "tool") continue;
-      if (collapseTurns()) {
-        const last = out.at(-1);
-        if (last?.type === "turn" && last.records[0]!.turn === record.turn) last.records.push(record);
-        else out.push({ type: "turn", records: [record] });
-        continue;
+    const grouped = groupTurns() && sort().key === "time";
+    const indexOf = new Map(props.records.map((record, index) => [record.id, index]));
+    let turn: LedgerRecord["turn"] | undefined;
+    for (const record of sorted()) {
+      if (grouped && record.turn !== turn) {
+        turn = record.turn;
+        out.push({ type: "turn", turn, count: sorted().filter((candidate) => candidate.turn === turn).length });
       }
-      out.push({ type: "record", record });
+      if (grouped && collapsed().has(record.turn.turnId)) continue;
+      out.push({ type: "record", record, index: indexOf.get(record.id)! });
     }
     return out;
   });
   const selectedId = () => { const s = selection(); return s?.type === "record" ? s.id : undefined; };
   const selectedRequest = () => { const s = selection(); return s?.type === "request" ? s.eventId : undefined; };
+  const sortBy = (key: SortKey) => setSort((current) => (current.key === key ? (current.desc ? { key: "time", desc: false } : { key, desc: true }) : { key, desc: false }));
+  const columns = () => (props.compact ? COLUMNS.slice(0, 1) : COLUMNS);
+  let wfHeader: HTMLTableCellElement | undefined;
 
   return (
-    <table class="trj-table">
-      <colgroup><col class="trj-col-event" /><col /></colgroup>
+    <table class="trj-table" classList={{ compact: props.compact }}>
+      <colgroup><For each={columns()}>{(column) => <col class={column.class} />}</For></colgroup>
+      <thead>
+        <tr>
+          <For each={columns()}>
+            {(column) => (
+              <th class={column.class} data-sortable={column.sortable}
+                ref={(el) => { if (column.key === "waterfall") wfHeader = el; }}
+                aria-sort={sort().key === column.key ? (sort().desc ? "descending" : "ascending") : "none"}
+                onClick={() => { if (column.sortable) sortBy(column.key as SortKey); }}
+                onWheel={(event) => { if (column.key === "waterfall" && wfHeader !== undefined) wheelZoom(event, wfHeader.getBoundingClientRect()); }}>
+                {column.label}
+                <Show when={sort().key === column.key && column.sortable}><span class="trj-sort">{sort().desc ? "▼" : "▲"}</span></Show>
+              </th>
+            )}
+          </For>
+        </tr>
+      </thead>
       <tbody>
         <For each={rows()}>
           {(row) => (
             <Switch>
               <Match when={row.type === "turn" && row}>
-                {(summary) => {
-                  const turn = () => summary().records[0]!.turn;
-                  const prompt = () => (turn().prompt === undefined ? "" : firstLine(textOf(turn().prompt!.content)));
-                  const tools = () => turn().steps.reduce((sum, step) => sum + step.tools.length, 0);
+                {(group) => {
+                  const turn = () => group().turn;
+                  const open = () => !collapsed().has(turn().turnId);
+                  const toggle = () => setCollapsed((set) => { const next = new Set(set); if (!next.delete(turn().turnId)) next.add(turn().turnId); return next; });
                   return (
-                    <tr class="trj-collapsed" data-turn-start="true" onClick={() => setCollapseTurns(false)}>
-                      <td class="trj-event"><span class="trj-turn-label">Turn {turn().index}</span><span class="trj-turn-rail" /></td>
-                      <td class="trj-content">
-                        <span class="trj-text"><span class="trj-ellipsis">…</span>{prompt()} <span class="trj-muted">· {turn().steps.length} requests · {tools()} calls{turn().endedAt === undefined ? "" : ` · ${formatDuration(turn().endedAt! - turn().startedAt)}`}</span></span>
-                      </td>
+                    <tr class="trj-group" onClick={toggle}>
+                      <td colSpan={columns().length}><div class="trj-group-row">
+                        <span class="trj-caret" data-open={open()}>▶</span>
+                        <span class="trj-group-label">Turn {turn().index}</span>
+                        <span class="trj-group-prompt">{turn().prompt === undefined ? "" : firstLine(textOf(turn().prompt!.content))}</span>
+                        <span class="trj-group-meta">
+                          {group().count} records · {turn().steps.length} requests
+                          {turn().endedAt === undefined ? " · running" : ` · ${formatDuration(turn().endedAt! - turn().startedAt)}`}
+                          {turn().end !== undefined && turn().end!.reason !== "done" ? ` · ${turn().end!.reason}` : ""}
+                        </span>
+                      </div></td>
                     </tr>
                   );
                 }}
               </Match>
-              <Match when={row.type === "record" && row.record}>
-                {(record) => {
-                  const r = record();
-                  const assistant = r.kind === "assistant" && !r.failed ? r : undefined;
-                  const error = (r.kind === "assistant" && r.failed) || (r.kind === "tool" && r.run.result?.isError === true);
+              <Match when={row.type === "record" && row}>
+                {(item) => {
+                  const r = item().record;
+                  const assistant = r.kind === "assistant" ? r : undefined;
+                  const initiator = r.kind === "tool" || r.kind === "assistant" ? r.step.request : r.kind === "system" ? r.request : undefined;
+                  const number = r.kind === "assistant" || r.kind === "system" ? r.requestNumber
+                    : r.kind === "tool" ? props.records.find((c): c is AssistantRecord => c.kind === "assistant" && c.step === r.step)?.requestNumber : undefined;
+                  const duration = durationOf(r);
+                  const usage = assistant?.message.usage;
                   return (
                     <tr
-                      id={`trj-row-${r.id}`} tabindex="0" data-kind={r.kind} data-turn-start={r.turnStart} data-error={error}
-                      data-selected={selectedId() === r.id} data-dim={!inRange(r) || !props.matches(r)}
+                      id={`trj-row-${r.id}`} tabindex="-1" data-kind={r.kind} data-error={isError(r)}
+                      data-selected={selectedId() === r.id} data-dim={!inRange(r)}
                       onClick={() => select({ type: "record", id: r.id })}
-                      onKeyDown={(event) => { if (event.key === "Enter") select({ type: "record", id: r.id }); }}
+                      onContextMenu={(event) => { event.preventDefault(); select({ type: "record", id: r.id }); setMenu({ x: event.clientX, y: event.clientY, record: r }); }}
                     >
-                      <td class="trj-event">
-                        <Show when={r.turnStart}><span class="trj-turn-label">Turn {r.turn.index}</span></Show>
-                        <span class="trj-turn-rail" />
-                        <Show when={selectedId() === r.id}><span class="trj-selection-rail" /></Show>
-                        <Show when={assistant?.step.request}>
-                          {(request) => (
-                            <button class="trj-request" data-label={`Request #${assistant!.requestNumber}`} aria-label={`Request #${assistant!.requestNumber}`}
-                              data-active={selectedRequest() === request().eventId}
-                              onClick={(event) => { event.stopPropagation(); select({ type: "request", eventId: request().eventId }); }} />
-                          )}
-                        </Show>
-                        <KindTag kind={r.kind} error={error} />
-                      </td>
-                      <td class="trj-content"><RowContent record={r} /></td>
+                      <td class="trj-c-name"><NameCell record={r} /></td>
+                      <Show when={!props.compact}>
+                        <td class="trj-c-status" classList={{ "trj-error": isError(r) }}>{statusOf(r)}</td>
+                        <td class="trj-c-type">{KIND_TEXT[r.kind]}</td>
+                        <td class="trj-c-init">
+                          <Show when={initiator !== undefined && number !== undefined} fallback={<span class="trj-muted">turn {r.turn.index}</span>}>
+                            <button class="trj-link-cell" data-active={selectedRequest() === initiator!.eventId}
+                              onClick={(event) => { event.stopPropagation(); select({ type: "request", eventId: initiator!.eventId }); }}>request #{number}</button>
+                          </Show>
+                        </td>
+                        <td class="trj-c-tok trj-num" data-tip={usage === undefined ? undefined : `${usage.cacheRead.toLocaleString()} cached · ${(usage.input + usage.cacheWrite).toLocaleString()} new · ${usage.output.toLocaleString()} out`}>
+                          {usage === undefined ? "" : `${formatTokens(inputTokens(usage))} / ${formatTokens(usage.output)}`}
+                        </td>
+                        <td class="trj-c-time trj-num">{duration === undefined ? (r.kind === "assistant" || r.kind === "tool" ? "(pending)" : "") : formatDuration(duration)}</td>
+                        <td class="trj-c-wf"><Waterfall record={r} span={props.spans.get(r.id)} scale={props.scale} index={item().index} count={props.records.length} now={props.now} /></td>
+                      </Show>
                     </tr>
                   );
                 }}
@@ -363,6 +530,80 @@ function Ledger(props: { records: readonly LedgerRecord[]; matches: (record: Led
         </For>
       </tbody>
     </table>
+  );
+}
+
+// ------------------------------------------------------------------ context menu
+
+function ContextMenu() {
+  onMount(() => {
+    const close = () => setMenu(undefined);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("blur", close);
+    onCleanup(() => { window.removeEventListener("pointerdown", close); window.removeEventListener("blur", close); });
+  });
+  const items = (record: LedgerRecord): { label: string; run: () => void }[] => {
+    const request = requestOf(record);
+    const out: { label: string; run: () => void }[] = [];
+    if (request !== undefined) out.push({ label: "Inspect request", run: () => select({ type: "request", eventId: request.eventId }) });
+    if (request !== undefined) out.push({ label: "Copy exact request", run: () => { const rebuilt = rebuildRequest(activeBranch(), request.eventId); if (rebuilt !== undefined) void copy(json(rebuilt)); } });
+    if (record.kind === "tool") {
+      out.push({ label: "Copy payload", run: () => void copy(json(record.run.call.arguments)) });
+      if (record.run.result !== undefined) out.push({ label: "Copy result", run: () => void copy(textOf(record.run.result!.content)) });
+      out.push({ label: `Filter: tool:${record.run.call.name}`, run: () => setQuery(`tool:${record.run.call.name}`) });
+    }
+    if (record.kind === "assistant" || record.kind === "user") out.push({ label: "Copy text", run: () => void copy(textOf(record.message.content)) });
+    out.push({ label: "Copy as JSON", run: () => void copy(json(record.kind === "tool" ? record.run : record.kind === "system" ? record.request : record.message)) });
+    out.push({ label: `Filter: turn:${record.turn.index}`, run: () => setQuery(`turn:${record.turn.index}`) });
+    return out;
+  };
+  return (
+    <Show when={menu()}>
+      {(m) => (
+        <div class="trj-menu" role="menu" style={{ left: `${Math.min(m().x, window.innerWidth - 220)}px`, top: `${Math.min(m().y, window.innerHeight - 260)}px` }}
+          onPointerDown={(event) => event.stopPropagation()}>
+          <For each={items(m().record)}>
+            {(item) => <button role="menuitem" class="trj-menu-item" onClick={() => { item.run(); setMenu(undefined); }}>{item.label}</button>}
+          </For>
+        </div>
+      )}
+    </Show>
+  );
+}
+
+// ------------------------------------------------------------------ status bar
+
+function StatusBar(props: { records: readonly LedgerRecord[]; visible: readonly LedgerRecord[]; now: number }) {
+  const stats = createMemo(() => {
+    let requests = 0; let tools = 0; let errors = 0; let input = 0; let output = 0; let cost = 0; let first = Infinity; let last = 0;
+    for (const record of props.visible) {
+      if (record.kind === "assistant") {
+        requests++;
+        input += inputTokens(record.message.usage);
+        output += record.message.usage.output;
+        cost += record.message.usage.cost.total;
+      }
+      if (record.kind === "tool") tools++;
+      if (isError(record)) errors++;
+    }
+    for (const turn of new Set(props.visible.map((record) => record.turn))) {
+      first = Math.min(first, turn.startedAt);
+      last = Math.max(last, turn.endedAt ?? props.now);
+    }
+    const active = [...new Set(props.visible.map((record) => record.turn))].reduce((sum, turn) => sum + ((turn.endedAt ?? props.now) - turn.startedAt), 0);
+    return { requests, tools, errors, input, output, cost, active };
+  });
+  return (
+    <div class="trj-status" role="status">
+      <span>{props.visible.length} / {props.records.length} records</span>
+      <span>{stats().requests} requests</span>
+      <span>{stats().tools} tool calls</span>
+      <Show when={stats().errors > 0}><span class="trj-error">{stats().errors} errors</span></Show>
+      <span data-tip="Input tokens (including cache) / output tokens">{formatTokens(stats().input)} / {formatTokens(stats().output)} tokens</span>
+      <Show when={stats().cost > 0}><span>{formatCost(stats().cost)}</span></Show>
+      <span data-tip="Time the agent was working, summed over turns">Active: {formatDuration(stats().active)}</span>
+      <Show when={range()}>{(r) => <span class="trj-accent">Range: {formatDuration(r().to - r().from)}</span>}</Show>
+    </div>
   );
 }
 
@@ -617,15 +858,17 @@ function recordTabs(record: LedgerRecord, system: SystemRecord | undefined): Tab
   }
 }
 
-function Tabs(props: { tabs: readonly Tab[] }) {
+function Tabs(props: { tabs: readonly Tab[]; lead?: JSX.Element; title?: JSX.Element }) {
   const active = () => props.tabs.find((candidate) => candidate.id === tab()) ?? props.tabs[0];
   return (
     <>
       <div class="trj-tabs" role="tablist" aria-label="Event details">
+        {props.lead}
         <For each={props.tabs}>
           {(candidate) => <button role="tab" class="trj-tab" aria-selected={active()?.id === candidate.id} onClick={() => setTab(candidate.id)}>{candidate.label}</button>}
         </For>
       </div>
+      <Show when={props.title}><div class="trj-details-title">{props.title}</div></Show>
       <div class="trj-detail-body" role="tabpanel">{active()?.render()}</div>
     </>
   );
@@ -664,15 +907,16 @@ function Details(props: { records: readonly LedgerRecord[] }) {
     <Show when={view()}>
       {(v) => (
         <aside class="trj-details" aria-label="Event details">
-          <header class="trj-details-head">
-            <span class="trj-details-title">
-              <KindTag kind={v().kind} />
+          <Tabs
+            tabs={v().tabs}
+            lead={<button class="trj-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}><XIcon /></button>}
+            title={<>
+              <span class="trj-dot" data-kind={v().kind} />
+              <span class="trj-details-kind">{v().kind === "request" ? "request" : KIND_TEXT[v().kind as Kind]}</span>
               <Show when={v().name}><span class="trj-mono">{v().name}</span></Show>
               <span class="trj-details-where">{v().where}</span>
-            </span>
-            <button class="trj-close" aria-label="Close details" onClick={() => select(undefined)}><XIcon /></button>
-          </header>
-          <Tabs tabs={v().tabs} />
+            </>}
+          />
         </aside>
       )}
     </Show>
@@ -685,22 +929,56 @@ export function Trajectory(): JSX.Element {
   const records = createMemo(() => ledger(trajectory()));
   const now = useNow(isBusy);
   const allSpans = createMemo(() => spans(records()));
-  const needle = () => query().trim().toLowerCase();
-  const matches = (record: LedgerRecord) => needle() === "" || searchText(record).toLowerCase().includes(needle());
-  createEffect(on(() => state.activeId, () => { select(undefined); setRange(undefined); setQuery(""); }));
+  const spanById = createMemo(() => new Map(allSpans().map((span) => [span.record.id, span])));
+  const scale = createMemo(() => timeScale(allSpans(), now()));
+  const matchesQuery = createMemo(() => parseFilter(query()));
+  const matches = (record: LedgerRecord) => typeMatches(record) && matchesQuery()(record);
+  const visible = createMemo(() => records().filter(matches));
+  let root!: HTMLDivElement;
+
+  createEffect(on(() => state.activeId, () => {
+    select(undefined); setRange(undefined); setQuery(""); setZoom({ start: 0, end: 1 }); setCollapsed(new Set<string>()); setMenu(undefined);
+  }));
+
+  // DevTools keys: arrows move the selection, Escape closes the panel (or the menu), "/" and Ctrl/Cmd+F focus the filter.
+  const onKeyDown = (event: KeyboardEvent) => {
+    const typing = event.target instanceof HTMLInputElement;
+    if ((event.key === "/" && !typing) || (event.key === "f" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      filterInput?.focus();
+      return;
+    }
+    if (event.key === "Escape") {
+      if (menu() !== undefined) setMenu(undefined);
+      else if (typing && query() !== "") setQuery("");
+      else select(undefined);
+      return;
+    }
+    if (typing || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+    event.preventDefault();
+    const rows = [...root.querySelectorAll<HTMLTableRowElement>("tbody tr[id^='trj-row-']")];
+    const s = selection();
+    const current = rows.findIndex((row) => s?.type === "record" && row.id === `trj-row-${s.id}`);
+    const next = rows[Math.min(rows.length - 1, Math.max(0, current + (event.key === "ArrowDown" ? 1 : -1)))];
+    if (next === undefined) return;
+    select({ type: "record", id: next.id.slice("trj-row-".length) }, tab());
+    next.scrollIntoView({ block: "nearest" });
+  };
 
   return (
-    <div class="trj">
-      <div class="trj-pane">
-        <Toolbar />
-        <Timeline spans={allSpans()} now={now()} matches={matches} />
+    <div class="trj" ref={root} tabindex="-1" onKeyDown={onKeyDown}>
+      <Toolbar />
+      <Overview spans={allSpans()} scale={scale()} now={now()} matches={matches} />
+      <div class="trj-body">
         <div class="trj-scroll">
           <Show when={records().length > 0} fallback={<p class="trj-empty">{state.activeId === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>}>
-            <Ledger records={records()} matches={matches} now={now()} />
+            <Table records={records()} visible={visible()} scale={scale()} spans={spanById()} now={now()} compact={selection() !== undefined} />
           </Show>
         </div>
+        <Details records={records()} />
       </div>
-      <Details records={records()} />
+      <StatusBar records={records()} visible={visible()} now={now()} />
+      <ContextMenu />
     </div>
   );
 }
