@@ -75,3 +75,6 @@ export const runWith = <A, E>(plugins: readonly Plugin[], body: Effect.Effect<A,
       }),
     ) as Effect.Effect<A>,
   );
+
+/** Keeps live catalogs off the network: every fetch fails, so providers keep pi-ai's lists. */
+export const offline: typeof fetch = () => Promise.reject(new Error("offline in tests"));

@@ -7,6 +7,7 @@ import { Credentials, Interaction, InteractionError, Llm, LlmError, LlmRequestHo
 import type { AuthType, LlmRequest, NoticePayload, ProviderInfo, StreamEvent } from "@lemma/contracts";
 import { authInteraction, credentialStore, runner, toNotice } from "./auth.ts";
 import { makeEventMapper, reasoningFor, toContext, toModelInfo } from "./convert.ts";
+import { networkSources, withLiveCatalog } from "./catalog.ts";
 import { CustomProvider, customProvider, selectProviders, withoutAnthropicOAuth } from "./providers.ts";
 
 export const Config = Schema.Struct({
@@ -14,6 +15,10 @@ export const Config = Schema.Struct({
   exclude: Schema.optional(Schema.Array(Schema.String)).annotations({ description: "Built-in provider ids to leave out." }),
   providers: Schema.optional(Schema.Array(CustomProvider)).annotations({
     description: "Providers on a known wire API (OpenAI-compatible servers, proxies). Replace a built-in with the same id.",
+  }),
+  liveCatalogs: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
+    title: "Live model catalogs",
+    description: "Add the models a built-in provider serves now (its model list, described by models.dev) to the ones this version knows.",
   }),
 });
 export type Config = typeof Config.Type;
@@ -23,6 +28,8 @@ export interface Options {
   readonly providers?: () => readonly Provider[];
   /** Environment used for auth resolution; default `process.env` and the filesystem. */
   readonly authContext?: AuthContext;
+  /** How live catalogs are fetched; default the global `fetch`. */
+  readonly fetch?: typeof fetch;
 }
 
 export function toProviderInfo(provider: Provider, check: AuthCheck | undefined, custom = false): ProviderInfo {
@@ -73,9 +80,11 @@ export function makeLlmPlugin(options: Options = {}) {
             credentials: credentialStore(credentials, run),
             ...(options.authContext === undefined ? {} : { authContext: options.authContext }),
           });
-          for (const provider of selectProviders((options.providers ?? builtinProviders)(), config)) {
-            models.setProvider(withoutAnthropicOAuth(provider));
-          }
+          const builtins = selectProviders((options.providers ?? builtinProviders)(), config).map(withoutAnthropicOAuth);
+          // A missing model may be described already by another built-in provider's catalog.
+          const siblings = () => builtins.flatMap((provider) => provider.getModels());
+          const sources = networkSources(options.fetch ?? fetch, siblings);
+          for (const provider of builtins) models.setProvider(config.liveCatalogs ? withLiveCatalog(provider, sources) : provider);
           for (const provider of config.providers ?? []) models.setProvider(customProvider(provider));
           const customIds = new Set((config.providers ?? []).map((provider) => provider.id));
 
@@ -90,7 +99,7 @@ export function makeLlmPlugin(options: Options = {}) {
             }),
           );
 
-          /** Updates dynamic provider catalogs (Radius in pi-ai 0.87.1); failures keep the previous list. */
+          /** Updates provider catalogs (live catalogs, and Radius's own); failures keep the previous list. */
           const refresh = (providers?: readonly string[]) =>
             Effect.tryPromise((signal) => models.refresh({ signal, ...(providers === undefined ? {} : { providers }) })).pipe(
               Effect.tap(({ errors }) => Effect.forEach(errors, ([id, error]) => Effect.logDebug(`llm: model refresh failed for ${id}: ${error.message}`))),
@@ -214,7 +223,8 @@ export function makeLlmPlugin(options: Options = {}) {
                     ),
                   catch: (error) => loginError(error, provider),
                 }).pipe(Effect.ensuring(flush));
-                yield* plugin.background(`refresh ${providerId}`, refresh([providerId])).pipe(Effect.ignore);
+                // Its live catalog first, so clients that list models on hearing of the login see all of them.
+                yield* refresh([providerId]).pipe(Effect.timeout("20 seconds"), Effect.ignore);
                 // Every client learns of it, including one that reloaded while the login ran.
                 yield* events.publish(Notice, { level: "info", source: "llm", message: `Logged in to ${provider.name}` });
               }),

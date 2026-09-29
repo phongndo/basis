@@ -8,7 +8,7 @@ import { PluginContext, definePlugin } from "@lemma/core";
 import { InteractionError, Llm, LlmError, LlmRequest, LlmRequestHook, StreamEvent } from "@lemma/contracts";
 import type { Credential } from "@lemma/contracts";
 import { credentialStore, makeEventMapper, makeLlmPlugin, runner } from "../src/index.ts";
-import { envContext, fakeCredentials, fakeInteraction, noticeRecorder, runWith } from "./helpers.ts";
+import { envContext, fakeCredentials, fakeInteraction, noticeRecorder, offline, runWith } from "./helpers.ts";
 
 const decodeEvent = Schema.decodeUnknownSync(StreamEvent, { onExcessProperty: "error" });
 
@@ -24,7 +24,7 @@ function setup(options: { providers?: () => readonly Provider[]; env?: Record<st
   });
   const credentials = fakeCredentials();
   const interaction = fakeInteraction(() => Effect.succeed("sk-test"));
-  const llm = makeLlmPlugin({ providers: options.providers ?? (() => [faux.provider]), authContext: envContext(options.env) });
+  const llm = makeLlmPlugin({ fetch: offline, providers: options.providers ?? (() => [faux.provider]), authContext: envContext(options.env) });
   return { faux, credentials, interaction, plugins: [credentials.plugin, interaction.plugin, llm] as const };
 }
 
@@ -244,7 +244,7 @@ describe("catalog", () => {
 
   it("keeps Anthropic API keys but not its subscription OAuth", async () => {
     // Default built-ins: the plugin's real provider list.
-    const llm = makeLlmPlugin({ authContext: envContext({ ANTHROPIC_API_KEY: "sk-ant" }) });
+    const llm = makeLlmPlugin({ fetch: offline, authContext: envContext({ ANTHROPIC_API_KEY: "sk-ant" }) });
     const plugins = [fakeCredentials().plugin, fakeInteraction(() => Effect.succeed("")).plugin, llm];
     const providers = await runWith(
       plugins,
@@ -307,7 +307,7 @@ describe("login", () => {
   it("reports a dismissed prompt as Cancelled and unknown providers as UnknownProvider", async () => {
     const credentials = fakeCredentials();
     const interaction = fakeInteraction(() => Effect.fail(new InteractionError({ reason: "Dismissed", message: "closed" })));
-    const plugins = [credentials.plugin, interaction.plugin, makeLlmPlugin({ providers: () => [], authContext: envContext() })];
+    const plugins = [credentials.plugin, interaction.plugin, makeLlmPlugin({ fetch: offline, providers: () => [], authContext: envContext() })];
     const cancelled = await runWith(plugins, Effect.flip(Effect.flatMap(Llm, (l) => l.login("gateway", "api_key"))), { llm: gateway });
     expect(cancelled.reason).toBe("Cancelled");
     const unknown = await runWith(plugins, Effect.flip(Effect.flatMap(Llm, (l) => l.login("nope", "api_key"))), { llm: gateway });
@@ -355,7 +355,12 @@ describe("login", () => {
       models: [],
       api: openAICompletionsApi(),
     });
-    const plugins = [credentials.plugin, interaction.plugin, recorder.plugin, makeLlmPlugin({ providers: () => [oauthProvider], authContext: envContext() })];
+    const plugins = [
+      credentials.plugin,
+      interaction.plugin,
+      recorder.plugin,
+      makeLlmPlugin({ fetch: offline, providers: () => [oauthProvider], authContext: envContext() }),
+    ];
     const info = await runWith(
       plugins,
       Effect.gen(function* () {
