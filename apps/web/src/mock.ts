@@ -14,6 +14,7 @@ import type {
   SessionEvent,
   SessionInfo,
   StreamEvent,
+  TurnOptions,
   UiComposition,
   Usage,
 } from "@lemma/contracts";
@@ -51,12 +52,14 @@ const assistant = (
   u: Usage,
   stopReason: AssistantMessage["stopReason"] = "stop",
   errorMessage?: string,
+  /** The model that answered; the seeded history's is Claude Sonnet 4.5. */
+  by: Pick<ModelInfo, "api" | "provider" | "id"> = { api: "anthropic-messages", provider: "anthropic", id: "claude-sonnet-4-5" },
 ): AssistantMessage => ({
   role: "assistant",
   content,
-  api: "anthropic-messages",
-  provider: "anthropic",
-  model: "claude-sonnet-4-5",
+  api: by.api,
+  provider: by.provider,
+  model: by.id,
   usage: u,
   stopReason,
   timestamp: Date.now(),
@@ -279,25 +282,21 @@ export const createMockHost = (): Host => {
     bundled("read", { requires: ["lemma/Tools"] }),
     bundled("write", { requires: ["lemma/Tools"] }),
     bundled("edit", { requires: ["lemma/Tools"] }),
-    bundled("bash", { requires: ["lemma/Tools"], enabled: false, state: "disabled", scope: "user" }),
+    bundled("bash", { requires: ["lemma/Tools"] }),
     bundled("sessions", { provides: ["lemma/Sessions"], requires: ["lemma/Paths"], locked: needed }),
     bundled("agent", { provides: ["lemma/Agent"], requires: ["lemma/Sessions", "lemma/Llm", "lemma/Tools", "lemma/HostControl"], locked: needed }),
     bundled("project-context", { requires: ["lemma/Paths"] }),
+    bundled("workspace", { provides: ["lemma/Workspace"], requires: ["lemma/Paths"], locked: needed }),
+    bundled("commands", { provides: ["lemma/Commands"], locked: needed }),
+    bundled("commands-host", { requires: ["lemma/Commands", "lemma/Interaction", "lemma/HostControl"] }),
+    bundled("commands-llm", { requires: ["lemma/Commands", "lemma/Interaction", "lemma/Llm"] }),
+    bundled("commands-workspace", { requires: ["lemma/Commands", "lemma/Interaction", "lemma/Workspace"] }),
     bundled("transport", {
       requires: ["lemma/Paths", "lemma/Sessions", "lemma/Agent", "lemma/Llm", "lemma/HostControl", "lemma/Workspace", "lemma/Commands"],
       locked: "Serves the web app and the CLI; replace it with another transport plugin instead of turning it off",
     }),
-    bundled("my-llm", { source: "user", version: undefined, provides: ["lemma/Llm"], requires: ["lemma/Credentials"], enabled: false, state: "disabled" }),
-    bundled("outline", { source: "user", version: undefined, provides: ["lemma/Outline"], requires: ["lemma/Tools"] }),
-    bundled("notes", {
-      source: "user",
-      version: undefined,
-      requires: ["lemma/Outline"],
-      state: "failed",
-      fault: { phase: "activate", message: 'Plugin "notes" failed during activate: ENOENT: no such file or directory, open ~/notes' },
-    }),
   ];
-  // Wiring as the kernel reports it, so the inspector has hooks, observers, and a fault history to show.
+  // Wiring as the kernel reports it, so the inspector has hooks and observers to show.
   const wiring: Record<string, Partial<PluginStatus>> = {
     "project-context": { hooks: [{ name: "lemma/agent.request", order: 10 }] },
     bash: { hooks: [{ name: "lemma/tool.execute", order: 0 }] },
@@ -312,14 +311,6 @@ export const createMockHost = (): Host => {
         "lemma/notice",
         "lemma/plugins.changed",
       ],
-    },
-    notes: {
-      faults: [2, 1].map((sequence) => ({
-        sequence,
-        at: Date.now() - sequence * 90_000,
-        phase: "activate",
-        message: 'Plugin "notes" failed during activate: ENOENT: no such file or directory, open ~/notes',
-      })),
     },
   };
   for (const [index, plugin] of plugins.entries()) plugins[index] = withConfig({ ...plugin, ...wiring[plugin.id] });
@@ -590,7 +581,10 @@ export const createMockHost = (): Host => {
     return true;
   };
 
-  const runTurn = async (sessionId: string, content: PromptContent) => {
+  /** Answers as the model the turn names, else the first available one, as the host does. */
+  const runTurn = async (sessionId: string, content: PromptContent, options?: TurnOptions) => {
+    const available = MODELS.filter((model) => providers.find((p) => p.id === model.provider)?.configured);
+    const by = available.find((model) => model.ref === options?.model) ?? available[0] ?? MODELS[0]!;
     const turnId = id("t");
     const started = Date.now();
     append(sessionId, { type: "turn-start", turnId });
@@ -616,6 +610,8 @@ export const createMockHost = (): Host => {
       ],
       usage(3000, 90, 8000),
       "toolUse",
+      undefined,
+      by,
     );
     if (!(await stream(sessionId, turnId, step1, m1))) return end("cancelled");
     total = m1.usage;
@@ -647,6 +643,9 @@ export const createMockHost = (): Host => {
         },
       ],
       usage(3300, 110, 11000),
+      "stop",
+      undefined,
+      by,
     );
     if (!(await stream(sessionId, turnId, step2, m2))) return end("cancelled");
     total = { ...total, input: total.input + m2.usage.input, output: total.output + m2.usage.output };
@@ -699,9 +698,9 @@ export const createMockHost = (): Host => {
       },
     },
     agent: {
-      prompt: async (sessionId, content) => {
+      prompt: async (sessionId, content, options) => {
         if (running.has(sessionId)) throw new Error("A turn is already running");
-        await runTurn(sessionId, content);
+        await runTurn(sessionId, content, options);
       },
       cancel: async (sessionId) => {
         if (running.has(sessionId)) cancelled.add(sessionId);
