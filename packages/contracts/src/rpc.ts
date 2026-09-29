@@ -2,7 +2,7 @@ import { Rpc, RpcGroup } from "@effect/rpc";
 import { Schema } from "effect";
 import { PromptContent, TurnOptions } from "./agent.ts";
 import { CommandInfo, CommandResult } from "./commands.ts";
-import { CompositionInfo, NoticePayload } from "./host.ts";
+import { CompositionInfo, ConfigScope, NoticePayload, PluginRow, PluginSource } from "./host.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
 import { AuthType, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
 import { SessionEvent, SessionInfo } from "./sessions.ts";
@@ -20,14 +20,31 @@ export class HostError extends Schema.TaggedError<HostError>()("HostError", {
   subject: Schema.optional(Schema.String),
 }) {}
 
+/** `PluginInfo` for the wire: the fault flattened to text, and "disabled" for a plugin the core has not loaded. */
 export const PluginStatus = Schema.Struct({
   id: Schema.String,
   version: Schema.optional(Schema.String),
-  state: Schema.Literal("pending", "activating", "active", "draining", "closed", "failed"),
+  source: PluginSource,
+  shadows: Schema.optional(Schema.Boolean),
+  enabled: Schema.Boolean,
+  scope: Schema.optional(ConfigScope),
+  locked: Schema.optional(Schema.String),
+  provides: Schema.Array(Schema.String),
+  requires: Schema.Array(Schema.String),
+  state: Schema.Literal("pending", "activating", "active", "draining", "closed", "failed", "disabled"),
   fault: Schema.optional(Schema.Struct({ phase: Schema.String, operation: Schema.optional(Schema.String), message: Schema.String })),
+  /** The plugin whose failure or absence keeps this one from running. */
   haltedBy: Schema.optional(Schema.String),
 });
 export type PluginStatus = typeof PluginStatus.Type;
+
+/** What a reload or configure changed, as clients report it. */
+export const ReloadResult = Schema.Struct({
+  started: Schema.Array(Schema.String),
+  restarted: Schema.Array(Schema.String),
+  stopped: Schema.Array(Schema.String),
+});
+export type ReloadResult = typeof ReloadResult.Type;
 
 /** Everything a client reacts to, multiplexed on one subscription. Losable: clients repair gaps from `Session.Events`. */
 export const HostEvent = Schema.Union(
@@ -112,11 +129,16 @@ export class HostRpcs extends RpcGroup.make(
 
   Rpc.make("Host.Info", { success: HostInfo }),
   Rpc.make("Host.Events", { success: HostEvent, stream: true }),
+  /** Every known plugin, enabled or not. */
   Rpc.make("Host.Plugins", { success: Schema.Array(PluginStatus) }),
-  Rpc.make("Host.RestartPlugin", { payload: { pluginId: Schema.String }, error: HostError }),
+  /** A failed or halted plugin and its dependents; `force` also replaces a running one. */
+  Rpc.make("Host.RestartPlugin", { payload: { pluginId: Schema.String, force: Schema.optional(Schema.Boolean) }, error: HostError }),
   /** Re-read config files and apply the composition; diagnostics come back as the error message. */
-  Rpc.make("Host.Reload", {
-    success: Schema.Struct({ started: Schema.Array(Schema.String), restarted: Schema.Array(Schema.String), stopped: Schema.Array(Schema.String) }),
+  Rpc.make("Host.Reload", { success: ReloadResult, error: HostError }),
+  /** Write plugin rows (`enabled`, `config`) into the user or project config file and apply; a rejected change is undone. */
+  Rpc.make("Host.Configure", {
+    payload: { plugins: Schema.Record({ key: Schema.String, value: PluginRow }), scope: Schema.optional(ConfigScope) },
+    success: ReloadResult,
     error: HostError,
   }),
 ) {}

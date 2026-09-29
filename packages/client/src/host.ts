@@ -4,15 +4,18 @@ import type {
   AuthType,
   CommandInfo,
   CommandResult,
+  ConfigScope,
   DirectoryListing,
   GitBranch,
   HostEvent,
   HostInfo,
   InteractionAnswer,
   ModelInfo,
+  PluginRow,
   PluginStatus,
   PromptContent,
   ProviderInfo,
+  ReloadResult,
   SessionEvent,
   SessionInfo,
   TurnOptions,
@@ -34,11 +37,7 @@ export interface ConnectionStatus {
   readonly error?: string;
 }
 
-export interface ReloadResult {
-  readonly started: readonly string[];
-  readonly restarted: readonly string[];
-  readonly stopped: readonly string[];
-}
+export type { ReloadResult } from "@lemma/contracts";
 
 /**
  * Promise-returning facade over `HostRpcs`. Methods reject with `HostError`
@@ -85,9 +84,13 @@ export interface Host {
   };
   readonly host: {
     readonly info: () => Promise<HostInfo>;
+    /** Every known plugin, enabled or not. */
     readonly plugins: () => Promise<readonly PluginStatus[]>;
-    readonly restartPlugin: (pluginId: string) => Promise<void>;
+    /** A failed or halted plugin and its dependents; `force` also replaces a running one. */
+    readonly restartPlugin: (pluginId: string, options?: { force?: boolean }) => Promise<void>;
     readonly reload: () => Promise<ReloadResult>;
+    /** Write plugin rows into the user (default) or project config file and apply them; a rejected change is undone. */
+    readonly configure: (plugins: Readonly<Record<string, PluginRow>>, options?: { scope?: ConfigScope }) => Promise<ReloadResult>;
   };
   readonly status: () => ConnectionStatus;
   /** Called immediately with the current status, then on every change. */
@@ -239,8 +242,9 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
     host: {
       info: () => call(rpc.Host.Info()),
       plugins: () => call(rpc.Host.Plugins()),
-      restartPlugin: (pluginId) => unit(rpc.Host.RestartPlugin({ pluginId })),
+      restartPlugin: (pluginId, options) => unit(rpc.Host.RestartPlugin(options?.force === undefined ? { pluginId } : { pluginId, force: options.force })),
       reload: () => call(rpc.Host.Reload()),
+      configure: (plugins, options) => call(rpc.Host.Configure(options?.scope === undefined ? { plugins } : { plugins, scope: options.scope })),
     },
     status: () => status,
     onStatus: (listener) => {

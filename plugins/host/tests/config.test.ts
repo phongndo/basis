@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { isTrusted, loadComposition, projectPluginsDir, resolvePaths } from "../src/index.ts";
+import { parse as parseJsonc } from "jsonc-parser";
+import { isTrusted, loadComposition, patchConfig, projectPluginsDir, resolvePaths, updateConfig } from "../src/index.ts";
 import type { PathsService } from "../src/index.ts";
 
 async function withPaths<A>(body: (paths: PathsService) => Promise<A>): Promise<A> {
@@ -159,5 +160,68 @@ describe("loadComposition", () => {
       expect(loaded.diagnostics.map((d) => d.severity)).toEqual(["warning"]);
       expect(loaded.diagnostics[0]?.message).toContain(paths.projectConfig);
       expect(loaded.composition.plugins).toEqual({ tools: {}, host: { config: paths } });
+    }));
+});
+
+describe("patchConfig", () => {
+  test("adds rows to an empty file and removes defaults, keeping comments and other rows", () => {
+    const empty = patchConfig("", { bash: { enabled: false } });
+    expect(parseJsonc(empty)).toEqual({ plugins: { bash: { enabled: false } } });
+
+    const start = `{
+  // mine
+  "trustedProjects": ["/work"],
+  "plugins": {
+    // keep
+    "llm": { "config": { "default": "x" } },
+    "edit": { "enabled": false },
+  },
+}`;
+    const patched = patchConfig(start, { bash: { enabled: false }, edit: { enabled: true }, llm: { config: { default: "y" } } });
+    expect(patched).toContain("// mine");
+    expect(patched).toContain("// keep");
+    expect(parseJsonc(patched, [], { allowTrailingComma: true })).toEqual({
+      trustedProjects: ["/work"],
+      plugins: { llm: { config: { default: "y" } }, bash: { enabled: false } },
+    });
+    // Re-enabling a plugin that has no row writes nothing.
+    expect(patchConfig(start, { read: { enabled: true } })).toBe(start);
+  });
+
+  test("in the project file, enabled: true is written out, since it must override the user file", () => {
+    const patched = patchConfig(`{ "plugins": { "bash": { "enabled": false } } }`, { bash: { enabled: true }, edit: { enabled: true } }, "project");
+    expect(parseJsonc(patched)).toEqual({ plugins: { bash: { enabled: true }, edit: { enabled: true } } });
+    expect(parseJsonc(patchConfig(patched, { bash: { enabled: false }, edit: { enabled: true } }, "user"))).toEqual({ plugins: { bash: { enabled: false } } });
+  });
+});
+
+describe("updateConfig", () => {
+  test("writes the file, records enabledIn, and restore puts it back or removes it", () =>
+    withPaths(async (paths) => {
+      const update = await Effect.runPromise(updateConfig(paths.userConfig, { bash: { enabled: false } }));
+      expect(update.previous).toBeUndefined();
+      expect(parseJsonc(update.text)).toEqual({ plugins: { bash: { enabled: false } } });
+      let loaded = await Effect.runPromise(loadComposition(paths));
+      expect(loaded.composition.plugins.bash).toEqual({ enabled: false });
+      expect(loaded.enabledIn).toEqual({ bash: "user" });
+
+      await Effect.runPromise(update.restore);
+      loaded = await Effect.runPromise(loadComposition(paths));
+      expect(loaded.files[0]).toEqual({ path: paths.userConfig, found: false });
+      expect(loaded.enabledIn).toEqual({});
+
+      await writeFile(paths.userConfig, `{ "plugins": { "edit": { "enabled": false } } } // note`);
+      const second = await Effect.runPromise(updateConfig(paths.userConfig, { edit: { enabled: true } }));
+      expect((await Effect.runPromise(loadComposition(paths))).composition.plugins.edit).toBeUndefined();
+      await Effect.runPromise(second.restore);
+      expect((await Effect.runPromise(loadComposition(paths))).composition.plugins.edit).toEqual({ enabled: false });
+    }));
+
+  test("refuses to patch a file it cannot parse", () =>
+    withPaths(async (paths) => {
+      await writeFile(paths.userConfig, `{ "plugins": { `);
+      const failed = await Effect.runPromise(Effect.flip(updateConfig(paths.userConfig, { bash: { enabled: false } })));
+      expect(failed.severity).toBe("error");
+      expect(failed.message.startsWith(`${paths.userConfig}:`)).toBe(true);
     }));
 });

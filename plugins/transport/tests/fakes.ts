@@ -25,10 +25,12 @@ import {
 } from "@lemma/contracts";
 import type {
   AssistantMessage,
+  ConfigScope,
   GitBranch,
   InteractionAnswer,
   InteractionRequest,
   ModelInfo,
+  PluginInfo,
   SessionEvent,
   SessionInfo,
   WorkspaceStatus,
@@ -233,7 +235,10 @@ export const fakeGreeter = definePlugin({
 
 export interface ControlHolder {
   core?: Core<any>;
+  /** Restarted ids; a forced restart is suffixed with `!`. */
   readonly restarted: string[];
+  /** Plugins `configure` turned off, with the scope written. */
+  readonly off: Record<string, ConfigScope>;
 }
 
 /** Delegates to the test's core once it exists, as the host app does with its loader. */
@@ -246,10 +251,21 @@ export const fakeHostControl = (holder: ControlHolder) =>
       Effect.gen(function* () {
         const events = yield* Events;
         const core = Effect.suspend(() => (holder.core === undefined ? Effect.dieMessage("core not attached") : Effect.succeed(holder.core)));
+        // Every running plugin as a bundled catalog entry; one `configure` turned off is reported disabled (it keeps running here).
+        const plugins = Effect.flatMap(core, (core) =>
+          Effect.map(core.inspect, (snapshot): PluginInfo[] =>
+            snapshot.plugins.map(({ id, version, provides, requires, ...rest }) => {
+              const scope = holder.off[id];
+              const base = { id, ...(version === undefined ? {} : { version }), source: "bundled" as const, provides, requires };
+              return scope === undefined ? { ...base, ...rest, enabled: true } : { ...base, enabled: false, scope };
+            }),
+          ),
+        );
+        const changed = Effect.flatMap(plugins, (plugins) => events.publish(PluginsChanged, { plugins }));
         return {
-          plugins: Effect.flatMap(core, (core) => Effect.map(core.inspect, (snapshot) => snapshot.plugins)),
+          plugins,
           composition: Effect.succeed({ id: "c0ffee", plugins: [{ id: "transport", version: "0.1.0" }] }),
-          restart: (pluginId) =>
+          restart: (pluginId, options) =>
             Effect.gen(function* () {
               const runtime = yield* core;
               if (!(yield* runtime.inspect).plugins.some((plugin) => plugin.id === pluginId)) {
@@ -257,10 +273,26 @@ export const fakeHostControl = (holder: ControlHolder) =>
                   diagnostics: [new Diagnostic({ severity: "error", pluginId, message: `No plugin "${pluginId}"`, suggestion: "Check the id" })],
                 });
               }
-              holder.restarted.push(pluginId);
-              yield* events.publish(PluginsChanged, { plugins: (yield* runtime.inspect).plugins });
+              holder.restarted.push(options?.force ? `${pluginId}!` : pluginId);
+              yield* changed;
             }),
           reload: Effect.succeed({ started: ["x"], stopped: [], restarted: [], unchanged: [], failed: [], interrupted: 0, faults: [] }),
+          configure: (rows, options) =>
+            Effect.gen(function* () {
+              if (rows.transport?.enabled === false) {
+                return yield* new ReloadError({
+                  diagnostics: [new Diagnostic({ severity: "error", pluginId: "transport", message: `"transport" cannot be turned off: serves the clients` })],
+                });
+              }
+              const scope = options?.scope ?? "user";
+              for (const [id, row] of Object.entries(rows)) {
+                if (row.enabled === false) holder.off[id] = scope;
+                else if (row.enabled === true) delete holder.off[id];
+              }
+              yield* changed;
+              const ids = Object.keys(rows);
+              return { started: [], stopped: ids.filter((id) => holder.off[id]), restarted: [], unchanged: [], failed: [], interrupted: 0, faults: [] };
+            }),
         };
       }),
     ),

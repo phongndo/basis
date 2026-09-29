@@ -114,6 +114,7 @@ export const host = (compositionId = "comp-1") =>
       composition: Effect.succeed({ id: compositionId, plugins: [] }),
       restart: () => Effect.void,
       reload: Effect.die("unused"),
+      configure: () => Effect.die("unused"),
     }),
   });
 

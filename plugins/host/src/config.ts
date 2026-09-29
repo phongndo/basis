@@ -1,9 +1,10 @@
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Effect, Either, ParseResult, Schema } from "effect";
-import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
+import { applyEdits, modify, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import type { ParseError } from "jsonc-parser";
 import { ConfigFile } from "@lemma/contracts";
+import type { ConfigScope, PluginRow } from "@lemma/contracts";
 import { Diagnostic } from "@lemma/core";
 import type { Composition, PluginEntry } from "@lemma/core";
 import type { PathsService } from "./paths.ts";
@@ -19,6 +20,8 @@ export interface LoadedComposition {
   readonly files: readonly { readonly path: string; readonly found: boolean }[];
   /** Whether the user file's `trustedProjects` covers `paths.cwd`. Only a trusted project's file and plugins load. */
   readonly trusted: boolean;
+  /** Per plugin id, the file whose row sets `enabled` (the project's wins), so a change can target the file that decides. */
+  readonly enabledIn: Readonly<Record<string, ConfigScope>>;
 }
 
 /** `<cwd>/.lemma/plugins`: plugin files that load only in a trusted project. */
@@ -68,6 +71,7 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
       );
     }
     const plugins: Record<string, PluginEntry> = {};
+    const enabledIn: Record<string, ConfigScope> = {};
     for (const file of [user, project]) {
       for (const [id, row] of Object.entries(file.plugins)) {
         if (id === HOST_PLUGIN_ID) {
@@ -83,6 +87,7 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
         }
         // JSON cannot express undefined, so decoded rows only carry the keys the file wrote.
         plugins[id] = { ...plugins[id], ...row } as PluginEntry;
+        if (row.enabled !== undefined) enabledIn[id] = file === user ? "user" : "project";
       }
     }
     plugins[HOST_PLUGIN_ID] = { config: paths };
@@ -94,6 +99,85 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
         { path: project.path, found: project.found },
       ],
       trusted,
+      enabledIn,
+    };
+  });
+}
+
+const FORMAT = { formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" } };
+
+/**
+ * The config text with each plugin's row updated in place, keeping comments and
+ * other rows. A key present in `row` is written, and a row left with no keys is
+ * removed. In the user file `enabled: true` is the default, so it removes the
+ * key; in the project file it is written out, because only an explicit `true`
+ * overrides a user row that says `false`. The text must be valid JSONC (or
+ * empty); check with `parseConfig` first.
+ */
+export function patchConfig(text: string, rows: Readonly<Record<string, PluginRow>>, scope: ConfigScope = "user"): string {
+  let next = text;
+  for (const [id, row] of Object.entries(rows)) {
+    const edits: Record<string, unknown> = {};
+    if (row.enabled !== undefined) edits.enabled = row.enabled && scope === "user" ? undefined : row.enabled;
+    if (row.config !== undefined) edits.config = row.config;
+    const current: unknown = parseJsonc(next, [], { allowTrailingComma: true })?.plugins?.[id];
+    const before = typeof current === "object" && current !== null ? { ...(current as Record<string, unknown>) } : {};
+    const after = { ...before, ...edits };
+    if (Object.values(after).every((value) => value === undefined)) {
+      if (Object.keys(before).length) next = applyEdits(next, modify(next, ["plugins", id], undefined, FORMAT));
+      continue;
+    }
+    for (const [key, value] of Object.entries(edits)) {
+      if (value === undefined && !(key in before)) continue;
+      next = applyEdits(next, modify(next, ["plugins", id, key], value, FORMAT));
+    }
+  }
+  return next;
+}
+
+/** The file's text, or undefined when it does not exist. */
+export const readConfigText = (path: string): Effect.Effect<string | undefined, Diagnostic> =>
+  Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: (cause) => cause as NodeJS.ErrnoException }).pipe(
+    Effect.catchIf(
+      (error) => error.code === "ENOENT",
+      () => Effect.succeed(undefined),
+    ),
+    Effect.mapError(
+      (error) => new Diagnostic({ severity: "error", message: `${path}: cannot read config: ${error.message}`, suggestion: "Fix the file's permissions" }),
+    ),
+  );
+
+export interface ConfigUpdate {
+  /** What the file holds now. */
+  readonly text: string;
+  /** What it held before; undefined when it did not exist. */
+  readonly previous: string | undefined;
+  /** Puts the file back as it was (removing it if it did not exist). Never fails; a file that cannot be restored is left as written. */
+  readonly restore: Effect.Effect<void>;
+}
+
+/** Applies `patchConfig` to the file at `path`, creating it and its directory if needed. */
+export function updateConfig(path: string, rows: Readonly<Record<string, PluginRow>>, scope: ConfigScope = "user"): Effect.Effect<ConfigUpdate, Diagnostic> {
+  return Effect.gen(function* () {
+    const previous = yield* readConfigText(path);
+    if (previous !== undefined && previous.trim() !== "") yield* parseConfig(path, previous);
+    const text = patchConfig(previous ?? "", rows, scope);
+    yield* Effect.tryPromise({
+      try: async () => {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, text);
+      },
+      catch: (cause) =>
+        new Diagnostic({
+          severity: "error",
+          message: `${path}: cannot write config: ${cause instanceof Error ? cause.message : String(cause)}`,
+          suggestion: "Fix the directory's permissions",
+        }),
+    });
+    return {
+      text,
+      previous,
+      restore: Effect.tryPromise(() => (previous === undefined ? unlink(path) : writeFile(path, previous))).pipe(Effect.ignore),
     };
   });
 }
@@ -138,7 +222,7 @@ const readConfig = (path: string): Effect.Effect<ReadConfig> =>
   });
 
 /** JSONC with comments and trailing commas; anything else the parser recovers from is still an error here. */
-function parseConfig(path: string, text: string): Either.Either<ConfigFile, Diagnostic> {
+export function parseConfig(path: string, text: string): Either.Either<ConfigFile, Diagnostic> {
   const errors: ParseError[] = [];
   const value: unknown = parseJsonc(text, errors, { allowTrailingComma: true, disallowComments: false });
   if (errors.length) {

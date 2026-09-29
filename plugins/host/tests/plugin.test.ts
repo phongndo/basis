@@ -17,13 +17,21 @@ const flaky = definePlugin({
 /** Mirrors packages/host: the plugin activates inside makeLoader, so the handle binds to the loader through a Deferred. */
 const start = Effect.gen(function* () {
   const ready = yield* Deferred.make<Loader>();
+  const configured: Record<string, unknown>[] = [];
   const handle: HostControlService = {
-    plugins: Effect.flatMap(Deferred.await(ready), (loader) => Effect.map(loader.core.inspect, (snapshot) => snapshot.plugins)),
+    plugins: Effect.flatMap(Deferred.await(ready), (loader) =>
+      Effect.map(loader.core.inspect, (snapshot) => snapshot.plugins.map((plugin) => ({ ...plugin, source: "bundled" as const, enabled: true }))),
+    ),
     composition: Effect.flatMap(Deferred.await(ready), (loader) =>
       Effect.zipWith(loader.composition, loader.core.inspect, (composition, snapshot) => compositionInfo(composition, snapshot.plugins)),
     ),
-    restart: (id) => Effect.flatMap(Deferred.await(ready), (loader) => loader.core.restart(id)),
+    restart: (id, options) => Effect.flatMap(Deferred.await(ready), (loader) => loader.core.restart(id, options)),
     reload: Effect.flatMap(Deferred.await(ready), (loader) => loader.apply({ plugins: { host: { config: paths } } })),
+    configure: (rows) =>
+      Effect.flatMap(Deferred.await(ready), (loader) => {
+        configured.push(rows);
+        return loader.apply({ plugins: { host: { config: paths } } });
+      }),
   };
   const host = hostPlugin({ control: handle, faults: Stream.unwrap(Effect.map(Deferred.await(ready), (loader) => loader.core.faults)) });
   const bundled: Record<string, Plugin> = { host, flaky };
@@ -35,22 +43,27 @@ const start = Effect.gen(function* () {
   // Reload drains in-flight core.run work before swapping, so the handle is used outside core.run, as the app does.
   const control = yield* loader.core.run(HostControl);
   const events = yield* loader.core.run(Events);
-  return { loader, control, events };
+  return { loader, control, events, configured };
 });
 
 describe("host plugin", () => {
-  test("provides Paths from config and publishes PluginsChanged after a reload", async () => {
+  test("provides Paths from config and publishes PluginsChanged after a reload and a configure", async () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const { loader, control, events } = yield* start;
+          const { loader, control, events, configured } = yield* start;
           expect(yield* loader.core.run(Paths)).toEqual(paths);
           expect((yield* control.composition).plugins).toEqual([{ id: "host" }]);
-          const changes = yield* Effect.fork(Stream.runCollect(Stream.take(events.stream(PluginsChanged), 1)));
+          const changes = yield* Effect.fork(Stream.runCollect(Stream.take(events.stream(PluginsChanged), 2)));
           const report = yield* control.reload;
           expect(report.unchanged).toEqual(["host"]);
-          const [published] = [...(yield* Fiber.join(changes))];
-          expect(published?.plugins.map((plugin) => [plugin.id, plugin.state])).toEqual([["host", "active"]]);
+          yield* control.configure({ flaky: { enabled: false } }, { scope: "project" });
+          expect(configured).toEqual([{ flaky: { enabled: false } }]);
+          const published = [...(yield* Fiber.join(changes))];
+          expect(published.map((change) => change.plugins.map((plugin) => [plugin.id, plugin.state, plugin.enabled]))).toEqual([
+            [["host", "active", true]],
+            [["host", "active", true]],
+          ]);
         }),
       ),
     );

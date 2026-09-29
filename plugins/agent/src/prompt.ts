@@ -52,7 +52,7 @@ export function environment(facts: EnvironmentFacts, now: Date = new Date()): st
     ...(facts.cli === undefined
       ? []
       : [
-          `Lemma CLI: \`${facts.cli}\` inspects the host you run in: \`status\`, \`plugins\`, \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
+          `Lemma CLI: \`${facts.cli}\` inspects and changes the host you run in: \`status\`, \`plugins\` (\`plugins enable|disable <id>\` turns one on or off; \`reload\` applies config edits), \`session show <id>\`, \`inspect <session> --filter "is:error tool:bash turn:2"\`, and \`inspect <session> --request last\` (add \`--system\`, \`--tools\`, \`--diff\`, or \`--rebuilt\` to see exactly what you were sent and which plugin contributed each part). Add \`--json\` for structured output; \`--help\` lists the rest.`,
         ]),
     "</environment>",
   ].join("\n");

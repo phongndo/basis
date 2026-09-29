@@ -1,7 +1,7 @@
 import { Cause } from "effect";
 import { HostError } from "@lemma/contracts";
-import type { PluginStatus } from "@lemma/contracts";
-import type { Diagnostic, PluginSnapshot } from "@lemma/core";
+import type { PluginInfo, PluginStatus } from "@lemma/contracts";
+import type { Diagnostic } from "@lemma/core";
 
 interface Tagged {
   readonly _tag: string;
@@ -29,24 +29,41 @@ export const formatDiagnostic = (diagnostic: Diagnostic): string =>
  * when it has one (`Busy`, `NotFound`), else its tag (`ReloadError`,
  * `CoreClosed`); `subject` is the session, provider, plugin, tool, workspace
  * path, or command concerned.
- * A `ReloadError`'s diagnostics become the message, one per line.
+ * A `ReloadError`'s diagnostics become the message, one per line, and the
+ * plugin they all name (if one) the subject.
  */
 export const toHostError = (error: unknown): HostError => {
   if (error instanceof HostError) return error;
   if (!isTagged(error)) return new HostError({ code: "Unknown", message: error instanceof Error ? error.message : String(error) });
   const code = text(error.reason) ?? error._tag;
-  const subject = text(error.sessionId) ?? text(error.provider) ?? text(error.pluginId) ?? text(error.tool) ?? text(error.path) ?? text(error.command);
+  const named = new Set(error.diagnostics?.map((diagnostic) => diagnostic.pluginId));
+  const subject =
+    text(error.sessionId) ??
+    text(error.provider) ??
+    text(error.pluginId) ??
+    text(error.tool) ??
+    text(error.path) ??
+    text(error.command) ??
+    (named.size === 1 ? text([...named][0]) : undefined);
   const message = error.diagnostics?.length ? error.diagnostics.map(formatDiagnostic).join("\n") : (text(error.message) ?? code);
   return new HostError({ code, message, ...(subject === undefined ? {} : { subject }) });
 };
 
-export const toPluginStatus = (snapshot: PluginSnapshot): PluginStatus => {
-  const fault = snapshot.fault;
+/** A plugin the core has not loaded (turned off, or waiting on one that is) reports `state: "disabled"`. */
+export const toPluginStatus = (info: PluginInfo): PluginStatus => {
+  const fault = info.fault;
   const cause = fault === undefined ? undefined : Cause.squash(fault.cause);
   return {
-    id: snapshot.id,
-    ...(snapshot.version === undefined ? {} : { version: snapshot.version }),
-    state: snapshot.state,
+    id: info.id,
+    ...(info.version === undefined ? {} : { version: info.version }),
+    source: info.source,
+    ...(info.shadows === undefined ? {} : { shadows: info.shadows }),
+    enabled: info.enabled,
+    ...(info.scope === undefined ? {} : { scope: info.scope }),
+    ...(info.locked === undefined ? {} : { locked: info.locked }),
+    provides: info.provides,
+    requires: info.requires,
+    state: info.state ?? "disabled",
     ...(fault === undefined
       ? {}
       : {
@@ -56,6 +73,6 @@ export const toPluginStatus = (snapshot: PluginSnapshot): PluginStatus => {
             message: `${fault.message}: ${cause instanceof Error ? cause.message : String(cause)}`,
           },
         }),
-    ...(snapshot.haltedBy === undefined ? {} : { haltedBy: snapshot.haltedBy }),
+    ...(info.haltedBy === undefined ? {} : { haltedBy: info.haltedBy }),
   };
 };

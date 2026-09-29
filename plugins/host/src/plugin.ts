@@ -49,9 +49,11 @@ export function hostPlugin(options: HostPluginOptions): Plugin<readonly [typeof 
               plugins: options.control.plugins,
               composition: options.control.composition,
               // A restart can leave dependents failed even when it errors, so publish either way.
-              restart: (pluginId) => options.control.restart(pluginId).pipe(Effect.ensuring(changed)),
+              restart: (pluginId, restartOptions) => options.control.restart(pluginId, restartOptions).pipe(Effect.ensuring(changed)),
               // A failed reload leaves the composition untouched; a report may still carry dispose faults.
               reload: options.control.reload.pipe(Effect.tap(() => changed)),
+              // Like a restart: a rejected change is undone in the file, but an exclusive plugin it stopped may stay down.
+              configure: (plugins, configureOptions) => options.control.configure(plugins, configureOptions).pipe(Effect.ensuring(changed)),
             };
           }),
         ),

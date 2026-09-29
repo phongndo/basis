@@ -34,14 +34,21 @@ function shareHostPackages(): void {
 const isPlugin = (value: unknown): value is Plugin =>
   typeof value === "object" && value !== null && typeof (value as Plugin).id === "string" && typeof (value as Plugin).layer === "function";
 
+export interface LocalPlugin {
+  readonly plugin: Plugin;
+  /** The directory in `dirs` the plugin's file was found in. */
+  readonly dir: string;
+}
+
 export interface LocalPlugins {
-  readonly plugins: readonly Plugin[];
+  /** In `dirs` order, then by file name. */
+  readonly plugins: readonly LocalPlugin[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
 export function loadLocalPlugins(dirs: readonly string[]): Effect.Effect<LocalPlugins> {
   return Effect.promise(async () => {
-    const plugins: Plugin[] = [];
+    const plugins: LocalPlugin[] = [];
     const diagnostics: Diagnostic[] = [];
     for (const dir of dirs) {
       const names = await readdir(dir).catch(() => [] as string[]);
@@ -60,7 +67,7 @@ export function loadLocalPlugins(dirs: readonly string[]): Effect.Effect<LocalPl
               new Diagnostic({ severity: "warning", message: `${file}: no plugin in the default export`, suggestion: "export default definePlugin({ ... })" }),
             );
           }
-          plugins.push(...found);
+          plugins.push(...found.map((plugin) => ({ plugin, dir })));
         } catch (cause) {
           diagnostics.push(
             new Diagnostic({

@@ -155,14 +155,55 @@ export const createMockHost = (): Host => {
     { id: "github-copilot", name: "GitHub Copilot", auth: [{ type: "oauth", name: "GitHub login", interactive: true }], configured: false },
     { id: "google", name: "Google Gemini", auth: [{ type: "api_key", name: "API key", interactive: true }], configured: false },
   ];
+  const bundled = (id: string, extra: Partial<PluginStatus> = {}): PluginStatus => ({
+    id,
+    version: "0.1.0",
+    source: "bundled",
+    enabled: true,
+    provides: [],
+    requires: [],
+    state: "active",
+    ...extra,
+  });
+  const needed = "Needed by transport";
   const plugins: PluginStatus[] = [
-    { id: "lemma/sessions", version: "0.1.0", state: "active" },
-    { id: "lemma/agent", version: "0.1.0", state: "active" },
-    { id: "lemma/llm-pi-ai", version: "0.1.0", state: "active" },
-    { id: "lemma/tools-builtin", version: "0.1.0", state: "active" },
-    { id: "lemma/project-context", version: "0.1.0", state: "active" },
-    { id: "lemma/transport", version: "0.1.0", state: "active" },
+    bundled("host", { provides: ["lemma/Paths", "lemma/HostControl"], locked: "Reads the config files and loads every other plugin" }),
+    bundled("interaction", { provides: ["lemma/Interaction"], locked: needed }),
+    bundled("credentials", { provides: ["lemma/Credentials"], requires: ["lemma/Paths"], locked: needed }),
+    bundled("llm", { provides: ["lemma/Llm"], requires: ["lemma/Credentials", "lemma/Interaction"], locked: needed }),
+    bundled("tools", { provides: ["lemma/Tools"], locked: needed }),
+    bundled("read", { requires: ["lemma/Tools"] }),
+    bundled("write", { requires: ["lemma/Tools"] }),
+    bundled("edit", { requires: ["lemma/Tools"] }),
+    bundled("bash", { requires: ["lemma/Tools"], enabled: false, state: "disabled", scope: "user" }),
+    bundled("sessions", { provides: ["lemma/Sessions"], requires: ["lemma/Paths"], locked: needed }),
+    bundled("agent", { provides: ["lemma/Agent"], requires: ["lemma/Sessions", "lemma/Llm", "lemma/Tools", "lemma/HostControl"], locked: needed }),
+    bundled("project-context", { requires: ["lemma/Paths"] }),
+    bundled("transport", {
+      requires: ["lemma/Paths", "lemma/Sessions", "lemma/Agent", "lemma/Llm", "lemma/HostControl", "lemma/Workspace", "lemma/Commands"],
+      locked: "Serves the web app and the CLI; replace it with another transport plugin instead of turning it off",
+    }),
+    bundled("my-llm", { source: "user", version: undefined, provides: ["lemma/Llm"], requires: ["lemma/Credentials"], enabled: false, state: "disabled" }),
+    bundled("outline", { source: "user", version: undefined, provides: ["lemma/Outline"], requires: ["lemma/Tools"] }),
+    bundled("notes", {
+      source: "user",
+      version: undefined,
+      requires: ["lemma/Outline"],
+      state: "failed",
+      fault: { phase: "activate", message: 'Plugin "notes" failed during activate: ENOENT: no such file or directory, open ~/notes' },
+    }),
   ];
+  // Like the host: an enabled provider wins over a disabled one with the same capability.
+  const providerOf = (key: string) =>
+    plugins.find((plugin) => plugin.enabled && plugin.provides.includes(key)) ?? plugins.find((plugin) => plugin.provides.includes(key));
+  const halted = () => {
+    for (const plugin of plugins) {
+      if (!plugin.enabled) continue;
+      const missing = plugin.requires.map(providerOf).find((provider) => provider !== undefined && provider.state === "disabled");
+      if (missing !== undefined) plugins[plugins.indexOf(plugin)] = { ...plugin, state: "disabled", haltedBy: missing.id };
+      else if (plugin.state === "disabled") plugins[plugins.indexOf(plugin)] = { ...plugin, state: "active", haltedBy: undefined };
+    }
+  };
   const sessions = new Map<string, { info: SessionInfo; events: SessionEvent[] }>();
   const listeners = new Set<(event: HostEvent) => void>();
   const emit = (event: HostEvent) => {
@@ -676,12 +717,41 @@ export const createMockHost = (): Host => {
       restartPlugin: async (pluginId) => {
         await sleep(600);
         const i = plugins.findIndex((p) => p.id === pluginId);
-        plugins[i] = { id: plugins[i]!.id, ...(plugins[i]!.version === undefined ? {} : { version: plugins[i]!.version! }), state: "active" };
+        plugins[i] = { ...plugins[i]!, state: "active", fault: undefined, haltedBy: undefined };
         emit({ type: "plugins-changed", plugins: plugins.slice() });
       },
       reload: async () => {
         await sleep(400);
-        return { started: [], restarted: ["lemma/agent"], stopped: [] };
+        return { started: [], restarted: ["agent"], stopped: [] };
+      },
+      configure: async (rows, options) => {
+        await sleep(500);
+        const before = plugins.filter((plugin) => plugin.state !== "disabled").map((plugin) => plugin.id);
+        for (const [id, row] of Object.entries(rows)) {
+          const i = plugins.findIndex((p) => p.id === id);
+          if (i < 0) throw new HostError({ code: "ReloadError", message: `error [${id}]: No plugin "${id}"`, subject: id });
+          if (plugins[i]!.locked !== undefined && row.enabled === false) {
+            throw new HostError({ code: "ReloadError", message: `error [${id}]: "${id}" cannot be turned off: ${plugins[i]!.locked}`, subject: id });
+          }
+          if (row.enabled === undefined) continue;
+          if (row.enabled) {
+            for (const other of plugins) {
+              if (other.id !== id && other.enabled && other.provides.some((key) => plugins[i]!.provides.includes(key))) {
+                plugins[plugins.indexOf(other)] = { ...other, enabled: false, state: "disabled", scope: options?.scope ?? "user" };
+              }
+            }
+          }
+          plugins[i] = {
+            ...plugins[i]!,
+            enabled: row.enabled,
+            state: row.enabled ? "active" : "disabled",
+            scope: row.enabled ? undefined : (options?.scope ?? "user"),
+          };
+        }
+        halted();
+        emit({ type: "plugins-changed", plugins: plugins.slice() });
+        const after = plugins.filter((plugin) => plugin.state !== "disabled").map((plugin) => plugin.id);
+        return { started: after.filter((id) => !before.includes(id)), restarted: [], stopped: before.filter((id) => !after.includes(id)) };
       },
     },
     status: () => status,

@@ -19,7 +19,13 @@ nix develop -c pnpm lemma status   # query the running host; `pnpm lemma --help`
 
 With no config, every bundled plugin runs. `~/.lemma/config.jsonc` and
 `<project>/.lemma/config.jsonc` patch that by plugin id (`enabled: false`, or a
-replacement `config`). Plugin files in `~/.lemma/plugins/` or
+replacement `config`). The Plugins settings page and `lemma plugins enable|disable`
+write those rows for you and apply them; turning a plugin off also unloads the
+plugins that require what it provides (they say so, and return with it), turning
+on a plugin that provides what another provides turns that one off (a capability
+has one provider), and the `host` and `transport` plugins, plus everything they
+need, cannot be turned off.
+Plugin files in `~/.lemma/plugins/` or
 `<project>/.lemma/plugins/` load automatically and shadow a bundled plugin with
 the same id. Project files and plugins can run code and redirect credentials, so
 they load only for projects listed (or under a directory listed) in

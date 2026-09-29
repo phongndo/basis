@@ -70,7 +70,7 @@ const withHost = <A, E>(
       Effect.gen(function* () {
         const home = owned ?? (yield* Effect.promise(() => mkdtemp(join(tmpdir(), "lemma-transport-"))));
         if (owned === undefined) yield* Effect.addFinalizer(() => Effect.promise(() => rm(home, { recursive: true, force: true })));
-        const holder: ControlHolder = { restarted: [] };
+        const holder: ControlHolder = { restarted: [], off: {} };
         const core = yield* makeCore(
           [transport, fakeAgent, fakeSessions, fakeLlm, fakeInteraction, fakeHostControl(holder), fakePaths(home), fakeWorkspace, commands, fakeGreeter],
           {
@@ -208,16 +208,37 @@ describe("transport", () => {
             composition: { id: "c0ffee", plugins: [{ id: "transport", version: "0.1.0" }] },
           });
           const plugins = yield* client.Host.Plugins();
-          expect(plugins.find((plugin) => plugin.id === "transport")).toEqual({ id: "transport", version: "0.1.0", state: "active" });
+          expect(plugins.find((plugin) => plugin.id === "transport")).toEqual({
+            id: "transport",
+            version: "0.1.0",
+            source: "bundled",
+            enabled: true,
+            state: "active",
+            provides: [],
+            requires: ["lemma/Paths", "lemma/Sessions", "lemma/Agent", "lemma/Llm", "lemma/HostControl", "lemma/Workspace", "lemma/Commands"],
+          });
           yield* client.Host.RestartPlugin({ pluginId: "llm" });
-          expect(host.holder.restarted).toEqual(["llm"]);
+          yield* client.Host.RestartPlugin({ pluginId: "llm", force: true });
+          expect(host.holder.restarted).toEqual(["llm", "llm!"]);
           const [changed] = (yield* waitFor(events, (event) => event.type === "plugins-changed")).slice(-1);
           expect(changed?.type === "plugins-changed" && changed.plugins.some((plugin) => plugin.id === "llm")).toBe(true);
           const unknown = hostError(yield* Effect.exit(client.Host.RestartPlugin({ pluginId: "nope" })));
           expect(unknown.code).toBe("ReloadError");
-          expect(unknown.subject).toBeUndefined();
+          expect(unknown.subject).toBe("nope");
           expect(unknown.message).toContain('error [nope]: No plugin "nope" (Check the id)');
           expect(yield* client.Host.Reload()).toEqual({ started: ["x"], restarted: [], stopped: [] });
+
+          // Configure writes rows and reports the change; a disabled plugin stays in the list as "disabled".
+          expect(yield* client.Host.Configure({ plugins: { greeter: { enabled: false } }, scope: "project" })).toEqual({
+            started: [],
+            restarted: [],
+            stopped: ["greeter"],
+          });
+          expect(host.holder.off).toEqual({ greeter: "project" });
+          const afterConfigure = yield* client.Host.Plugins();
+          expect(afterConfigure.find((plugin) => plugin.id === "greeter")).toMatchObject({ enabled: false, state: "disabled", scope: "project" });
+          const pinnedOff = hostError(yield* Effect.exit(client.Host.Configure({ plugins: { transport: { enabled: false } } })));
+          expect(pinnedOff).toMatchObject({ code: "ReloadError", subject: "transport" });
         }),
       ),
     30_000,
