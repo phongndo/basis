@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import type { GitBranch, WorkspaceStatus } from "@basis/contracts";
 import { knownProjects } from "../model/prefs.ts";
 import {
+  commandsRun,
   connected,
   newChat,
   openDialog,
@@ -50,10 +51,10 @@ export function WorkspaceBar() {
       void refresh();
     }),
   );
-  // A turn may have committed or switched branches.
+  // A turn or a command may have committed or switched branches.
   createEffect(
     on(
-      () => state.running.length,
+      () => [state.running.length, commandsRun()],
       () => void refresh(),
       { defer: true },
     ),

@@ -1,11 +1,12 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { SessionInfo } from "@basis/contracts";
+import { shortcut } from "../lib/keys.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { groupSessions, sessionTitle } from "../model/sessions.ts";
 import { newChat, openDialog, pendingChatCwd, renameSession, selectSession, state } from "../store.ts";
 import { ConnectionBadge } from "./connection.tsx";
 import { Popover } from "./popover.tsx";
-import { CheckIcon, FolderIcon, FolderPlusIcon, GearIcon, KeyIcon, PenSquareIcon, PlusIcon, PuzzleIcon, SearchIcon, XIcon } from "./icons.tsx";
+import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, GearIcon, KeyIcon, PenSquareIcon, PlusIcon, PuzzleIcon, SearchIcon, XIcon } from "./icons.tsx";
 
 // Relative times refresh once a minute.
 const [now, setNow] = createSignal(Date.now());
@@ -130,6 +131,17 @@ export function Sidebar(props: { onPick: () => void }) {
           </Show>
         </label>
         <div class="sidebar-actions">
+          <button
+            class="icon-button"
+            aria-label="Command palette"
+            data-tip={`Commands, sessions, projects · ${shortcut("mod", "K")}`}
+            onClick={() => {
+              openDialog("palette");
+              props.onPick();
+            }}
+          >
+            <CommandIcon />
+          </button>
           <Popover
             label={scope() === undefined ? "Projects" : `Project: ${tildePath(scope()!, home())}`}
             trigger={<FolderIcon />}

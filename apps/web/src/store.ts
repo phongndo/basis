@@ -2,9 +2,10 @@ import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { SessionLog, describeError, startPrompt } from "@basis/client";
 import type { ConnectionStatus, Host } from "@basis/client";
-import { branchOf, trajectory as projectTrajectory } from "@basis/contracts";
+import { HostError, branchOf, trajectory as projectTrajectory } from "@basis/contracts";
 import type {
   AuthType,
+  CommandInfo,
   HostEvent,
   HostInfo,
   InteractionAnswer,
@@ -43,7 +44,7 @@ export interface Toast {
   readonly code?: string;
 }
 
-export type Dialog = "providers" | "plugins" | "models" | "add-project" | "events" | undefined;
+export type Dialog = "palette" | "providers" | "plugins" | "models" | "add-project" | "events" | undefined;
 /** Main-area views of a session, over the same log. The choice carries over when switching sessions. */
 export type SessionViewKind = "chat" | "trajectory";
 
@@ -65,6 +66,8 @@ interface State {
   /** Project directories added by hand, so they are offered before they have sessions. */
   projects: readonly string[];
   plugins: readonly PluginStatus[];
+  /** What plugins offer to run (the palette's host commands, `basis do`). */
+  commands: readonly CommandInfo[];
   interactions: readonly InteractionRequest[];
   toasts: readonly Toast[];
   dialog: Dialog;
@@ -102,6 +105,7 @@ export const [state, setState] = createStore<State>({
   thinkingByModel: loadJson(THINKING_KEY, {}),
   projects: loadJson(PROJECTS_KEY, []),
   plugins: [],
+  commands: [],
   interactions: [],
   toasts: [],
   dialog: undefined,
@@ -208,6 +212,7 @@ const resync = async (first: boolean): Promise<void> => {
     h.host.info().then((info) => setState("info", info)),
     refreshSessions(),
     refreshPlugins(),
+    h.commands.list().then((commands) => setState("commands", commands)),
     h.agent.running().then((running) => setState("running", running)),
     refreshProviders(),
   ];
@@ -324,6 +329,9 @@ export const onEvent = (event: HostEvent): void => {
       setState("plugins", event.plugins);
       // Provider plugins may have come or gone.
       void refreshProviders().catch(() => {});
+      return;
+    case "commands-changed":
+      setState("commands", event.commands);
       return;
   }
 };
@@ -582,6 +590,32 @@ export const reloadConfig = async (): Promise<void> => {
     await refreshPlugins();
   } catch (error) {
     reportError(error, "Reload failed");
+  }
+};
+
+/** Bumped after every command run, so views of host state it may have changed (the workspace bar) refresh. */
+const [commandRuns, setCommandRuns] = createSignal(0);
+export const commandsRun = commandRuns;
+
+/**
+ * Runs a plugin's command in the working directory and reports how it went.
+ * Its questions arrive as interactions. Resolves true when it succeeded;
+ * dismissing one of its questions cancels it quietly.
+ */
+export const runCommand = async (command: CommandInfo): Promise<boolean> => {
+  const cwd = workingDir();
+  try {
+    const result = await client().commands.run(command.id, {
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(state.activeId === undefined ? {} : { sessionId: state.activeId }),
+    });
+    toast({ level: "info", message: result.message ?? `${command.title.replace(/…$/, "")}: done` });
+    return true;
+  } catch (error) {
+    if (!(error instanceof HostError && error.code === "Cancelled")) reportError(error, command.title.replace(/…$/, ""));
+    return false;
+  } finally {
+    setCommandRuns((runs) => runs + 1);
   }
 };
 

@@ -196,3 +196,8 @@ export const TrajectoryIcon = () => (
     <path d="M2.5 2.5v11" stroke-opacity="0.45" />
   </Icon>
 );
+export const CommandIcon = () => (
+  <Icon>
+    <path d="M6 6V4.5A1.5 1.5 0 104.5 6H6zm0 0h4m-4 0v4m4-4V4.5A1.5 1.5 0 1111.5 6H10zm0 0v4m0 0h1.5a1.5 1.5 0 11-1.5 1.5V10zm0 0H6m0 0v1.5A1.5 1.5 0 114.5 10H6z" />
+  </Icon>
+);

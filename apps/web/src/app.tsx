@@ -1,17 +1,19 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { AddProjectDialog } from "./components/add-project.tsx";
 import { ConnectionBanner } from "./components/connection.tsx";
-import { focusPrompt, openModelPicker } from "./components/composer.tsx";
+import { focusPrompt } from "./components/composer.tsx";
 import { InteractionModal } from "./components/interaction.tsx";
 import { EventsDialog } from "./components/events.tsx";
+import { Palette } from "./components/palette.tsx";
 import { PluginsDialog } from "./components/plugins.tsx";
 import { ProvidersDialog } from "./components/providers.tsx";
 import { SessionView } from "./components/session-view.tsx";
 import { Sidebar } from "./components/sidebar.tsx";
 import { Toasts } from "./components/toasts.tsx";
 import { TooltipLayer } from "./components/tooltip.tsx";
+import { modKey } from "./lib/keys.ts";
 import { load, save } from "./lib/storage.ts";
-import { cancel, isBusy, newChat, state } from "./store.ts";
+import { cancel, isBusy, newChat, openDialog, state } from "./store.ts";
 
 const WIDTH_KEY = "basis.sidebar.width";
 const COLLAPSED_KEY = "basis.sidebar.collapsed";
@@ -69,20 +71,26 @@ export function App() {
   };
   const onResize = () => setViewport(window.innerWidth);
 
+  const startChat = () => {
+    newChat();
+    setDrawer(false);
+  };
+
   const onKey = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
-    const mod = event.ctrlKey || event.metaKey;
+    const mod = modKey(event) && !event.altKey;
+    const palette = state.dialog === "palette";
     const modal = state.dialog !== undefined || state.interactions.length > 0;
-    if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) {
+    if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && (palette || state.interactions.length === 0)) {
+      // Opens over any other dialog; a question the host asks keeps the screen until answered.
+      event.preventDefault();
+      openDialog(palette ? undefined : "palette");
+    } else if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) {
       event.preventDefault();
       toggleSidebar();
     } else if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
       event.preventDefault();
-      newChat();
-      setDrawer(false);
-    } else if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && !modal) {
-      event.preventDefault();
-      openModelPicker();
+      startChat();
     } else if (event.key === "/" && !mod && !typing(event.target) && !modal) {
       event.preventDefault();
       focusPrompt();
@@ -119,6 +127,9 @@ export function App() {
         <ConnectionBanner />
         <SessionView onToggleSidebar={toggleSidebar} />
       </div>
+      <Show when={state.dialog === "palette"}>
+        <Palette onToggleSidebar={toggleSidebar} onNewChat={startChat} />
+      </Show>
       <Show when={state.dialog === "providers"}>
         <ProvidersDialog />
       </Show>

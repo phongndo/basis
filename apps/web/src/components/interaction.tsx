@@ -99,9 +99,9 @@ function Select(props: { request: Of<"select"> }) {
   );
 }
 
-/** The oldest open question from the host; answering or dismissing reveals the next. */
+/** The oldest open question from the host; answering or dismissing reveals the next. The command palette shows them itself while open. */
 export function InteractionModal() {
-  const current = () => state.interactions[0];
+  const current = () => (state.dialog === "palette" ? undefined : state.interactions[0]);
   return (
     <Show when={current()} keyed>
       {(request) => (
