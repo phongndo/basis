@@ -28,6 +28,7 @@
           default = pkgs.mkShell {
             packages = [
               pkgs.git
+              pkgs.hk
               pkgs.nodejs_24
               pkgs.pnpm_12
               pkgs.nixd

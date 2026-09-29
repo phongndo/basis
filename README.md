@@ -65,12 +65,17 @@ nix develop -c pnpm check          # build JavaScript/declarations and type-chec
 nix develop -c pnpm test           # core tests (Vitest), including lifecycle regressions
 nix develop -c pnpm lint           # oxlint; warnings fail (also run by pnpm check)
 nix develop -c pnpm format         # oxfmt writes the formatting pnpm check expects
+nix develop -c hk install          # git hooks (hk.pkl): format and lint-fix staged files on commit
 nix develop -c pnpm example        # compose plugins and invoke a hook
 nix develop -c pnpm package:check  # install the packed library into a temporary consumer
 nix develop -c pnpm core:bench     # warm framework microbenchmarks
 nix develop -c pnpm core:stress    # requires a build; lifecycle churn and memory
 nix develop .#browser -c pnpm browser:check # packed consumers plus Chromium
 ```
+
+The pre-commit hook calls `hk`, which the dev shell provides: commit from inside
+`nix develop` (outside it the hook cannot run and the commit stops), or set `HK=0`
+to skip the hook once.
 
 `package:check` checks the emitted declarations and runs the consumer on Node.js.
 It tests provider replacement, dependent reconstruction, and cleanup through the
