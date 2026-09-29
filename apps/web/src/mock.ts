@@ -17,7 +17,9 @@ import type {
 
 /**
  * Dev-only in-browser fake of the host (`?mock`, or `?mock=fresh` for a first
- * run with nothing configured). Not shipped: `main.tsx` imports it only in dev.
+ * run with no sessions). Every provider starts logged out, so the fake never
+ * looks like real credentials; its login flow only pretends. Not shipped:
+ * `main.tsx` imports it only in dev.
  */
 
 const HOME = "/home/dev";
@@ -137,12 +139,9 @@ export const createMockHost = (): Host => {
     {
       id: "anthropic",
       name: "Anthropic",
-      auth: [
-        { type: "oauth", name: "Claude Pro/Max", interactive: true },
-        { type: "api_key", name: "API key", interactive: true },
-      ],
-      configured: !fresh,
-      ...(fresh ? {} : { source: "OAuth" }),
+      // As in the real llm plugin: Anthropic's subscription OAuth (Claude Pro/Max) is excluded by policy.
+      auth: [{ type: "api_key", name: "API key", interactive: true }],
+      configured: false,
     },
     {
       id: "openai",
@@ -151,8 +150,7 @@ export const createMockHost = (): Host => {
         { type: "oauth", name: "ChatGPT Plus/Pro", interactive: true },
         { type: "api_key", name: "API key", interactive: true },
       ],
-      configured: !fresh,
-      ...(fresh ? {} : { source: "OPENAI_API_KEY" }),
+      configured: false,
     },
     { id: "github-copilot", name: "GitHub Copilot", auth: [{ type: "oauth", name: "GitHub login", interactive: true }], configured: false },
     { id: "google", name: "Google Gemini", auth: [{ type: "api_key", name: "API key", interactive: true }], configured: false },
@@ -162,12 +160,7 @@ export const createMockHost = (): Host => {
     { id: "basis/agent", version: "0.1.0", state: "active" },
     { id: "basis/llm-pi-ai", version: "0.1.0", state: "active" },
     { id: "basis/tools-builtin", version: "0.1.0", state: "active" },
-    {
-      id: "basis/project-context",
-      version: "0.1.0",
-      state: "failed",
-      fault: { phase: "activate", operation: "read AGENTS.md", message: "EACCES: permission denied" },
-    },
+    { id: "basis/project-context", version: "0.1.0", state: "active" },
     { id: "basis/transport", version: "0.1.0", state: "active" },
   ];
   const sessions = new Map<string, { info: SessionInfo; events: SessionEvent[] }>();
