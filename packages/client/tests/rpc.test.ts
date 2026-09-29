@@ -24,6 +24,12 @@ class SilentWebSocket extends EventTarget {
 
 const tick = Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 10)));
 
+/** Waits in real time for `done`, since the socket opens and writes on real timers; slow CI runners need more than one tick. */
+const until = (done: () => Effect.Effect<boolean>) =>
+  Effect.gen(function* () {
+    for (let i = 0; i < 200 && !(yield* done()); i++) yield* tick;
+  });
+
 describe("makeHostRpc", () => {
   test("a stalled connection fails the event subscription so the caller can reconnect and resync", async () => {
     const sockets: SilentWebSocket[] = [];
@@ -37,13 +43,15 @@ describe("makeHostRpc", () => {
         Effect.gen(function* () {
           const rpc = yield* makeHostRpc("ws://host.invalid/rpc", constructor);
           const events = yield* Effect.fork(Stream.runDrain(rpc.Host.Events()));
-          yield* tick;
-          expect(sockets[0]?.sent.some((line) => line.includes("Host.Events"))).toBe(true);
+          const subscribed = () => sockets[0]?.sent.some((line) => line.includes("Host.Events")) ?? false;
+          yield* until(() => Effect.sync(subscribed));
+          expect(subscribed()).toBe(true);
           // One ping goes unanswered; the next ping interval declares the connection dead.
           for (let i = 0; i < 3; i++) {
             yield* TestClock.adjust("10 seconds");
             yield* tick;
           }
+          yield* until(() => Effect.map(Fiber.poll(events), Option.isSome));
           return yield* Fiber.poll(events);
         }).pipe(Effect.provide(TestContext.TestContext)),
       ),
