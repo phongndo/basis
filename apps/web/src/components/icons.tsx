@@ -201,3 +201,23 @@ export const CommandIcon = () => (
     <path d="M6 6V4.5A1.5 1.5 0 104.5 6H6zm0 0h4m-4 0v4m4-4V4.5A1.5 1.5 0 1111.5 6H10zm0 0v4m0 0h1.5a1.5 1.5 0 11-1.5 1.5V10zm0 0H6m0 0v1.5A1.5 1.5 0 114.5 10H6z" />
   </Icon>
 );
+export const SlidersIcon = () => (
+  <Icon>
+    <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" />
+    <circle cx="10" cy="4.5" r="1.5" />
+    <circle cx="6" cy="11.5" r="1.5" />
+  </Icon>
+);
+export const PaletteIcon = () => (
+  <Icon>
+    <path d="M8 2.5a5.5 5.5 0 000 11c.9 0 1.25-.6 1.25-1.2 0-.8-.75-1.05-.75-1.8 0-.7.55-1.25 1.25-1.25h1.5A2.25 2.25 0 0013.5 7 5.5 4.5 0 008 2.5z" />
+    <circle cx="5.25" cy="7.25" r=".6" fill="currentColor" />
+    <circle cx="7.5" cy="5" r=".6" fill="currentColor" />
+    <circle cx="10.5" cy="5.5" r=".6" fill="currentColor" />
+  </Icon>
+);
+export const ArrowLeftIcon = () => (
+  <Icon>
+    <path d="M13 8H3.5M7.5 4L3.5 8l4 4" />
+  </Icon>
+);

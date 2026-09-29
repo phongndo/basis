@@ -1,8 +1,7 @@
-import { For, Show, createMemo, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import type { ProviderInfo } from "@basis/contracts";
-import { allModels, loadAllModels, login, logout, openDialog, state } from "../store.ts";
-import { Dialog } from "./dialog.tsx";
-import { ChevronDownIcon, MoreIcon, SearchIcon, Spinner, XIcon } from "./icons.tsx";
+import { allModels, login, logout, state } from "../store.ts";
+import { ChevronDownIcon, MoreIcon, Spinner } from "./icons.tsx";
 import { Popover } from "./popover.tsx";
 
 type Method = ProviderInfo["auth"][number];
@@ -27,94 +26,25 @@ const describe = (provider: ProviderInfo): string => {
 
 const methodLabel = (method: Method) => (method.type === "oauth" ? method.name : "Enter an API key");
 
-export function ProvidersDialog() {
-  const [query, setQuery] = createSignal("");
-  // Every known model, usable or not, as `basis models --all` lists them.
-  onMount(() => {
-    if (allModels() === undefined) void loadAllModels();
-  });
-  const matching = createMemo(() => {
-    const q = query().trim().toLowerCase();
-    return state.providers.filter((provider) => q === "" || provider.name.toLowerCase().includes(q) || provider.id.includes(q));
-  });
-  const sections = createMemo(() =>
-    [
-      {
-        title: "Connected",
-        providers: matching()
-          .filter((p) => p.configured)
-          .sort(byName),
-      },
-      {
-        title: "Subscriptions",
-        providers: matching()
-          .filter((p) => !p.configured && hasOAuth(p))
-          .sort(byName),
-      },
-      {
-        title: "API keys",
-        providers: matching()
-          .filter((p) => !p.configured && !hasOAuth(p))
-          .sort(byName),
-      },
-    ].filter((section) => section.providers.length > 0),
-  );
+/** Providers in the order to offer them: connected, then subscriptions, then API keys. */
+export const providerGroups = (providers: readonly ProviderInfo[]): { title: string; providers: ProviderInfo[] }[] =>
+  [
+    { title: "Connected", providers: providers.filter((p) => p.configured).sort(byName) },
+    { title: "Subscriptions", providers: providers.filter((p) => !p.configured && hasOAuth(p)).sort(byName) },
+    { title: "API keys", providers: providers.filter((p) => !p.configured && !hasOAuth(p)).sort(byName) },
+  ].filter((group) => group.providers.length > 0);
 
-  return (
-    <Dialog label="Providers" onClose={() => openDialog(undefined)} class="providers-dialog">
-      <div class="dialog-search">
-        <SearchIcon />
-        <input
-          data-autofocus
-          placeholder="Search providers"
-          aria-label="Search providers"
-          autocomplete="off"
-          spellcheck={false}
-          value={query()}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
-        <button class="icon-button" aria-label="Close" onClick={() => openDialog(undefined)}>
-          <XIcon />
-        </button>
-      </div>
-      <div class="provider-scroll">
-        <Show when={!state.providersLoaded}>
-          <p class="provider-empty">
-            <Spinner /> Loading providers…
-          </p>
-        </Show>
-        <Show when={state.providersLoaded && state.providers.length === 0}>
-          <p class="provider-empty">No provider plugins are loaded. Check Plugins in the settings menu.</p>
-        </Show>
-        <Show when={state.providersLoaded && state.providers.length > 0 && sections().length === 0}>
-          <p class="provider-empty">No providers match “{query().trim()}”</p>
-        </Show>
-        <For each={sections()}>
-          {(section) => (
-            <section class="provider-section">
-              <h3 class="provider-section-title">
-                {section.title}
-                <span class="provider-count">{section.providers.length}</span>
-              </h3>
-              <ul class="provider-list">
-                <For each={section.providers}>{(provider) => <ProviderRow provider={provider} />}</For>
-              </ul>
-            </section>
-          )}
-        </For>
-      </div>
-    </Dialog>
-  );
-}
+/** What a search over providers matches. */
+export const providerText = (provider: ProviderInfo): string => `${provider.name} ${provider.id} ${describe(provider)}`;
 
-function ProviderRow(props: { provider: ProviderInfo }) {
+export function ProviderRow(props: { provider: ProviderInfo }) {
   const busy = () => state.loggingIn === props.provider.id;
   const locked = () => state.loggingIn !== undefined;
   const methods = () => props.provider.auth;
   const [showModels, setShowModels] = createSignal(false);
   const models = () => (allModels() ?? []).filter((model) => model.provider === props.provider.id);
   return (
-    <li class="provider" classList={{ configured: props.provider.configured }}>
+    <div class="provider" classList={{ configured: props.provider.configured }}>
       <span class="provider-mark" aria-hidden="true">
         {props.provider.name.slice(0, 1).toUpperCase()}
         <Show when={props.provider.configured}>
@@ -257,6 +187,6 @@ function ProviderRow(props: { provider: ProviderInfo }) {
           </For>
         </ul>
       </Show>
-    </li>
+    </div>
   );
 }

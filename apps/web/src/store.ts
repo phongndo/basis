@@ -44,7 +44,12 @@ export interface Toast {
   readonly code?: string;
 }
 
-export type Dialog = "palette" | "providers" | "plugins" | "models" | "add-project" | "events" | undefined;
+export type Dialog = "palette" | "models" | "add-project" | "events" | undefined;
+/** Sections of the settings view, which covers the app while open; dialogs can open over it. */
+export type SettingsSection = "general" | "appearance" | "providers" | "plugins" | "projects";
+export type Theme = "system" | "light" | "dark";
+/** How wide the conversation runs. */
+export type ContentWidth = "default" | "wide" | "full";
 /** Main-area views of a session, over the same log. The choice carries over when switching sessions. */
 export type SessionViewKind = "chat" | "trajectory";
 
@@ -71,15 +76,20 @@ interface State {
   interactions: readonly InteractionRequest[];
   toasts: readonly Toast[];
   dialog: Dialog;
+  settings: SettingsSection | undefined;
+  theme: Theme;
+  contentWidth: ContentWidth;
   /** Provider id whose login is running. */
   loggingIn: string | undefined;
-  /** First run with nothing configured: the providers dialog opened by itself and closes once one is set up. */
+  /** First run with nothing configured: the providers settings opened by themselves and closes once one is set up. */
   welcome: boolean;
 }
 
 const MODEL_KEY = "basis.model";
 const THINKING_KEY = "basis.thinkingByModel";
 const PROJECTS_KEY = "basis.projects";
+const THEME_KEY = "basis.theme";
+const WIDTH_KEY = "basis.contentWidth";
 
 const loadJson = <A>(key: string, fallback: A): A => {
   try {
@@ -109,6 +119,9 @@ export const [state, setState] = createStore<State>({
   interactions: [],
   toasts: [],
   dialog: undefined,
+  settings: undefined,
+  theme: (load(THEME_KEY) as Theme | undefined) ?? "system",
+  contentWidth: (load(WIDTH_KEY) as ContentWidth | undefined) ?? "default",
   loggingIn: undefined,
   welcome: false,
 });
@@ -223,7 +236,7 @@ const resync = async (first: boolean): Promise<void> => {
   if (first) {
     const fromHash = decodeURIComponent(window.location.hash.replace(/^#\/?/, ""));
     if (fromHash !== "" && state.sessions.some((session) => session.id === fromHash)) void selectSession(fromHash);
-    if (state.providersLoaded && !hasConfiguredProvider()) setState({ welcome: true, dialog: "providers" });
+    if (state.providersLoaded && !hasConfiguredProvider()) setState({ welcome: true, settings: "providers" });
   }
 };
 
@@ -236,7 +249,7 @@ export const refreshPlugins = async (): Promise<void> => {
   setState("plugins", await client().host.plugins());
 };
 
-/** Every model the host knows, usable or not (`basis models --all`); loaded when the providers dialog asks. */
+/** Every model the host knows, usable or not (`basis models --all`); loaded when the providers settings ask. */
 const [allModelsSignal, setAllModels] = createSignal<readonly ModelInfo[] | undefined>();
 export const allModels = allModelsSignal;
 export const loadAllModels = async (): Promise<void> => {
@@ -340,6 +353,8 @@ export const onEvent = (event: HostEvent): void => {
 // Sessions
 
 export const selectSession = async (sessionId: string | undefined): Promise<void> => {
+  // Going to a chat leaves the settings view.
+  openSettings(undefined);
   if (sessionId === state.activeId && (sessionId === undefined || log !== undefined)) return;
   stopLog?.();
   log?.close();
@@ -519,6 +534,12 @@ export const addProject = (path: string): void => {
   save(PROJECTS_KEY, JSON.stringify(state.projects));
 };
 
+/** Stops offering a project added by hand; one with sessions stays listed through them. */
+export const removeProject = (path: string): void => {
+  setState("projects", (projects) => projects.filter((project) => project !== path));
+  save(PROJECTS_KEY, JSON.stringify(state.projects));
+};
+
 // ---------------------------------------------------------------------------
 // Providers, interactions, plugins
 
@@ -530,7 +551,7 @@ export const login = async (provider: ProviderInfo, type: AuthType): Promise<voi
     // The host announces success as a notice, which also refreshes providers.
     await client().llm.login(provider.id, type);
     await refreshProviders();
-    if (state.welcome && hasConfiguredProvider()) setState({ welcome: false, dialog: undefined });
+    if (state.welcome && hasConfiguredProvider()) setState({ welcome: false, settings: undefined });
   } catch (error) {
     reportError(error, `Login to ${provider.name} failed`);
   } finally {
@@ -637,5 +658,36 @@ export const checkoutSession = async (eventId: string): Promise<void> => {
 };
 
 export const openDialog = (dialog: Dialog): void => {
-  setState({ dialog, ...(dialog === undefined ? { welcome: false } : {}) });
+  setState({ dialog });
+};
+
+export const openSettings = (section: SettingsSection | undefined): void => {
+  setState({ settings: section, ...(section === undefined ? { welcome: false } : {}) });
+};
+
+// ---------------------------------------------------------------------------
+// Appearance
+
+const CONTENT_WIDTHS: Record<ContentWidth, string | undefined> = { default: undefined, wide: "1040px", full: "none" };
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const applyAppearance = (): void => {
+  const root = document.documentElement;
+  root.dataset.theme = state.theme === "system" ? (darkQuery.matches ? "dark" : "light") : state.theme;
+  const width = CONTENT_WIDTHS[state.contentWidth];
+  if (width === undefined) root.style.removeProperty("--content");
+  else root.style.setProperty("--content", width);
+};
+applyAppearance();
+darkQuery.addEventListener("change", applyAppearance);
+
+export const setTheme = (theme: Theme): void => {
+  save(THEME_KEY, theme === "system" ? undefined : theme);
+  setState("theme", theme);
+  applyAppearance();
+};
+
+export const setContentWidth = (width: ContentWidth): void => {
+  save(WIDTH_KEY, width === "default" ? undefined : width);
+  setState("contentWidth", width);
+  applyAppearance();
 };

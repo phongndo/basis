@@ -11,7 +11,7 @@ import {
   favoriteModels,
   hasConfiguredProvider,
   isBusy,
-  openDialog,
+  openSettings,
   selectedModel,
   send,
   state,
@@ -163,7 +163,7 @@ export function Composer() {
         <div class="callout callout-info composer-callout">
           <KeyIcon />
           <span>No model provider is set up yet.</span>
-          <button class="button button-primary small" onClick={() => openDialog("providers")}>
+          <button class="button button-primary small" onClick={() => openSettings("providers")}>
             Log in to a provider
           </button>
         </div>
@@ -497,7 +497,7 @@ export function ModelPicker(props: { placement?: Placement; afterPick?: () => vo
                           class="link-button"
                           onClick={() => {
                             close();
-                            openDialog("providers");
+                            openSettings("providers");
                           }}
                         >
                           Log in to a provider

@@ -43,7 +43,7 @@ export function EventsDialog() {
   return (
     <Dialog
       title="Event log"
-      onClose={() => openDialog("plugins")}
+      onClose={() => openDialog(undefined)}
       class="events-dialog"
       footer={
         <>

@@ -5,15 +5,14 @@ import { focusPrompt } from "./components/composer.tsx";
 import { InteractionModal } from "./components/interaction.tsx";
 import { EventsDialog } from "./components/events.tsx";
 import { Palette } from "./components/palette.tsx";
-import { PluginsDialog } from "./components/plugins.tsx";
-import { ProvidersDialog } from "./components/providers.tsx";
 import { SessionView } from "./components/session-view.tsx";
+import { SettingsView } from "./components/settings.tsx";
 import { Sidebar } from "./components/sidebar.tsx";
 import { Toasts } from "./components/toasts.tsx";
 import { TooltipLayer } from "./components/tooltip.tsx";
 import { modKey } from "./lib/keys.ts";
 import { load, save } from "./lib/storage.ts";
-import { cancel, isBusy, newChat, openDialog, state } from "./store.ts";
+import { cancel, isBusy, newChat, openDialog, openSettings, state } from "./store.ts";
 
 const WIDTH_KEY = "basis.sidebar.width";
 const COLLAPSED_KEY = "basis.sidebar.collapsed";
@@ -81,17 +80,24 @@ export function App() {
     const mod = modKey(event) && !event.altKey;
     const palette = state.dialog === "palette";
     const modal = state.dialog !== undefined || state.interactions.length > 0;
+    const settings = state.settings !== undefined;
     if (mod && !event.shiftKey && event.key.toLowerCase() === "k" && (palette || state.interactions.length === 0)) {
       // Opens over any other dialog; a question the host asks keeps the screen until answered.
       event.preventDefault();
       openDialog(palette ? undefined : "palette");
-    } else if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal) {
+    } else if (mod && !event.shiftKey && event.key === "," && !modal) {
+      event.preventDefault();
+      openSettings(settings ? undefined : "general");
+    } else if (event.key === "Escape" && settings && !modal) {
+      event.preventDefault();
+      openSettings(undefined);
+    } else if (mod && !event.shiftKey && event.key.toLowerCase() === "b" && !modal && !settings) {
       event.preventDefault();
       toggleSidebar();
     } else if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
       event.preventDefault();
       startChat();
-    } else if (event.key === "/" && !mod && !typing(event.target) && !modal) {
+    } else if (event.key === "/" && !mod && !typing(event.target) && !modal && !settings) {
       event.preventDefault();
       focusPrompt();
     } else if (event.key === "Escape" && !modal && isBusy() && !typing(event.target)) {
@@ -130,11 +136,8 @@ export function App() {
       <Show when={state.dialog === "palette"}>
         <Palette onToggleSidebar={toggleSidebar} onNewChat={startChat} />
       </Show>
-      <Show when={state.dialog === "providers"}>
-        <ProvidersDialog />
-      </Show>
-      <Show when={state.dialog === "plugins"}>
-        <PluginsDialog />
+      <Show when={state.settings !== undefined}>
+        <SettingsView />
       </Show>
       <Show when={state.dialog === "events"}>
         <EventsDialog />

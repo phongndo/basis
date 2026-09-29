@@ -3,10 +3,10 @@ import type { SessionInfo } from "@basis/contracts";
 import { shortcut } from "../lib/keys.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { groupSessions, sessionTitle } from "../model/sessions.ts";
-import { newChat, openDialog, pendingChatCwd, renameSession, selectSession, state } from "../store.ts";
+import { newChat, openDialog, openSettings, pendingChatCwd, renameSession, selectSession, state } from "../store.ts";
 import { ConnectionBadge } from "./connection.tsx";
 import { Popover } from "./popover.tsx";
-import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, GearIcon, KeyIcon, PenSquareIcon, PlusIcon, PuzzleIcon, SearchIcon, XIcon } from "./icons.tsx";
+import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, GearIcon, PenSquareIcon, PlusIcon, SearchIcon, XIcon } from "./icons.tsx";
 
 // Relative times refresh once a minute.
 const [now, setNow] = createSignal(Date.now());
@@ -246,47 +246,21 @@ export function Sidebar(props: { onPick: () => void }) {
         </For>
       </div>
       <div class="sidebar-foot">
-        <Popover
-          label="Settings"
-          trigger={
-            <>
-              <GearIcon />
-              <Show when={failed() > 0}>
-                <span class="count-badge">{failed()}</span>
-              </Show>
-            </>
-          }
-          triggerClass="icon-button with-badge"
-          placement="top-start"
+        <button
+          class="icon-button with-badge"
+          aria-label="Settings"
+          data-tip={failed() > 0 ? `Settings · ${failed()} plugin${failed() === 1 ? "" : "s"} failed` : `Settings · ${shortcut("mod", ",")}`}
+          onClick={() => {
+            // A failure is the likeliest reason to open settings, so go straight to it.
+            openSettings(failed() > 0 ? "plugins" : "general");
+            props.onPick();
+          }}
         >
-          {(close) => (
-            <>
-              <button
-                class="menu-item"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  openDialog("providers");
-                }}
-              >
-                <KeyIcon /> Providers & login
-              </button>
-              <button
-                class="menu-item"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  openDialog("plugins");
-                }}
-              >
-                <PuzzleIcon /> Plugins
-                <Show when={failed() > 0}>
-                  <span class="menu-hint menu-hint-err">{failed()} failed</span>
-                </Show>
-              </button>
-            </>
-          )}
-        </Popover>
+          <GearIcon />
+          <Show when={failed() > 0}>
+            <span class="count-badge">{failed()}</span>
+          </Show>
+        </button>
         <span class="spacer" />
         <ConnectionBadge />
       </div>
