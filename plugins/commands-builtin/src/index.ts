@@ -58,13 +58,19 @@ export const hostCommands = (control: Context.Tag.Service<typeof HostControl>, a
         );
         const chosen = plugins.find((plugin) => plugin.id === id)!;
         const enabled = !chosen.enabled;
+        const verb = enabled ? "on" : "off";
         const report = yield* control.configure({ [id]: { enabled } }, chosen.scope === "project" ? { scope: "project" } : undefined);
-        if (!(enabled ? report.started : report.stopped).includes(id)) {
-          const after = (yield* control.plugins).find((plugin) => plugin.id === id);
-          return yield* nothing("host.toggle-plugin", `${id} is still ${after?.enabled ? "on" : "off"}: the ${after?.scope ?? "user"} config decides it`);
+        // It restarts the transport, so it applies once this answer is out.
+        if (report.deferred) return { message: `Turning ${id} ${verb}: the host restarts the plugins that use it, and clients reconnect` };
+        // What runs is what the files say; if another file still decides the other way, say so rather than claim success.
+        const after = (yield* control.plugins).find((plugin) => plugin.id === id);
+        if (after !== undefined && after.enabled !== enabled) {
+          return yield* nothing("host.toggle-plugin", `${id} is still ${after.enabled ? "on" : "off"}: the ${after.scope ?? "user"} config decides it`);
         }
         const also = describeReport(report, id);
-        return { message: `Turned ${id} ${enabled ? "on" : "off"}${also === "nothing changed" ? "" : `; ${also}`}` };
+        // On but not loaded: a plugin it needs is off, and it starts when that one does.
+        const waiting = enabled && after?.state === undefined && after?.haltedBy !== undefined ? `; it starts when ${after.haltedBy} is on` : "";
+        return { message: `Turned ${id} ${verb}${waiting}${also === "nothing changed" ? "" : `; ${also}`}` };
       }),
   },
 ];
