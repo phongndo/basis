@@ -25,7 +25,7 @@ export interface Options {
   readonly authContext?: AuthContext;
 }
 
-export function toProviderInfo(provider: Provider, check: AuthCheck | undefined): ProviderInfo {
+export function toProviderInfo(provider: Provider, check: AuthCheck | undefined, custom = false): ProviderInfo {
   const { apiKey, oauth } = provider.auth;
   return {
     id: provider.id,
@@ -36,6 +36,7 @@ export function toProviderInfo(provider: Provider, check: AuthCheck | undefined)
     ],
     configured: check !== undefined,
     ...(check?.source === undefined ? {} : { source: check.source }),
+    ...(custom ? { custom: true } : {}),
   };
 }
 
@@ -76,6 +77,7 @@ export function makeLlmPlugin(options: Options = {}) {
             models.setProvider(withoutAnthropicOAuth(provider));
           }
           for (const provider of config.providers ?? []) models.setProvider(customProvider(provider));
+          const customIds = new Set((config.providers ?? []).map((provider) => provider.id));
 
           // Pooled Codex websockets keep the event loop alive until released.
           yield* Effect.addFinalizer(() =>
@@ -148,7 +150,7 @@ export function makeLlmPlugin(options: Options = {}) {
               (provider) =>
                 Effect.tryPromise((signal) => models.checkAuth(provider.id, { signal })).pipe(
                   Effect.orElseSucceed(() => undefined),
-                  Effect.map((check) => toProviderInfo(provider, check)),
+                  Effect.map((check) => toProviderInfo(provider, check, customIds.has(provider.id))),
                 ),
               { concurrency: "unbounded" },
             ),

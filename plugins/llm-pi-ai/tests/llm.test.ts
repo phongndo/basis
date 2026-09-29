@@ -230,8 +230,15 @@ describe("catalog", () => {
     expect(result.all[0]!.thinkingLevels).toContain("high");
     expect(result.available.map((m) => m.ref)).toEqual(["ollama/qwen3:8b"]);
     expect(result.providers).toEqual([
-      { id: "ollama", name: "Ollama", auth: [{ type: "api_key", name: "Ollama API key", interactive: true }], configured: true, source: "no key required" },
-      { id: "keyed", name: "keyed", auth: [{ type: "api_key", name: "keyed API key", interactive: true }], configured: false },
+      {
+        id: "ollama",
+        name: "Ollama",
+        auth: [{ type: "api_key", name: "Ollama API key", interactive: true }],
+        configured: true,
+        source: "no key required",
+        custom: true,
+      },
+      { id: "keyed", name: "keyed", auth: [{ type: "api_key", name: "keyed API key", interactive: true }], configured: false, custom: true },
     ]);
   });
 

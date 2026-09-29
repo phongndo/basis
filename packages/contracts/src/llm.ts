@@ -179,6 +179,8 @@ export const ProviderInfo = Schema.Struct({
   configured: Schema.Boolean,
   /** Where the working auth comes from: `OPENAI_API_KEY`, `OAuth`, `auth.json`. */
   source: Schema.optional(Schema.String),
+  /** Added by config (the llm plugin's `providers`) rather than built in, so it can be removed there. */
+  custom: Schema.optional(Schema.Boolean),
 });
 export type ProviderInfo = typeof ProviderInfo.Type;
 
