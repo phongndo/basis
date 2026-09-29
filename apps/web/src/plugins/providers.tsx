@@ -1,8 +1,12 @@
-import { For, Show, createSignal } from "solid-js";
-import type { ProviderInfo } from "@lemma/contracts";
-import { allModels, login, logout, state } from "../store.ts";
-import { ChevronDownIcon, MoreIcon, Spinner } from "./icons.tsx";
-import { Popover } from "./popover.tsx";
+import { For, Show, createEffect, createSignal, on, onMount } from "solid-js";
+import type { AuthType, ProviderInfo } from "@lemma/contracts";
+import { ChevronDownIcon, KeyIcon, MoreIcon, Spinner } from "../components/icons.tsx";
+import { Popover } from "../components/popover.tsx";
+import { Actions, ComposerNotices, Models, Settings, SettingsGroups, SettingsSections, Slots } from "../ui/contracts.ts";
+import type { ModelsService } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
+
+const SECTION = "providers";
 
 type Method = ProviderInfo["auth"][number];
 
@@ -27,7 +31,7 @@ const describe = (provider: ProviderInfo): string => {
 const methodLabel = (method: Method) => (method.type === "oauth" ? method.name : "Enter an API key");
 
 /** Providers in the order to offer them: connected, then subscriptions, then API keys. */
-export const providerGroups = (providers: readonly ProviderInfo[]): { title: string; providers: ProviderInfo[] }[] =>
+const providerGroups = (providers: readonly ProviderInfo[]): { title: string; providers: ProviderInfo[] }[] =>
   [
     { title: "Connected", providers: providers.filter((p) => p.configured).sort(byName) },
     { title: "Subscriptions", providers: providers.filter((p) => !p.configured && hasOAuth(p)).sort(byName) },
@@ -35,14 +39,16 @@ export const providerGroups = (providers: readonly ProviderInfo[]): { title: str
   ].filter((group) => group.providers.length > 0);
 
 /** What a search over providers matches. */
-export const providerText = (provider: ProviderInfo): string => `${provider.name} ${provider.id} ${describe(provider)}`;
+const providerText = (provider: ProviderInfo): string => `${provider.name} ${provider.id} ${describe(provider)}`;
 
-export function ProviderRow(props: { provider: ProviderInfo }) {
-  const busy = () => state.loggingIn === props.provider.id;
-  const locked = () => state.loggingIn !== undefined;
+function ProviderRow(props: { models: ModelsService; provider: ProviderInfo; login: (provider: ProviderInfo, type: AuthType) => void }) {
+  const busy = () => props.models.loggingIn() === props.provider.id;
+  const locked = () => props.models.loggingIn() !== undefined;
   const methods = () => props.provider.auth;
   const [showModels, setShowModels] = createSignal(false);
-  const models = () => (allModels() ?? []).filter((model) => model.provider === props.provider.id);
+  const models = () => (props.models.all() ?? []).filter((model) => model.provider === props.provider.id);
+  const login = (type: AuthType) => props.login(props.provider, type);
+  const logout = () => void props.models.logout(props.provider);
   return (
     <div class="provider" classList={{ configured: props.provider.configured }}>
       <span class="provider-mark" aria-hidden="true">
@@ -74,7 +80,7 @@ export function ProviderRow(props: { provider: ProviderInfo }) {
                 disabled={locked()}
                 onClick={() => {
                   const method = methods()[0];
-                  if (method) void login(props.provider, method.type);
+                  if (method) login(method.type);
                 }}
               >
                 <Show when={busy()} fallback="Connect">
@@ -111,7 +117,7 @@ export function ProviderRow(props: { provider: ProviderInfo }) {
                       role="menuitem"
                       onClick={() => {
                         close();
-                        void login(props.provider, method.type);
+                        login(method.type);
                       }}
                     >
                       <span class="menu-label">{methodLabel(method)}</span>
@@ -143,7 +149,7 @@ export function ProviderRow(props: { provider: ProviderInfo }) {
                     role="menuitem"
                     onClick={() => {
                       close();
-                      void login(props.provider, method.type);
+                      login(method.type);
                     }}
                   >
                     <span class="menu-label">{method.type === "oauth" ? "Sign in again" : "Replace API key"}</span>
@@ -157,7 +163,7 @@ export function ProviderRow(props: { provider: ProviderInfo }) {
                   role="menuitem"
                   onClick={() => {
                     close();
-                    void logout(props.provider);
+                    logout();
                   }}
                 >
                   <span class="menu-label">Log out</span>
@@ -190,3 +196,108 @@ export function ProviderRow(props: { provider: ProviderInfo }) {
     </div>
   );
 }
+
+/**
+ * Model providers: sign in with a subscription or enter an API key. On a
+ * first run with nothing set up, the section opens by itself and closes once
+ * a provider is connected.
+ */
+export default defineUiPlugin({
+  id: "providers",
+  requires: { models: Models, settings: Settings, slots: Slots },
+  setup: ({ models, settings, slots }, plugin) => {
+    const [welcome, setWelcome] = createSignal(false);
+    let greeted = false;
+    createEffect(() => {
+      if (greeted || !models.providersLoaded()) return;
+      greeted = true;
+      if (models.configured()) return;
+      setWelcome(true);
+      settings.open(SECTION);
+    });
+    createEffect(on(settings.section, (section) => section === undefined && setWelcome(false), { defer: true }));
+    const login = async (provider: ProviderInfo, type: AuthType) => {
+      const ok = await models.login(provider, type);
+      if (ok && welcome() && models.configured()) settings.open(undefined);
+    };
+    const open = () => settings.open(SECTION);
+
+    const add = (remove: () => void) => plugin.onCleanup(remove);
+    add(
+      slots.add(SettingsSections, {
+        id: SECTION,
+        order: 20,
+        title: "Providers",
+        icon: KeyIcon,
+        intro: () => {
+          // Every known model, usable or not, as `lemma models --all` lists them.
+          onMount(() => {
+            if (models.all() === undefined) void models.loadAll();
+          });
+          return (
+            <Show when={welcome()}>
+              <p class="settings-intro">Connect a provider to start chatting: sign in with a subscription or enter an API key.</p>
+            </Show>
+          );
+        },
+        empty: () => (
+          <Show
+            when={models.providersLoaded()}
+            fallback={
+              <p class="settings-empty">
+                <Spinner /> Loading providers…
+              </p>
+            }
+          >
+            <p class="settings-empty">No provider plugins are loaded. Check Plugins.</p>
+          </Show>
+        ),
+      }),
+    );
+    // Connected, then subscriptions, then API keys; a group with no providers is left out.
+    const GROUPS = ["Connected", "Subscriptions", "API keys"];
+    for (const [order, title] of GROUPS.entries()) {
+      add(
+        slots.add(SettingsGroups, {
+          id: `${SECTION}.${order}`,
+          order,
+          section: SECTION,
+          title,
+          entries: () =>
+            (providerGroups(models.providers()).find((group) => group.title === title)?.providers ?? []).map((provider) => ({
+              text: `provider login ${providerText(provider)}`,
+              view: () => <ProviderRow models={models} provider={provider} login={(target, type) => void login(target, type)} />,
+            })),
+        }),
+      );
+    }
+    add(
+      slots.add(ComposerNotices, {
+        id: SECTION,
+        order: 10,
+        component: () => (
+          <Show when={models.providersLoaded() && !models.configured()}>
+            <div class="callout callout-info composer-callout">
+              <KeyIcon />
+              <span>No model provider is set up yet.</span>
+              <button class="button button-primary small" onClick={open}>
+                Log in to a provider
+              </button>
+            </div>
+          </Show>
+        ),
+      }),
+    );
+    add(
+      slots.add(Actions, {
+        id: "providers.open",
+        order: 5,
+        title: "Log in to a provider…",
+        category: "Providers",
+        keywords: ["sign in", "api key", "credentials"],
+        icon: KeyIcon,
+        run: open,
+      }),
+    );
+  },
+});

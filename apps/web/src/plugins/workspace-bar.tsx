@@ -1,77 +1,41 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import type { GitBranch, WorkspaceStatus } from "@lemma/contracts";
-import { knownProjects } from "../model/prefs.ts";
-import {
-  commandsRun,
-  connected,
-  newChat,
-  openDialog,
-  reportError,
-  setNewWorktree,
-  setWorkspaceStatus,
-  setWorktreeBase,
-  state,
-  toast,
-  workingDir,
-  workspaceApi,
-  workspaceStatus,
-  worktreeDraftState,
-} from "../store.ts";
-import { CheckIcon, ChevronDownIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, LaptopIcon, PlusIcon, WorktreeIcon } from "./icons.tsx";
-import { Popover } from "./popover.tsx";
+import { CheckIcon, ChevronDownIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, LaptopIcon, PlusIcon, WorktreeIcon } from "../components/icons.tsx";
+import { Popover } from "../components/popover.tsx";
+import { SettingRow } from "../components/setting-row.tsx";
+import { Toggle } from "../components/toggle.tsx";
+import { Actions, Client, ComposerFooter, Notify, Sessions, SettingsGroups, Slots, Workspace } from "../ui/contracts.ts";
+import type { ClientService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
+import type { SlotsService } from "../ui/slots.ts";
 
 const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
+
+interface Deps {
+  readonly client: ClientService;
+  readonly sessions: SessionsService;
+  readonly workspace: WorkspaceService;
+  readonly notify: NotifyService;
+  readonly slots: SlotsService;
+}
 
 /**
  * The strip under the composer: which project the chat works in, and that
  * project's git branch. A session's directory is fixed once it exists, so the
  * project is only choosable for a new chat.
  */
-export function WorkspaceBar() {
-  const status = workspaceStatus;
-  const setStatus = setWorkspaceStatus;
-  const refresh = async () => {
-    const path = workingDir();
-    if (path === undefined || !connected()) return;
-    try {
-      const next = await workspaceApi().status(path);
-      if (workingDir() === path) setStatus(next);
-    } catch {
-      /* keep the last known status */
-    }
-  };
-
-  createEffect(
-    on([workingDir, connected], () => {
-      if (status()?.path !== workingDir()) {
-        setStatus(undefined);
-        // A base branch belongs to the project it was picked in.
-        setWorktreeBase(undefined);
-      }
-      void refresh();
-    }),
-  );
-  // A turn or a command may have committed or switched branches.
-  createEffect(
-    on(
-      () => [state.running.length, commandsRun()],
-      () => void refresh(),
-      { defer: true },
-    ),
-  );
-  const onFocus = () => void refresh();
-  onMount(() => window.addEventListener("focus", onFocus));
-  onCleanup(() => window.removeEventListener("focus", onFocus));
-
+function WorkspaceBar(props: { deps: Deps }) {
+  const { workspace } = props.deps;
+  const status = workspace.status;
   return (
-    <Show when={workingDir() !== undefined}>
+    <Show when={workspace.workingDir() !== undefined}>
       <div class="workspace-bar">
-        <ProjectPicker />
+        <ProjectPicker deps={props.deps} />
         <Show when={status()?.git}>
           {(git) => (
             <>
               <span class="strip-sep" aria-hidden="true" />
-              <ModePicker git={git()} />
+              <ModePicker deps={props.deps} git={git()} />
             </>
           )}
         </Show>
@@ -79,16 +43,19 @@ export function WorkspaceBar() {
           <span class="workspace-warning">Folder not found on the host</span>
         </Show>
         <span class="spacer" />
-        <Show when={status()?.git}>{(git) => <BranchPicker git={git()} onChanged={setStatus} />}</Show>
+        <Show when={status()?.git}>{(git) => <BranchPicker deps={props.deps} git={git()} onChanged={workspace.setStatus} />}</Show>
       </div>
     </Show>
   );
 }
 
 /** Local checkout or a new worktree; fixed once the chat exists. */
-function ModePicker(props: { git: NonNullable<WorkspaceStatus["git"]> }) {
-  const isNew = () => state.activeId === undefined;
-  const worktree = () => worktreeDraftState().enabled;
+function ModePicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]> }) {
+  const { sessions, workspace } = props.deps;
+  const isNew = () => sessions.activeId() === undefined;
+  const worktree = () => workspace.worktree().enabled;
+  const workingDir = workspace.workingDir;
+  const setNewWorktree = workspace.setWorktree;
   return (
     <Show
       when={isNew()}
@@ -166,10 +133,12 @@ function ModePicker(props: { git: NonNullable<WorkspaceStatus["git"]> }) {
   );
 }
 
-function ProjectPicker() {
-  const isNew = () => state.activeId === undefined;
-  const projects = createMemo(() => knownProjects(state.info?.cwd, state.sessions, state.projects));
-  const current = () => workingDir() ?? "";
+function ProjectPicker(props: { deps: Deps }) {
+  const { client, sessions, workspace, slots } = props.deps;
+  const isNew = () => sessions.activeId() === undefined;
+  const projects = workspace.projects;
+  const current = () => workspace.workingDir() ?? "";
+  const addProject = () => slots.get(Actions, "add-project.open");
   const label = () => (
     <>
       <FolderIcon />
@@ -208,7 +177,7 @@ function ProjectPicker() {
                   role="menuitemradio"
                   aria-checked={path === current()}
                   onClick={() => {
-                    newChat(path === state.info?.cwd ? undefined : path);
+                    sessions.newChat(path === client.info()?.cwd ? undefined : path);
                     close();
                   }}
                 >
@@ -222,20 +191,26 @@ function ProjectPicker() {
                 </button>
               )}
             </For>
-            <div class="menu-sep" />
-            <button
-              class="menu-item"
-              role="menuitem"
-              onClick={() => {
-                close();
-                openDialog("add-project");
-              }}
-            >
-              <span class="menu-check">
-                <FolderPlusIcon />
-              </span>
-              <span class="menu-label">Add project…</span>
-            </button>
+            <Show when={addProject()}>
+              {(action) => (
+                <>
+                  <div class="menu-sep" />
+                  <button
+                    class="menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      action().run();
+                    }}
+                  >
+                    <span class="menu-check">
+                      <FolderPlusIcon />
+                    </span>
+                    <span class="menu-label">Add project…</span>
+                  </button>
+                </>
+              )}
+            </Show>
           </>
         )}
       </Popover>
@@ -243,21 +218,23 @@ function ProjectPicker() {
   );
 }
 
-function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChanged: (status: WorkspaceStatus) => void }) {
+function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]>; onChanged: (status: WorkspaceStatus) => void }) {
+  const { sessions, workspace, notify } = props.deps;
+  const workingDir = workspace.workingDir;
   const [branches, setBranches] = createSignal<readonly GitBranch[]>([]);
   const [query, setQuery] = createSignal("");
   const [switching, setSwitching] = createSignal(false);
   // Switching branches under a running turn would change files the agent is editing.
-  const busyHere = () => state.running.some((id) => state.sessions.find((session) => session.id === id)?.cwd === workingDir());
+  const busyHere = () => sessions.running().some((id) => sessions.list().find((session) => session.id === id)?.cwd === workingDir());
 
   const load = async () => {
     setQuery("");
     const path = workingDir();
     if (path === undefined) return;
     try {
-      setBranches(await workspaceApi().branches(path));
+      setBranches(await workspace.api.branches(path));
     } catch (error) {
-      reportError(error, "Could not list branches");
+      notify.report(error, "Could not list branches");
     }
   };
   const filtered = createMemo(() => {
@@ -265,8 +242,8 @@ function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChang
     return needle === "" ? branches() : branches().filter((branch) => branch.name.toLowerCase().includes(needle));
   });
   /** A new chat headed for a new worktree: the menu picks the branch it starts from instead of switching. */
-  const baseMode = () => state.activeId === undefined && worktreeDraftState().enabled;
-  const base = () => worktreeDraftState().base ?? props.git.branch ?? undefined;
+  const baseMode = () => sessions.activeId() === undefined && workspace.worktree().enabled;
+  const base = () => workspace.worktree().base ?? props.git.branch ?? undefined;
   const canCreate = () => {
     if (baseMode()) return false;
     const name = query().trim();
@@ -280,9 +257,9 @@ function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChang
     close();
     setSwitching(true);
     try {
-      props.onChanged(await workspaceApi().checkout(path, branch, create ? { create: true } : undefined));
+      props.onChanged(await workspace.api.checkout(path, branch, create ? { create: true } : undefined));
     } catch (error) {
-      reportError(error, `Could not switch to ${branch}`);
+      notify.report(error, `Could not switch to ${branch}`);
     } finally {
       setSwitching(false);
     }
@@ -292,7 +269,7 @@ function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChang
   const label = () => (baseMode() ? `From ${base() ?? here()}` : here());
   const choose = (branch: GitBranch, close: () => void) => {
     if (baseMode()) {
-      setWorktreeBase(branch.current ? undefined : branch.name);
+      workspace.setWorktreeBase(branch.current ? undefined : branch.name);
       close();
       return;
     }
@@ -303,8 +280,8 @@ function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChang
     if (branch.worktree !== undefined) {
       close();
       // git keeps a branch in one worktree at a time; go to where it is instead.
-      if (state.activeId === undefined) newChat(branch.worktree);
-      else toast({ level: "info", message: `${branch.name} is checked out in the worktree at ${branch.worktree}` });
+      if (sessions.activeId() === undefined) sessions.newChat(branch.worktree);
+      else notify.toast({ level: "info", message: `${branch.name} is checked out in the worktree at ${branch.worktree}` });
       return;
     }
     void checkout(branch.name, false, close);
@@ -414,3 +391,33 @@ function BranchPicker(props: { git: NonNullable<WorkspaceStatus["git"]>; onChang
     </Popover>
   );
 }
+
+/** The project and branch strip under the composer, and the worktree setting for new chats. */
+export default defineUiPlugin({
+  id: "workspace-bar",
+  requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
+  setup: (deps, plugin) => {
+    plugin.onCleanup(deps.slots.add(ComposerFooter, { id: "workspace-bar", component: () => <WorkspaceBar deps={deps} /> }));
+    plugin.onCleanup(
+      deps.slots.add(SettingsGroups, {
+        id: "workspace-bar",
+        section: "general",
+        title: "New chats",
+        order: 10,
+        entries: () => [
+          {
+            text: "Start in a new worktree git branch checkout workspace",
+            view: () => (
+              <SettingRow
+                title="Start in a new worktree"
+                description="In a git repository, a new chat gets its own checkout on a new branch, so its changes stay apart."
+              >
+                <Toggle label="Start in a new worktree" checked={deps.workspace.worktree().enabled} onChange={deps.workspace.setWorktree} />
+              </SettingRow>
+            ),
+          },
+        ],
+      }),
+    );
+  },
+});

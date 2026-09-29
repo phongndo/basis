@@ -1,24 +1,31 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { SessionInfo } from "@lemma/contracts";
-import { shortcut } from "../lib/keys.ts";
+import { formatKeys } from "../lib/keys.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { groupSessions, sessionTitle } from "../model/sessions.ts";
-import { newChat, openDialog, openSettings, pendingChatCwd, renameSession, selectSession, state } from "../store.ts";
-import { ConnectionBadge } from "./connection.tsx";
-import { Popover } from "./popover.tsx";
-import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, GearIcon, PenSquareIcon, PlusIcon, SearchIcon, XIcon } from "./icons.tsx";
+import { Popover } from "../components/popover.tsx";
+import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, PenSquareIcon, PlusIcon, SearchIcon, XIcon } from "../components/icons.tsx";
+import { Actions, Client, Sessions, SidebarFooter, SidebarRegion, Slots } from "../ui/contracts.ts";
+import type { Action, ClientService, SessionsService } from "../ui/contracts.ts";
+import type { SlotsService } from "../ui/slots.ts";
+import { defineUiPlugin } from "../ui/define.ts";
 
-// Relative times refresh once a minute.
-const [now, setNow] = createSignal(Date.now());
-setInterval(() => setNow(Date.now()), 60_000);
+interface Deps {
+  readonly client: ClientService;
+  readonly sessions: SessionsService;
+  readonly slots: SlotsService;
+  readonly now: () => number;
+}
 
-function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
+function SessionRow(props: { deps: Deps; session: SessionInfo; onPick: () => void }) {
+  const sessions = props.deps.sessions;
   const [editing, setEditing] = createSignal(false);
-  const active = () => state.activeId === props.session.id;
-  const running = () => state.running.includes(props.session.id);
+  const active = () => sessions.activeId() === props.session.id;
+  const running = () => sessions.running().includes(props.session.id);
   const commit = (value: string) => {
     setEditing(false);
-    if (value.trim() !== "" && value.trim() !== props.session.title) void renameSession(props.session.id, value);
+    if (value.trim() !== "" && value.trim() !== props.session.title) void sessions.rename(props.session.id, value);
   };
   return (
     <li>
@@ -31,7 +38,7 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
             aria-current={active() ? "page" : undefined}
 
             onClick={() => {
-              void selectSession(props.session.id);
+              void sessions.select(props.session.id);
               props.onPick();
             }}
             onDblClick={() => setEditing(true)}
@@ -42,7 +49,7 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
             <span class="session-title" classList={{ untitled: props.session.title === undefined }}>
               {sessionTitle(props.session)}
             </span>
-            <span class="session-time">{relativeTime(props.session.updatedAt, now())}</span>
+            <span class="session-time">{relativeTime(props.session.updatedAt, props.deps.now())}</span>
           </button>
         }
       >
@@ -71,11 +78,12 @@ function SessionRow(props: { session: SessionInfo; onPick: () => void }) {
   );
 }
 
-export function Sidebar(props: { onPick: () => void }) {
+function Sidebar(props: { deps: Deps; onPick: () => void }) {
+  const { client, sessions, slots } = props.deps;
   const [query, setQuery] = createSignal("");
   /** Show one project's sessions, or all when undefined. */
   const [scope, setScope] = createSignal<string | undefined>();
-  const allGroups = createMemo(() => groupSessions(state.sessions));
+  const allGroups = createMemo(() => groupSessions(sessions.list()));
   const groups = createMemo(() => {
     const needle = query().trim().toLowerCase();
     return allGroups()
@@ -86,16 +94,21 @@ export function Sidebar(props: { onPick: () => void }) {
       }))
       .filter((group) => group.sessions.length > 0);
   });
-  const failed = () => state.plugins.filter((plugin) => plugin.state === "failed").length;
-  const hostCwd = () => state.info?.cwd;
-  const home = () => state.info?.home;
+  const hostCwd = () => client.info()?.cwd;
+  const home = () => client.info()?.home;
+  /** Another plugin's action, when one is running: the sidebar offers it without knowing who provides it. */
+  const action = (id: string): Action | undefined => slots.get(Actions, id);
+  const runAction = (id: string) => {
+    action(id)?.run();
+    props.onPick();
+  };
   const cwdLabel = (cwd: string) => {
     const path = tildePath(cwd, home());
     const slash = path.lastIndexOf("/");
     return { name: slash === -1 ? path : path.slice(slash + 1) || path, parent: slash <= 0 ? "" : path.slice(0, slash + 1) };
   };
   const newChatIn = (cwd?: string) => {
-    newChat(cwd === hostCwd() ? undefined : cwd);
+    sessions.newChat(cwd === hostCwd() ? undefined : cwd);
     props.onPick();
   };
   const onKey = (event: KeyboardEvent) => {
@@ -133,17 +146,18 @@ export function Sidebar(props: { onPick: () => void }) {
           </Show>
         </label>
         <div class="sidebar-actions">
-          <button
-            class="icon-button"
-            aria-label="Command palette"
-            data-tip={`Commands, sessions, projects · ${shortcut("mod", "K")}`}
-            onClick={() => {
-              openDialog("palette");
-              props.onPick();
-            }}
-          >
-            <CommandIcon />
-          </button>
+          <Show when={action("palette.open")}>
+            {(palette) => (
+              <button
+                class="icon-button"
+                aria-label="Command palette"
+                data-tip={`Commands, sessions, projects · ${formatKeys(String(palette().keys ?? "mod+k"))}`}
+                onClick={() => runAction("palette.open")}
+              >
+                <CommandIcon />
+              </button>
+            )}
+          </Show>
           <Popover
             label={scope() === undefined ? "Projects" : `Project: ${tildePath(scope()!, home())}`}
             trigger={<FolderIcon />}
@@ -192,20 +206,14 @@ export function Sidebar(props: { onPick: () => void }) {
               </>
             )}
           </Popover>
+          <Show when={action("add-project.open")}>
+            <button class="icon-button" aria-label="Add project" data-tip="Add project" onClick={() => runAction("add-project.open")}>
+              <FolderPlusIcon />
+            </button>
+          </Show>
           <button
             class="icon-button"
-            aria-label="Add project"
-            data-tip="Add project"
-            onClick={() => {
-              openDialog("add-project");
-              props.onPick();
-            }}
-          >
-            <FolderPlusIcon />
-          </button>
-          <button
-            class="icon-button"
-            classList={{ active: state.activeId === undefined }}
+            classList={{ active: sessions.activeId() === undefined }}
             data-tip="New chat"
             aria-label="New chat"
             onClick={() => newChatIn(scope())}
@@ -215,10 +223,10 @@ export function Sidebar(props: { onPick: () => void }) {
         </div>
       </div>
       <div class="session-groups">
-        <Show when={state.sessionsLoaded && state.sessions.length === 0}>
+        <Show when={sessions.loaded() && sessions.list().length === 0}>
           <p class="sidebar-empty">No sessions yet. Your conversations will appear here.</p>
         </Show>
-        <Show when={state.sessions.length > 0 && groups().length === 0}>
+        <Show when={sessions.list().length > 0 && groups().length === 0}>
           <p class="sidebar-empty">No matching sessions.</p>
         </Show>
         <For each={groups()}>
@@ -230,7 +238,7 @@ export function Sidebar(props: { onPick: () => void }) {
                 <span class="group-parent">{cwdLabel(group.cwd).parent}</span>
                 <button
                   class="icon-button group-new"
-                  classList={{ active: state.activeId === undefined && pendingChatCwd() === group.cwd }}
+                  classList={{ active: sessions.activeId() === undefined && sessions.pendingCwd() === group.cwd }}
                   aria-label={`New chat in ${group.cwd}`}
                   data-tip={`New chat in ${tildePath(group.cwd, home())}`}
                   onClick={() => newChatIn(group.cwd)}
@@ -239,31 +247,29 @@ export function Sidebar(props: { onPick: () => void }) {
                 </button>
               </div>
               <ul class="session-list">
-                <For each={group.sessions}>{(session) => <SessionRow session={session} onPick={props.onPick} />}</For>
+                <For each={group.sessions}>{(session) => <SessionRow deps={props.deps} session={session} onPick={props.onPick} />}</For>
               </ul>
             </section>
           )}
         </For>
       </div>
       <div class="sidebar-foot">
-        <button
-          class="icon-button with-badge"
-          aria-label="Settings"
-          data-tip={failed() > 0 ? `Settings · ${failed()} plugin${failed() === 1 ? "" : "s"} failed` : `Settings · ${shortcut("mod", ",")}`}
-          onClick={() => {
-            // A failure is the likeliest reason to open settings, so go straight to it.
-            openSettings(failed() > 0 ? "plugins" : "general");
-            props.onPick();
-          }}
-        >
-          <GearIcon />
-          <Show when={failed() > 0}>
-            <span class="count-badge">{failed()}</span>
-          </Show>
-        </button>
-        <span class="spacer" />
-        <ConnectionBadge />
+        <For each={slots.list(SidebarFooter)}>{(item) => <Dynamic component={item.component} onPick={props.onPick} />}</For>
       </div>
     </nav>
   );
 }
+
+/** Sessions by project, with search, a project filter, and new-chat buttons. Its foot is a slot (settings, connection). */
+export default defineUiPlugin({
+  id: "sidebar",
+  requires: { client: Client, sessions: Sessions, slots: Slots },
+  setup: (use, plugin) => {
+    // Relative times refresh once a minute.
+    const [now, setNow] = createSignal(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    plugin.onCleanup(() => window.clearInterval(timer));
+    const deps: Deps = { ...use, now };
+    plugin.onCleanup(use.slots.add(SidebarRegion, { id: "sidebar", component: (props) => <Sidebar deps={deps} onPick={props.onPick} /> }));
+  },
+});

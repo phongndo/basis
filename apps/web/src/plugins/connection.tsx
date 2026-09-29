@@ -1,14 +1,15 @@
 import { Show, createSignal } from "solid-js";
-import { state } from "../store.ts";
-import { AlertIcon, CheckIcon, CopyIcon } from "./icons.tsx";
-import { copyText } from "./markdown.tsx";
+import type { Accessor } from "solid-js";
+import type { ConnectionStatus } from "@lemma/client";
+import { AlertIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
+import { copyText } from "../components/markdown.tsx";
+import { Client, ComposerNotices, SidebarFooter, Slots } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
 
-const [now, setNow] = createSignal(Date.now());
-const timer = setInterval(() => setNow(Date.now()), 1_000);
-
-export function ConnectionBadge() {
+function ConnectionBadge(props: { status: ConnectionStatus; now: Accessor<number> }) {
+  const now = props.now;
   const label = () => {
-    const status = state.status;
+    const status = props.status;
     switch (status.state) {
       case "connected":
         return "Connected";
@@ -23,7 +24,7 @@ export function ConnectionBadge() {
     }
   };
   return (
-    <span class={`connection connection-${state.status.state}`} role="status" data-tip={state.status.error}>
+    <span class={`connection connection-${props.status.state}`} role="status" data-tip={props.status.error}>
       <span class="connection-dot" aria-hidden="true" />
       {label()}
     </span>
@@ -31,8 +32,8 @@ export function ConnectionBadge() {
 }
 
 /** Sits above the composer while the host is unreachable, since nothing can be sent until it's back. */
-export function ConnectionNotice() {
-  const status = () => state.status;
+function ConnectionNotice(props: { status: Accessor<ConnectionStatus>; now: Accessor<number> }) {
+  const status = props.status;
   const unreachable = () => status().state === "connecting" && status().attempts >= 2;
   const [copied, setCopied] = createSignal(false);
   const copy = (error: string) =>
@@ -53,7 +54,7 @@ export function ConnectionNotice() {
           </Show>
           <Show when={status().error}>{(error) => <code class="callout-detail">{error()}</code>}</Show>
         </div>
-        <ConnectionBadge />
+        <ConnectionBadge status={status()} now={props.now} />
         <Show when={status().error}>
           {(error) => (
             <button class="icon-button" aria-label="Copy error" data-tip={copied() ? "Copied" : "Copy error"} onClick={() => copy(error())}>
@@ -66,4 +67,26 @@ export function ConnectionNotice() {
   );
 }
 
-export const stopConnectionClock = (): void => clearInterval(timer);
+/** How the connection to the host is doing: a badge in the sidebar, a notice above the composer while it is down. */
+export default defineUiPlugin({
+  id: "connection",
+  requires: { client: Client, slots: Slots },
+  setup: ({ client, slots }, plugin) => {
+    const [now, setNow] = createSignal(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    plugin.onCleanup(() => window.clearInterval(timer));
+    plugin.onCleanup(
+      slots.add(SidebarFooter, {
+        id: "connection",
+        order: 100,
+        component: () => (
+          <>
+            <span class="spacer" />
+            <ConnectionBadge status={client.status()} now={now} />
+          </>
+        ),
+      }),
+    );
+    plugin.onCleanup(slots.add(ComposerNotices, { id: "connection", component: () => <ConnectionNotice status={client.status} now={now} /> }));
+  },
+});

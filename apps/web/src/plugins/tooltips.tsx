@@ -1,5 +1,7 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
+import { Layers, Slots } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
 
 const DELAY = 450;
 /** Moving between controls within this window shows the next tooltip at once. */
@@ -11,7 +13,7 @@ const MARGIN = 8;
  * browser's native `title` bubbles never appear. Shown on hover after a delay
  * and on keyboard focus; hidden on press, scroll, or key input.
  */
-export function TooltipLayer() {
+function TooltipLayer() {
   const [tip, setTip] = createSignal<{ text: string; x: number; y: number; below: boolean } | undefined>();
   let bubble: HTMLDivElement | undefined;
   let timer: number | undefined;
@@ -99,3 +101,12 @@ export function TooltipLayer() {
     </Show>
   );
 }
+
+/** Shows `data-tip` attributes as tooltips, for every plugin's controls. */
+export default defineUiPlugin({
+  id: "tooltips",
+  requires: { slots: Slots },
+  setup: ({ slots }, plugin) => {
+    plugin.onCleanup(slots.add(Layers, { id: "tooltips", order: 200, component: TooltipLayer }));
+  },
+});

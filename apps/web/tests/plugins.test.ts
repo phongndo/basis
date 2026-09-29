@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { PluginStatus } from "@lemma/contracts";
-import { dependentsOf, describeState, pluginGroups, pluginText, recoverable, replaces, requiredBy, waitingOn } from "../src/model/plugins.ts";
+import {
+  dependentsOf,
+  describeState,
+  matchPlugins,
+  pluginGroups,
+  pluginText,
+  providerOf,
+  recoverable,
+  replaces,
+  requiredBy,
+  usersOf,
+  waitingOn,
+} from "../src/model/plugins.ts";
 
 const plugin = (id: string, extra: Partial<PluginStatus> = {}): PluginStatus => ({
   id,
@@ -88,5 +100,34 @@ describe("pluginText", () => {
     expect(text).toContain("off");
     expect(pluginText(plugins[6]!)).toContain("boom");
     expect(pluginText(plugins[6]!)).toContain("user");
+  });
+});
+
+describe("matchPlugins", () => {
+  const entries = [
+    ...plugins.map((plugin) => ({ kind: "host" as const, plugin })),
+    { kind: "web" as const, plugin: plugin("composer", { configFields: [{ key: "x", title: "X", type: "string", optional: true }] }) },
+  ];
+  const ids = (query: string) => matchPlugins(entries, query).map((entry) => entry.plugin.id);
+
+  it("filters by state, kind, and source, and by words", () => {
+    expect(ids("is:failed")).toEqual(["notes"]);
+    expect(ids("is:off")).toEqual(["edit"]);
+    expect(ids("kind:web")).toEqual(["composer"]);
+    expect(ids("source:user")).toEqual(["notes"]);
+    expect(ids("is:configurable")).toEqual(["composer"]);
+    expect(ids("tools kind:host -is:locked")).toEqual(["tools", "bash", "edit", "agent", "notes"]);
+    expect(ids("")).toHaveLength(entries.length);
+  });
+
+  it("an unknown state matches nothing", () => {
+    expect(ids("is:sleepy")).toEqual([]);
+  });
+});
+
+describe("providerOf and usersOf", () => {
+  it("find who provides a capability and who needs it", () => {
+    expect(providerOf(plugins, "lemma/Tools")?.id).toBe("tools");
+    expect(usersOf(plugins, "lemma/Tools")).toEqual(["bash", "edit", "agent", "notes"]);
   });
 });

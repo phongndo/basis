@@ -1,51 +1,30 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import type { JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import type { Component } from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
 import type { CommandInfo, InteractionRequest } from "@lemma/contracts";
-import { shortcut } from "../lib/keys.ts";
+import { formatKeys, shortcut } from "../lib/keys.ts";
 import { load, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { highlight, parseQuery, rank, remember } from "../model/palette.ts";
 import type { PaletteMode, Searchable } from "../model/palette.ts";
-import { knownProjects } from "../model/prefs.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import {
-  activeSession,
-  answerInteraction,
-  cancel,
-  dismissInteraction,
-  isBusy,
-  newChat,
-  openDialog,
-  openSettings,
-  renameSession,
-  runCommand,
-  selectSession,
-  setView,
-  state,
-  toast,
-} from "../store.ts";
-import { focusPrompt, openModelPicker } from "./composer.tsx";
-import {
-  BrainIcon,
-  ChatIcon,
-  CheckIcon,
-  ChevronIcon,
-  CommandIcon,
-  CopyIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  GearIcon,
-  GitBranchIcon,
-  KeyIcon,
-  PenSquareIcon,
-  PuzzleIcon,
-  RefreshIcon,
-  SidebarIcon,
-  Spinner,
-  StopIcon,
-  TrajectoryIcon,
-} from "./icons.tsx";
+import { ChatIcon, CheckIcon, ChevronIcon, CommandIcon, FolderIcon, GitBranchIcon, KeyIcon, PuzzleIcon, RefreshIcon, Spinner } from "../components/icons.tsx";
+import { Actions, Client, Commands, Dialogs, Interactions, Layers, Sessions, Slots, Workspace } from "../ui/contracts.ts";
+import type { Action, ClientService, CommandsService, DialogsService, InteractionsService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
+import type { SlotItem, SlotsService } from "../ui/slots.ts";
+
+const DIALOG = "palette";
+
+interface Deps {
+  readonly client: ClientService;
+  readonly sessions: SessionsService;
+  readonly workspace: WorkspaceService;
+  readonly commands: CommandsService;
+  readonly interactions: InteractionsService;
+  readonly dialogs: DialogsService;
+  readonly slots: SlotsService;
+}
 
 type Kind = "command" | "session" | "project" | "option";
 
@@ -56,7 +35,7 @@ interface Item extends Searchable {
   readonly detail?: string | undefined;
   readonly shortcut?: string | undefined;
   readonly current?: boolean | undefined;
-  readonly icon?: (() => JSX.Element) | undefined;
+  readonly icon?: Component | undefined;
   /** A plugin's command: runs on the host while the palette shows its questions. */
   readonly command?: CommandInfo | undefined;
   /** Asks for more in the palette first (a new session title). */
@@ -93,7 +72,7 @@ const loadRecent = (): string[] => {
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
-const hostIcon = (command: CommandInfo): (() => JSX.Element) => {
+const hostIcon = (command: CommandInfo): Component => {
   switch (command.category) {
     case "Git":
       return GitBranchIcon;
@@ -139,12 +118,13 @@ function Highlighted(props: { text: string; matches: readonly number[] }) {
 
 /**
  * Cmd+K (Ctrl+K on Windows and Linux): search everything the app can do or
- * open. Client actions, plugins' commands, sessions, and projects share one
- * ranked list; `>`, `@`, and `#` narrow it. While open, the palette shows the
- * host's questions in place of the interaction dialog, so a command that asks
- * (which branch? what name?) continues here.
+ * open. Every plugin's actions, the host's commands, sessions, and projects
+ * share one ranked list; `>`, `@`, and `#` narrow it. While open, the palette
+ * shows the host's questions in place of the question dialog, so a command
+ * that asks (which branch? what name?) continues here.
  */
-export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => void }) {
+function Palette(props: { deps: Deps }) {
+  const { client, sessions, workspace, commands: hostCommandsService, interactions, dialogs, slots } = props.deps;
   const [query, setQuery] = createSignal("");
   const [filter, setFilter] = createSignal("");
   const [active, setActive] = createSignal(0);
@@ -155,9 +135,11 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
   let list!: HTMLDivElement;
   const previous = document.activeElement as HTMLElement | null;
   let disposed = false;
+  // The host's questions show here while the palette is open.
+  onCleanup(interactions.claim());
 
   const close = () => {
-    openDialog(undefined);
+    dialogs.open(undefined);
   };
   const choose = (item: Item) => {
     const next = remember(recent(), item.key);
@@ -172,162 +154,50 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
   const execute = async (command: CommandInfo) => {
     setRunning(command);
     setQuery("");
-    const ok = await runCommand(command);
+    const ok = await hostCommandsService.run(command);
     // This palette may have closed while the command ran; a palette opened since is not its to close.
     if (disposed || running() !== command) return;
     setRunning(undefined);
-    if (ok && state.dialog === "palette") close();
+    if (ok && dialogs.current() === DIALOG) close();
   };
 
   // ---------------------------------------------------------------- items
 
-  const renameAsking = (): Asking | undefined => {
-    const session = activeSession();
-    if (session === undefined) return undefined;
-    return {
-      id: `rename:${session.id}`,
-      question: { type: "ask", title: `Rename “${sessionTitle(session)}”`, placeholder: sessionTitle(session) },
-      answer: (value) => {
-        setLocal(undefined);
-        close();
-        void renameSession(session.id, value);
-      },
-      dismiss: () => setLocal(undefined),
-    };
-  };
-
-  const clientCommands = createMemo((): Item[] => {
-    const session = activeSession();
-    const items: Item[] = [
-      {
-        key: "app.new-chat",
-        kind: "command",
-        category: "Chat",
-        title: "New chat",
-        shortcut: shortcut("mod", "shift", "O"),
-        icon: PenSquareIcon,
-        run: props.onNewChat,
-      },
-      { key: "app.model", kind: "command", category: "Model", title: "Switch model…", keywords: ["provider", "llm"], icon: BrainIcon, run: openModelPicker },
-      { key: "app.focus-prompt", kind: "command", category: "Chat", title: "Focus prompt", shortcut: "/", icon: ChatIcon, run: focusPrompt },
-      {
-        key: "app.toggle-sidebar",
-        kind: "command",
-        category: "View",
-        title: "Toggle sidebar",
-        shortcut: shortcut("mod", "B"),
-        icon: SidebarIcon,
-        run: props.onToggleSidebar,
-      },
-      {
-        key: "app.providers",
-        kind: "command",
-        category: "Providers",
-        title: "Log in to a provider…",
-        keywords: ["sign in", "api key", "credentials"],
-        icon: KeyIcon,
-        run: () => openSettings("providers"),
-      },
-      {
-        key: "app.add-project",
-        kind: "command",
-        category: "Projects",
-        title: "Add project…",
-        keywords: ["open folder", "directory"],
-        icon: FolderPlusIcon,
-        run: () => openDialog("add-project"),
-      },
-      {
-        key: "app.plugins",
-        kind: "command",
-        category: "Host",
-        title: "Show plugins",
-        keywords: ["status", "restart", "composition"],
-        icon: PuzzleIcon,
-        run: () => openSettings("plugins"),
-      },
-      {
-        key: "app.settings",
-        kind: "command",
-        category: "Settings",
-        title: "Open settings",
-        keywords: ["preferences", "theme", "appearance", "general"],
-        shortcut: shortcut("mod", ","),
-        icon: GearIcon,
-        run: () => openSettings("general"),
-      },
-      {
-        key: "app.projects",
-        kind: "command",
-        category: "Projects",
-        title: "Manage projects",
-        keywords: ["folders", "directories", "settings"],
-        icon: FolderIcon,
-        run: () => openSettings("projects"),
-      },
-      {
-        key: "app.events",
-        kind: "command",
-        category: "Host",
-        title: "Show event log",
-        keywords: ["debug"],
-        icon: CommandIcon,
-        run: () => openDialog("events"),
-      },
-    ];
-    if (isBusy())
-      items.push({
-        key: "app.cancel",
-        kind: "command",
-        category: "Chat",
-        title: "Stop the running turn",
-        keywords: ["cancel"],
-        shortcut: "Esc",
-        icon: StopIcon,
-        run: cancel,
-      });
-    if (session !== undefined) {
-      items.push(
-        state.view === "chat"
-          ? {
-              key: "app.view-trajectory",
-              kind: "command",
-              category: "View",
-              title: "Show trajectory",
-              keywords: ["requests", "inspect", "debug"],
-              icon: TrajectoryIcon,
-              run: () => setView("trajectory"),
-            }
-          : {
-              key: "app.view-chat",
-              kind: "command",
-              category: "View",
-              title: "Show chat",
-              keywords: ["transcript"],
-              icon: ChatIcon,
-              run: () => setView("chat"),
-            },
-        { key: "app.rename", kind: "command", category: "Chat", title: "Rename session…", keywords: ["title"], icon: PenSquareIcon, ask: renameAsking },
-        {
-          key: "app.copy-id",
-          kind: "command",
-          category: "Chat",
-          title: "Copy session ID",
-          keywords: ["cli", "lemma"],
-          icon: CopyIcon,
-          run: () =>
-            void navigator.clipboard.writeText(session.id).then(
-              () => toast({ level: "info", message: `Copied ${session.id}` }),
-              () => toast({ level: "error", message: "Could not copy to the clipboard" }),
-            ),
-        },
-      );
-    }
-    return items;
+  /** An action that asks for a value first asks here; answering runs it. */
+  const askFor = (action: SlotItem<Action>, question: { readonly title: string; readonly placeholder?: string }): Asking => ({
+    id: `input:${action.id}`,
+    question: { type: "ask", title: question.title, placeholder: question.placeholder },
+    answer: (value) => {
+      setLocal(undefined);
+      close();
+      action.run(value);
+    },
+    dismiss: () => setLocal(undefined),
   });
 
+  const clientCommands = createMemo((): Item[] =>
+    slots
+      .list(Actions)
+      .filter((action) => action.hidden !== true && (action.when?.() ?? true))
+      .map((action) => {
+        const keys = typeof action.keys === "string" ? action.keys : action.keys?.[0];
+        const input = action.input;
+        return {
+          key: `action:${action.id}`,
+          kind: "command",
+          category: action.category,
+          title: action.title,
+          detail: action.detail,
+          keywords: action.keywords,
+          shortcut: keys === undefined ? undefined : formatKeys(keys),
+          icon: action.icon,
+          ...(input === undefined ? { run: () => action.run() } : { ask: () => askFor(action, input()) }),
+        };
+      }),
+  );
+
   const hostCommands = createMemo((): Item[] =>
-    state.commands.map((command) => ({
+    hostCommandsService.list().map((command) => ({
       key: `command:${command.id}`,
       kind: "command",
       category: command.category,
@@ -341,8 +211,8 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
 
   const commands = createMemo(() => [...clientCommands(), ...hostCommands()]);
 
-  const sessions = createMemo((): Item[] =>
-    [...state.sessions]
+  const sessionItems = createMemo((): Item[] =>
+    [...sessions.list()]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((session) => ({
         key: `session:${session.id}`,
@@ -350,39 +220,45 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
         title: sessionTitle(session),
         detail: `${basename(session.cwd)} · ${relativeTime(session.updatedAt)}`,
         keywords: [basename(session.cwd), session.id],
-        current: session.id === state.activeId,
+        current: session.id === sessions.activeId(),
         icon: ChatIcon,
-        run: () => void selectSession(session.id),
+        run: () => void sessions.select(session.id),
       })),
   );
 
   const projects = createMemo((): Item[] => {
-    const hostCwd = state.info?.cwd;
-    return knownProjects(hostCwd, state.sessions, state.projects).map((path) => ({
+    const hostCwd = client.info()?.cwd;
+    return workspace.projects().map((path) => ({
       key: `project:${path}`,
       kind: "project",
       title: basename(path),
-      detail: tildePath(path, state.info?.home),
+      detail: tildePath(path, client.info()?.home),
       keywords: [path],
       icon: FolderIcon,
-      run: () => newChat(path === hostCwd ? undefined : path),
+      run: () => sessions.newChat(path === hostCwd ? undefined : path),
     }));
   });
 
   const pool = (mode: PaletteMode): Item[] =>
-    mode === "commands" ? commands() : mode === "sessions" ? sessions() : mode === "projects" ? projects() : [...commands(), ...sessions(), ...projects()];
+    mode === "commands"
+      ? commands()
+      : mode === "sessions"
+        ? sessionItems()
+        : mode === "projects"
+          ? projects()
+          : [...commands(), ...sessionItems(), ...projects()];
 
   // ---------------------------------------------------------------- questions
 
   // Host questions take precedence: a running command is waiting on them.
   const asking = createMemo((): Asking | undefined => {
-    const request = state.interactions[0];
+    const request = interactions.open()[0];
     if (request === undefined) return local();
     return {
       id: request.id,
       question: fromInteraction(request),
       answer: (value) =>
-        answerInteraction(
+        interactions.answer(
           request.id,
           request.type === "confirm"
             ? { type: "confirm", value: value === "yes" }
@@ -390,7 +266,7 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
               ? { type: "ask", value }
               : { type: "select", value },
         ),
-      dismiss: () => dismissInteraction(request.id),
+      dismiss: () => interactions.dismiss(request.id),
     };
   });
 
@@ -447,7 +323,7 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
       ),
       ...section(
         "Sessions",
-        sessions()
+        sessionItems()
           .filter((entry) => !shown.has(entry.key))
           .slice(0, SESSIONS_BROWSED),
       ),
@@ -615,7 +491,7 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
                         submit();
                       }}
                     >
-                      {row.item.icon?.()}
+                      <Show when={row.item.icon}>{(icon) => <Dynamic component={icon()} />}</Show>
                       <span class="palette-name">
                         <Show when={row.item.category}>
                           <span class="palette-category">{row.item.category}: </span>
@@ -674,3 +550,43 @@ export function Palette(props: { onToggleSidebar: () => void; onNewChat: () => v
     </Portal>
   );
 }
+
+/** Search and run everything: plugins' actions, the host's commands, sessions, projects. */
+export default defineUiPlugin({
+  id: "palette",
+  requires: {
+    client: Client,
+    sessions: Sessions,
+    workspace: Workspace,
+    commands: Commands,
+    interactions: Interactions,
+    dialogs: Dialogs,
+    slots: Slots,
+  },
+  setup: (deps, plugin) => {
+    const { dialogs, interactions, slots } = deps;
+    plugin.onCleanup(
+      slots.add(Layers, {
+        id: DIALOG,
+        component: () => (
+          <Show when={dialogs.current() === DIALOG}>
+            <Palette deps={deps} />
+          </Show>
+        ),
+      }),
+    );
+    plugin.onCleanup(
+      slots.add(Actions, {
+        id: "palette.open",
+        title: "Command palette",
+        icon: CommandIcon,
+        hidden: true,
+        keys: "mod+k",
+        // Opens over any other dialog; a question the host asks keeps the screen until answered.
+        global: true,
+        when: () => dialogs.current() === DIALOG || interactions.open().length === 0,
+        run: () => dialogs.open(dialogs.current() === DIALOG ? undefined : DIALOG),
+      }),
+    );
+  },
+});

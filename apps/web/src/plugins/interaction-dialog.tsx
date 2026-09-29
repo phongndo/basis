@@ -1,26 +1,28 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import type { InteractionRequest } from "@lemma/contracts";
-import { answerInteraction, dismissInteraction, state } from "../store.ts";
-import { Dialog } from "./dialog.tsx";
+import { Dialog } from "../components/dialog.tsx";
+import { Interactions, Layers, Slots } from "../ui/contracts.ts";
+import type { InteractionsService } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
 
 type Of<T extends InteractionRequest["type"]> = Extract<InteractionRequest, { type: T }>;
 
-function Ask(props: { request: Of<"ask"> }) {
+function Ask(props: { interactions: InteractionsService; request: Of<"ask"> }) {
   const [value, setValue] = createSignal("");
   return (
     <Dialog
       title={props.request.title}
-      onClose={() => dismissInteraction(props.request.id)}
+      onClose={() => props.interactions.dismiss(props.request.id)}
       footer={
         <>
-          <button type="button" class="button" onClick={() => dismissInteraction(props.request.id)}>
+          <button type="button" class="button" onClick={() => props.interactions.dismiss(props.request.id)}>
             Cancel
           </button>
           <button
             type="button"
             class="button button-primary"
             disabled={value() === ""}
-            onClick={() => answerInteraction(props.request.id, { type: "ask", value: value() })}
+            onClick={() => props.interactions.answer(props.request.id, { type: "ask", value: value() })}
           >
             Submit
           </button>
@@ -38,7 +40,7 @@ function Ask(props: { request: Of<"ask"> }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" && value() !== "") {
             event.preventDefault();
-            answerInteraction(props.request.id, { type: "ask", value: value() });
+            props.interactions.answer(props.request.id, { type: "ask", value: value() });
           }
         }}
       />
@@ -49,17 +51,17 @@ function Ask(props: { request: Of<"ask"> }) {
   );
 }
 
-function Confirm(props: { request: Of<"confirm"> }) {
+function Confirm(props: { interactions: InteractionsService; request: Of<"confirm"> }) {
   return (
     <Dialog
       title={props.request.title}
-      onClose={() => dismissInteraction(props.request.id)}
+      onClose={() => props.interactions.dismiss(props.request.id)}
       footer={
         <>
-          <button class="button" onClick={() => answerInteraction(props.request.id, { type: "confirm", value: false })}>
+          <button class="button" onClick={() => props.interactions.answer(props.request.id, { type: "confirm", value: false })}>
             No
           </button>
-          <button class="button button-primary" data-autofocus onClick={() => answerInteraction(props.request.id, { type: "confirm", value: true })}>
+          <button class="button button-primary" data-autofocus onClick={() => props.interactions.answer(props.request.id, { type: "confirm", value: true })}>
             Yes
           </button>
         </>
@@ -72,8 +74,8 @@ function Confirm(props: { request: Of<"confirm"> }) {
   );
 }
 
-function Select(props: { request: Of<"select"> }) {
-  const pick = (value: string) => answerInteraction(props.request.id, { type: "select", value });
+function Select(props: { interactions: InteractionsService; request: Of<"select"> }) {
+  const pick = (value: string) => props.interactions.answer(props.request.id, { type: "select", value });
   const onKey = (event: KeyboardEvent) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const items = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(".choice")];
@@ -82,7 +84,7 @@ function Select(props: { request: Of<"select"> }) {
     items[Math.max(0, Math.min(items.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
   };
   return (
-    <Dialog title={props.request.title} onClose={() => dismissInteraction(props.request.id)}>
+    <Dialog title={props.request.title} onClose={() => props.interactions.dismiss(props.request.id)}>
       <div class="choices" role="listbox" onKeyDown={onKey}>
         <For each={props.request.options}>
           {(option, index) => (
@@ -99,18 +101,27 @@ function Select(props: { request: Of<"select"> }) {
   );
 }
 
-/** The oldest open question from the host; answering or dismissing reveals the next. The command palette shows them itself while open. */
-export function InteractionModal() {
-  const current = () => (state.dialog === "palette" ? undefined : state.interactions[0]);
+/** The oldest open question from the host; answering or dismissing reveals the next. A view that claims the questions (the palette) shows them itself. */
+function InteractionModal(props: { interactions: InteractionsService }) {
+  const current = () => (props.interactions.claimed() ? undefined : props.interactions.open()[0]);
   return (
     <Show when={current()} keyed>
       {(request) => (
         <Switch>
-          <Match when={request.type === "ask" && request}>{(r) => <Ask request={r()} />}</Match>
-          <Match when={request.type === "confirm" && request}>{(r) => <Confirm request={r()} />}</Match>
-          <Match when={request.type === "select" && request}>{(r) => <Select request={r()} />}</Match>
+          <Match when={request.type === "ask" && request}>{(r) => <Ask interactions={props.interactions} request={r()} />}</Match>
+          <Match when={request.type === "confirm" && request}>{(r) => <Confirm interactions={props.interactions} request={r()} />}</Match>
+          <Match when={request.type === "select" && request}>{(r) => <Select interactions={props.interactions} request={r()} />}</Match>
         </Switch>
       )}
     </Show>
   );
 }
+
+/** The host's questions as a dialog: an API key to enter, a change to confirm, an option to pick. */
+export default defineUiPlugin({
+  id: "interaction-dialog",
+  requires: { interactions: Interactions, slots: Slots },
+  setup: ({ interactions, slots }, plugin) => {
+    plugin.onCleanup(slots.add(Layers, { id: "interaction", order: 50, component: () => <InteractionModal interactions={interactions} /> }));
+  },
+});

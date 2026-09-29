@@ -1,11 +1,23 @@
 import { createEffect } from "solid-js";
 import { markdownBlocks } from "../lib/markdown.ts";
 
+/** Copies the code of the block whose copy button was clicked. */
+const copyCode = (event: MouseEvent): void => {
+  const button = (event.target as HTMLElement | null)?.closest?.(".copy-code");
+  if (!(button instanceof HTMLButtonElement)) return;
+  const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+  void copyText(code).then((ok) => {
+    button.textContent = ok ? "Copied" : "Failed";
+    setTimeout(() => {
+      button.textContent = "Copy";
+    }, 1200);
+  });
+};
+
 /**
- * Sanitized markdown. Code blocks get a copy button (handled by a delegated
- * listener in `copyCode`). Blocks whose source is unchanged keep their DOM,
- * so a streaming message re-renders only its tail and a selection in earlier
- * text survives.
+ * Sanitized markdown. Code blocks get a copy button. Blocks whose source is
+ * unchanged keep their DOM, so a streaming message re-renders only its tail
+ * and a selection in earlier text survives.
  */
 export function Markdown(props: { text: string; class?: string }) {
   let el!: HTMLDivElement;
@@ -30,7 +42,7 @@ export function Markdown(props: { text: string; class?: string }) {
       el.append(template.content);
     }
   });
-  return <div ref={el} class={`md ${props.class ?? ""}`} />;
+  return <div ref={el} class={`md ${props.class ?? ""}`} onClick={copyCode} />;
 }
 
 export const copyText = async (text: string): Promise<boolean> => {
@@ -40,19 +52,4 @@ export const copyText = async (text: string): Promise<boolean> => {
   } catch {
     return false;
   }
-};
-
-/** Install once: copies the code of the block whose button was clicked. */
-export const installCodeCopy = (): void => {
-  document.addEventListener("click", (event) => {
-    const button = (event.target as HTMLElement | null)?.closest?.(".copy-code");
-    if (!(button instanceof HTMLButtonElement)) return;
-    const code = button.parentElement?.querySelector("code")?.textContent ?? "";
-    void copyText(code).then((ok) => {
-      button.textContent = ok ? "Copied" : "Failed";
-      setTimeout(() => {
-        button.textContent = "Copy";
-      }, 1200);
-    });
-  });
 };

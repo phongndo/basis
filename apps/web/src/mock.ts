@@ -1,10 +1,12 @@
 import type { ConnectionStatus, Host } from "@lemma/client";
-import { HostError, emptyUsage } from "@lemma/contracts";
+import { Schema } from "effect";
+import { HostError, configValues, describeConfig, emptyUsage, secret } from "@lemma/contracts";
 import type {
   AssistantMessage,
   EventData,
   HostEvent,
   InteractionAnswer,
+  InteractionRequest,
   ModelInfo,
   PluginStatus,
   PromptContent,
@@ -12,6 +14,7 @@ import type {
   SessionEvent,
   SessionInfo,
   StreamEvent,
+  UiComposition,
   Usage,
 } from "@lemma/contracts";
 
@@ -166,6 +169,36 @@ export const createMockHost = (): Host => {
     ...extra,
   });
   const needed = "Needed by transport";
+  // Mirrors of real config Schemas, so the Plugins page shows settings forms.
+  const configs: Record<string, Schema.Schema.AnyNoContext> = {
+    agent: Schema.Struct({
+      defaultModel: Schema.optional(Schema.String).annotations({
+        description: "<provider>/<model> for turns that name none. Absent: the first available model.",
+      }),
+      systemPrompt: Schema.optional(Schema.String).annotations({ description: "Replaces the default base prompt; the environment section is still added." }),
+      maxSteps: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 200 }).annotations({
+        description: "Model calls allowed in one turn before it ends with max-steps.",
+      }),
+    }),
+    tools: Schema.Struct({
+      maxResultChars: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 100_000 }).annotations({
+        description: "Total text characters one result may carry to the model.",
+      }),
+    }),
+    transport: Schema.Struct({
+      port: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.between(0, 65535)), { default: () => 7433 }).annotations({
+        description: "0 asks the OS for a free port.",
+      }),
+      token: Schema.optional(Schema.NonEmptyString).annotations({ ...secret, description: "Generated once per host process when absent." }),
+    }),
+  };
+  const configRows: Record<string, Record<string, unknown>> = { transport: { token: "mock-token" } };
+  const withConfig = (plugin: PluginStatus): PluginStatus => {
+    const schema = configs[plugin.id];
+    if (schema === undefined) return plugin;
+    const fields = describeConfig(schema);
+    return { ...plugin, configFields: fields, config: configValues(schema, configRows[plugin.id] ?? {}, fields) };
+  };
   const plugins: PluginStatus[] = [
     bundled("host", { provides: ["lemma/Paths", "lemma/HostControl"], locked: "Reads the config files and loads every other plugin" }),
     bundled("interaction", { provides: ["lemma/Interaction"], locked: needed }),
@@ -193,6 +226,33 @@ export const createMockHost = (): Host => {
       fault: { phase: "activate", message: 'Plugin "notes" failed during activate: ENOENT: no such file or directory, open ~/notes' },
     }),
   ];
+  // Wiring as the kernel reports it, so the inspector has hooks, observers, and a fault history to show.
+  const wiring: Record<string, Partial<PluginStatus>> = {
+    "project-context": { hooks: [{ name: "lemma/agent.request", order: 10 }] },
+    bash: { hooks: [{ name: "lemma/tool.execute", order: 0 }] },
+    agent: { hooks: [{ name: "lemma/agent.request", order: 0 }] },
+    transport: {
+      hooks: [{ name: "lemma/interaction.request", order: 0 }],
+      observes: [
+        "lemma/agent.turn.started",
+        "lemma/agent.turn.ended",
+        "lemma/session.appended",
+        "lemma/session.changed",
+        "lemma/notice",
+        "lemma/plugins.changed",
+      ],
+    },
+    notes: {
+      faults: [2, 1].map((sequence) => ({
+        sequence,
+        at: Date.now() - sequence * 90_000,
+        phase: "activate",
+        message: 'Plugin "notes" failed during activate: ENOENT: no such file or directory, open ~/notes',
+      })),
+    },
+  };
+  for (const [index, plugin] of plugins.entries()) plugins[index] = withConfig({ ...plugin, ...wiring[plugin.id] });
+  let ui: UiComposition = { plugins: {}, enabledIn: {}, configIn: {}, files: [] };
   // Like the host: an enabled provider wins over a disabled one with the same capability.
   const providerOf = (key: string) =>
     plugins.find((plugin) => plugin.enabled && plugin.provides.includes(key)) ?? plugins.find((plugin) => plugin.provides.includes(key));
@@ -210,6 +270,7 @@ export const createMockHost = (): Host => {
     for (const listener of listeners) listener(event);
   };
   const pendingAnswers = new Map<string, (answer: InteractionAnswer | undefined) => void>();
+  const openRequests = new Map<string, InteractionRequest>();
   const cancelled = new Set<string>();
   const running = new Set<string>();
 
@@ -527,6 +588,7 @@ export const createMockHost = (): Host => {
   const ask = (request: Parameters<typeof emit>[0] & { type: "interaction" }) =>
     new Promise<InteractionAnswer | undefined>((resolve) => {
       pendingAnswers.set(request.request.id, resolve);
+      openRequests.set(request.request.id, request.request);
       emit(request);
     });
 
@@ -660,14 +722,17 @@ export const createMockHost = (): Host => {
       },
     },
     interaction: {
+      list: async () => [...openRequests.values()],
       answer: async (interactionId, answer) => {
         pendingAnswers.get(interactionId)?.(answer);
         pendingAnswers.delete(interactionId);
+        openRequests.delete(interactionId);
         emit({ type: "interaction-closed", id: interactionId });
       },
       dismiss: async (interactionId) => {
         pendingAnswers.get(interactionId)?.(undefined);
         pendingAnswers.delete(interactionId);
+        openRequests.delete(interactionId);
         emit({ type: "interaction-closed", id: interactionId });
       },
     },
@@ -733,6 +798,18 @@ export const createMockHost = (): Host => {
           if (plugins[i]!.locked !== undefined && row.enabled === false) {
             throw new HostError({ code: "ReloadError", message: `error [${id}]: "${id}" cannot be turned off: ${plugins[i]!.locked}`, subject: id });
           }
+          if (row.values !== undefined) {
+            const next = { ...configRows[id] };
+            for (const [key, value] of Object.entries(row.values)) {
+              if (value === null) delete next[key];
+              else next[key] = value;
+            }
+            configRows[id] = next;
+            plugins[i] = withConfig(plugins[i]!);
+            // Like the host: the transport needs every configurable plugin here, so the change applies after the reply.
+            setTimeout(() => emit({ type: "plugins-changed", plugins: plugins.slice() }), 300);
+            return { started: [], restarted: [], stopped: [], deferred: true };
+          }
           if (row.enabled === undefined) continue;
           if (row.enabled) {
             for (const other of plugins) {
@@ -752,6 +829,41 @@ export const createMockHost = (): Host => {
         emit({ type: "plugins-changed", plugins: plugins.slice() });
         const after = plugins.filter((plugin) => plugin.state !== "disabled").map((plugin) => plugin.id);
         return { started: after.filter((id) => !before.includes(id)), restarted: [], stopped: before.filter((id) => !after.includes(id)) };
+      },
+    },
+    ui: {
+      composition: async () => ui,
+      configure: async (rows, options) => {
+        await sleep(200);
+        const plugins = { ...ui.plugins };
+        const enabledIn = { ...ui.enabledIn };
+        const configIn = { ...ui.configIn };
+        const scope = options?.scope ?? "user";
+        for (const [id, row] of Object.entries(rows)) {
+          const next: { enabled?: boolean; config?: Record<string, unknown> } = { ...(plugins[id] as { enabled?: boolean; config?: Record<string, unknown> }) };
+          if (row.enabled !== undefined) {
+            if (row.enabled) delete next.enabled;
+            else next.enabled = false;
+            if (row.enabled) delete enabledIn[id];
+            else enabledIn[id] = scope;
+          }
+          if (row.values !== undefined) {
+            const config = { ...next.config };
+            for (const [key, value] of Object.entries(row.values)) {
+              if (value === null) delete config[key];
+              else config[key] = value;
+            }
+            if (Object.keys(config).length === 0) delete next.config;
+            else next.config = config;
+            if (next.config === undefined) delete configIn[id];
+            else configIn[id] = scope;
+          }
+          if (Object.keys(next).length === 0) delete plugins[id];
+          else plugins[id] = next;
+        }
+        ui = { ...ui, plugins, enabledIn, configIn };
+        emit({ type: "ui-changed", ui });
+        return ui;
       },
     },
     status: () => status,

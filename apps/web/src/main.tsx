@@ -1,25 +1,31 @@
-import { render } from "solid-js/web";
 import { connect, describeError } from "@lemma/client";
 import type { Host } from "@lemma/client";
-import { App } from "./app.tsx";
-import { installCodeCopy } from "./components/markdown.tsx";
 import { takeToken } from "./lib/token.ts";
-import { attach, reportError } from "./store.ts";
+import { preloadAppearance } from "./plugins/appearance.tsx";
+import { bundled } from "./plugins/index.ts";
+import { boot } from "./ui/boot.tsx";
 import "./styles.css";
 
 const start = async () => {
+  preloadAppearance();
   const token = takeToken();
+  const params = new URLSearchParams(location.search);
   let host: Host;
   // `?mock` in dev runs against an in-browser fake host (no backend needed).
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has("mock")) {
+  if (import.meta.env.DEV && params.has("mock")) {
     const { createMockHost } = await import("./mock.ts");
     host = createMockHost();
   } else {
     host = await connect({ url: location.href, token });
   }
-  attach(host);
+  // `?safe` runs the app as shipped, ignoring `ui` rows and UI files: the way back from a broken customization.
+  // The api for UI files loads only when one needs it, keeping it out of the app's own bundle.
+  const api = () => import("./ui/api.ts").then((module) => module.api);
+  await boot({ host, token, bundled, api, element: document.getElementById("root")!, safe: params.has("safe") });
 };
 
-installCodeCopy();
-render(() => <App />, document.getElementById("root")!);
-start().catch((error) => reportError(new Error(describeError(error)), "Could not start"));
+start().catch((error) => {
+  // Nothing may be rendered to report it, so say it plainly in the page.
+  console.error(error);
+  document.getElementById("root")!.textContent = `Lemma could not start: ${describeError(error)}`;
+});

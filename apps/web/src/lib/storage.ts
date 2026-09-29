@@ -15,3 +15,12 @@ export const save = (key: string, value: string | undefined): void => {
     /* ignore */
   }
 };
+
+/** A stored JSON value, or `fallback` when absent or unreadable. */
+export const loadJson = <A>(key: string, fallback: A): A => {
+  try {
+    return JSON.parse(load(key) ?? "") as A;
+  } catch {
+    return fallback;
+  }
+};

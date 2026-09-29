@@ -2,9 +2,19 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-j
 import type { JSX } from "solid-js";
 import type { DirectoryEntry } from "@lemma/contracts";
 import { Portal } from "solid-js/web";
-import { knownProjects } from "../model/prefs.ts";
-import { openDialog, openProject, reportError, state, workspaceApi } from "../store.ts";
-import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "./icons.tsx";
+import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "../components/icons.tsx";
+import { Actions, Client, Dialogs, Layers, Notify, Slots, Workspace } from "../ui/contracts.ts";
+import type { ClientService, DialogsService, NotifyService, WorkspaceService } from "../ui/contracts.ts";
+import { defineUiPlugin } from "../ui/define.ts";
+
+const DIALOG = "add-project";
+
+interface Deps {
+  readonly client: ClientService;
+  readonly workspace: WorkspaceService;
+  readonly notify: NotifyService;
+  readonly dialogs: DialogsService;
+}
 
 type Row =
   | { readonly kind: "recent"; readonly path: string }
@@ -30,7 +40,8 @@ const Highlighted = (props: { name: string; matches: readonly number[] }): JSX.E
  * highlighted folder, Backspace after a slash goes up, Enter opens. A name
  * that matches nothing can be created as a new folder.
  */
-export function AddProjectDialog() {
+function AddProjectDialog(props: { deps: Deps }) {
+  const { client, workspace, notify, dialogs } = props.deps;
   const [value, setValue] = createSignal("");
   const [listing, setListing] = createSignal<{ parent: string; entries: readonly DirectoryEntry[]; truncated: boolean }>();
   const [active, setActive] = createSignal(0);
@@ -46,7 +57,7 @@ export function AddProjectDialog() {
 
   /** The part after the last slash: what the listing is filtered by. */
   const needle = () => value().slice(value().lastIndexOf("/") + 1);
-  const recents = createMemo(() => knownProjects(state.info?.cwd, state.sessions, state.projects));
+  const recents = workspace.projects;
 
   const rows = createMemo((): Row[] => {
     const current = listing();
@@ -61,12 +72,12 @@ export function AddProjectDialog() {
     return out;
   });
 
-  const close = () => openDialog(undefined);
+  const close = () => dialogs.open(undefined);
   const refresh = async (typed: string) => {
     const id = ++request;
     setLoading(true);
     try {
-      const next = await workspaceApi().browse(typed);
+      const next = await workspace.api.browse(typed);
       if (id !== request) return;
       setListing(next);
       setActive(0);
@@ -98,17 +109,17 @@ export function AddProjectDialog() {
 
   const open = async (path: string) => {
     setBusy(true);
-    const opened = await openProject(path);
+    const opened = await workspace.open(path);
     setBusy(false);
     if (opened) close();
   };
   const create = async (path: string) => {
     setBusy(true);
     try {
-      const status = await workspaceApi().createDirectory(path);
-      if (await openProject(status.path)) close();
+      const status = await workspace.api.createDirectory(path);
+      if (await workspace.open(status.path)) close();
     } catch (error) {
-      reportError(error, "Could not create the folder");
+      notify.report(error, "Could not create the folder");
     } finally {
       setBusy(false);
     }
@@ -185,12 +196,12 @@ export function AddProjectDialog() {
     // Learn the host user's home, then start beside the host's project.
     let userHome: string | undefined;
     try {
-      userHome = (await workspaceApi().browse("~/")).parent;
+      userHome = (await workspace.api.browse("~/")).parent;
       setHome(userHome);
     } catch {
       /* absolute paths still work */
     }
-    const cwd = state.info?.cwd;
+    const cwd = client.info()?.cwd;
     initial = cwd === undefined ? "~/" : withSlash(shorten(cwd.slice(0, cwd.lastIndexOf("/")) || "/", userHome));
     update(initial, true);
     input.setSelectionRange(initial.length, initial.length);
@@ -341,3 +352,33 @@ export function AddProjectDialog() {
     </Portal>
   );
 }
+
+/** Pick a folder on the host to start chats in. */
+export default defineUiPlugin({
+  id: "add-project",
+  requires: { client: Client, workspace: Workspace, notify: Notify, dialogs: Dialogs, slots: Slots },
+  setup: (deps, plugin) => {
+    const { dialogs, slots } = deps;
+    plugin.onCleanup(
+      slots.add(Layers, {
+        id: DIALOG,
+        component: () => (
+          <Show when={dialogs.current() === DIALOG}>
+            <AddProjectDialog deps={deps} />
+          </Show>
+        ),
+      }),
+    );
+    plugin.onCleanup(
+      slots.add(Actions, {
+        id: "add-project.open",
+        order: 6,
+        title: "Add project…",
+        category: "Projects",
+        keywords: ["open folder", "directory"],
+        icon: FolderPlusIcon,
+        run: () => dialogs.open(DIALOG),
+      }),
+    );
+  },
+});

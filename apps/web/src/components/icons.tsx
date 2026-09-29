@@ -94,6 +94,13 @@ export const MenuIcon = () => (
     <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
   </Icon>
 );
+/** Lines of a log, each with its marker. */
+export const LogIcon = () => (
+  <Icon>
+    <path d="M6 4.5h7M6 8h7M6 11.5h7M3 4.5h.5M3 8h.5M3 11.5h.5" />
+  </Icon>
+);
+
 export const RefreshIcon = () => (
   <Icon>
     <path d="M13 8a5 5 0 11-1.5-3.5M13 2.5V5h-2.5" />

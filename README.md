@@ -9,7 +9,7 @@ plugin that can be replaced by id. Plugins are composed by the core in
 | [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
 | [`plugins/*`](plugins)                                  | The default plugins, one README each                                                     |
 | [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                |
-| [`apps/web`](apps/web)                                  | The web client, served by the `transport` plugin                                         |
+| [`apps/web`](apps/web/README.md)                        | The web client: plugins on the same kernel, each replaceable; served by `transport`      |
 | [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents    |
 
 ```sh
@@ -27,7 +27,10 @@ has one provider), and the `host` and `transport` plugins, plus everything they
 need, cannot be turned off.
 Plugin files in `~/.lemma/plugins/` or
 `<project>/.lemma/plugins/` load automatically and shadow a bundled plugin with
-the same id. Project files and plugins can run code and redirect credentials, so
+the same id. The web app is composed the same way from its own plugins, which
+`"ui"` rows and files in `~/.lemma/ui/` change: see [its README](apps/web/README.md).
+A plugin's config Schema is also its settings form, on the Plugins page and
+through `lemma plugins config`. Project files and plugins can run code and redirect credentials, so
 they load only for projects listed (or under a directory listed) in
 `"trustedProjects"` in `~/.lemma/config.jsonc`; otherwise the host warns and
 ignores them. Providers come from pi-ai (`plugins/llm-pi-ai`): log in from the

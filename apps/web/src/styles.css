@@ -2416,77 +2416,170 @@ button.strip-chip:hover:not(:disabled),
 .plugin-restart:disabled {
   opacity: 1;
 }
-.events-dialog {
-  width: min(880px, 94vw);
+.log-view {
+  /* Type colours: the kind of thing each line is about. */
+  --log-session: #4b8fe8;
+  --log-turn: var(--ok);
+  --log-interaction: var(--warn);
+  --log-host: #9b7be8;
+  --log-conn: #1fa9bf;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
-.events-bar {
+.log-bar,
+.log-tools {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
 }
-.events-bar .field {
-  flex: 1;
-  height: 30px;
-}
-.events-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.events-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 60vh;
-  overflow-y: auto;
-  font: 12px/1.45 var(--font-mono);
-}
-.events-row {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-  padding: 2px 6px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  text-align: left;
-  font: inherit;
+.log-stream {
+  font-weight: 600;
   color: var(--text);
 }
-.events-row:hover {
+.log-meta {
+  color: var(--text-3);
+}
+.log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.log-dot-connected {
+  background: var(--ok);
+}
+.log-dot-closed {
+  background: var(--err);
+}
+.log-prompt {
+  color: var(--text-3);
+}
+.log-filter {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+.log-toggle {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--text-3);
+  font: inherit;
+}
+.log-toggle:hover,
+.log-toggle.on {
+  color: var(--text);
+}
+.log-toggle.on {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.log-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.log-line {
+  display: grid;
+  grid-template-columns: 92px 58px 150px 110px 48px minmax(0, 1fr);
+  gap: 12px;
+  padding: 1px 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: default;
+}
+.log-line:not(.log-head):hover {
   background: var(--bg-hover);
 }
-.events-time {
+.log-line.open {
+  background: var(--bg-active);
+}
+.log-line > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
   color: var(--text-3);
-  flex: none;
 }
-.events-type {
+.log-time,
+.log-gap,
+.log-size,
+.log-session {
+  color: var(--text-3);
+}
+.log-gap,
+.log-size {
+  text-align: right;
+}
+.log-message {
   color: var(--text-2);
-  flex: none;
-  width: 118px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.events-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.log-line.is-session .log-type {
+  color: var(--log-session);
 }
-.events-json {
-  margin: 2px 0 6px 24px;
-  padding: 6px 8px;
+.log-line.is-turn .log-type {
+  color: var(--log-turn);
+}
+.log-line.is-interaction .log-type {
+  color: var(--log-interaction);
+}
+.log-line.is-host .log-type {
+  color: var(--log-host);
+}
+.log-line.is-conn .log-type,
+.log-line.is-conn .log-message {
+  color: var(--log-conn);
+}
+.log-line.is-delta {
+  opacity: 0.6;
+}
+.log-line.is-notice-warning .log-type,
+.log-line.is-notice-warning .log-message {
+  color: var(--warn);
+}
+.log-line.is-notice-error .log-type,
+.log-line.is-notice-error .log-message {
+  color: var(--err);
+}
+.log-json {
+  margin: 0;
+  padding: 6px 12px 8px 174px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font: inherit;
+  white-space: pre;
+}
+.log-empty {
+  padding: 8px 12px;
+  color: var(--text-3);
+}
+.log-follow {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  border: 0;
+  background: var(--bg-active);
+  color: var(--text);
+  font: inherit;
+  padding: 3px 8px;
   border-radius: 4px;
-  background: var(--bg-sunk);
-  max-height: 300px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 11.5px;
 }
 .choices {
   display: flex;
@@ -2635,6 +2728,314 @@ button.strip-chip:hover:not(:disabled),
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+/* ---------------------------------------------------------------- plugins inspector */
+/* Two panes divided by hairlines, like DevTools: no boxes, no raised surfaces. */
+.inspector {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.inspector > .callout {
+  margin-bottom: 10px;
+}
+.inspector-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-filter {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  color: var(--text-3);
+}
+.inspector-filter input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+/* Both panes run to the bottom of the screen and scroll on their own, whatever is selected. */
+.inspector-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+}
+.inspector-table {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  outline: none;
+}
+.inspector-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+.inspector-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 130px 128px;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  cursor: default;
+}
+.inspector-row:not(.inspector-head):hover {
+  background: var(--bg-hover);
+}
+.inspector-row.selected,
+.inspector-table:focus-visible .inspector-row.selected {
+  background: var(--bg-active);
+}
+.inspector-row.off .plugin-id {
+  color: var(--text-3);
+}
+.inspector-head {
+  min-height: 26px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.inspector-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.inspector-name .plugin-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-state {
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.state-text-failed {
+  color: var(--err);
+}
+.inspector-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.inspector-table .plugin-confirm {
+  margin: 0;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+.inspector-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+.inspector-detail-head h2 {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+}
+.inspector-tabs {
+  display: flex;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.inspector-tabs button {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.inspector-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+.inspector-tab-body,
+.inspector-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+.inspector-facts {
+  margin: 0;
+}
+.inspector-tab-body .plugin-fault,
+.inspector-tab-body .config-form {
+  margin-left: 0;
+}
+.inspector-tab-body .plugin-fault {
+  margin-top: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+.inspector-tab-body .config-form {
+  border-top: 0;
+  padding-top: 0;
+}
+.inspector-tab-body .config-control {
+  width: 170px;
+}
+.inspector-wiring section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.inspector-wiring section + section {
+  margin-top: 12px;
+}
+.inspector-wiring h3 {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.inspector-wiring ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+}
+.inspector-wiring p {
+  margin: 0;
+}
+.capability {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.link-button.inspector-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.inspector-raw summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.inspector-raw pre {
+  margin: 6px 0 0;
+  font-size: 12px;
+  overflow: auto;
+}
+.inspector-faults {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inspector-fault-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.inspector-result {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  text-align: left;
+  gap: 8px;
+}
+@media (max-width: 980px) {
+  .inspector-split {
+    grid-template-columns: 1fr;
+  }
+  .inspector-detail {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* A plugin's settings, projected from its config Schema, under its details. */
+.config-form {
+  display: flex;
+  flex-direction: column;
+  margin: 10px 0 4px 26px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.config-field {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+.config-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.config-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.config-key {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.config-desc {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.config-error {
+  font-size: 12.5px;
+  color: var(--err);
+}
+.config-control {
+  flex: none;
+  width: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.config-control .field {
+  height: 30px;
+}
+.config-note {
+  margin: 6px 0 0;
+}
+.problems {
+  margin: 0;
+  padding-left: 18px;
 }
 .plugin-actions {
   display: flex;
@@ -3662,6 +4063,8 @@ button {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 .settings-head {
   position: sticky;
@@ -3679,6 +4082,8 @@ button {
   color: var(--text-3);
 }
 .settings-content {
+  flex: none;
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 16px 24px 64px;
@@ -3686,16 +4091,12 @@ button {
   flex-direction: column;
   gap: 24px;
 }
-.settings-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-}
-.settings-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+/* A section with its own body (the plugins inspector) takes the whole remaining screen and scrolls inside it. */
+.settings-content.wide {
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 1280px;
+  padding-bottom: 0;
 }
 .settings-intro,
 .settings-empty {

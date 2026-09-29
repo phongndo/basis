@@ -12,6 +12,8 @@
   "dependencies": {
     "@lemma/client": "workspace:*",
     "@lemma/contracts": "workspace:*",
+    "@lemma/core": "workspace:*",
+    "@lemma/plugin-host": "workspace:*",
     "dompurify": "3.4.16",
     "effect": "3.22.2",
     "marked": "18.0.14",

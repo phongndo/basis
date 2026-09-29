@@ -110,3 +110,59 @@ export const replaces = (plugins: readonly PluginStatus[], id: string): string[]
   const provides = providesOf(plugins, id);
   return plugins.filter((plugin) => plugin.id !== id && plugin.enabled && plugin.provides.some((key) => provides.includes(key))).map((plugin) => plugin.id);
 };
+
+/** Which composition a plugin belongs to: the host's, or the web app's. */
+export type PluginKind = "host" | "web";
+
+export interface KindedPlugin {
+  readonly kind: PluginKind;
+  readonly plugin: PluginStatus;
+}
+
+const STATES: Readonly<Record<string, (plugin: PluginStatus) => boolean>> = {
+  running: (plugin) => plugin.state === "active",
+  failed: (plugin) => plugin.state === "failed",
+  off: (plugin) => !plugin.enabled,
+  halted: (plugin) => plugin.enabled && plugin.haltedBy !== undefined,
+  locked: (plugin) => plugin.locked !== undefined,
+  configurable: (plugin) => (plugin.configFields?.length ?? 0) > 0,
+  faulted: (plugin) => (plugin.faults?.length ?? 0) > 0 || plugin.fault !== undefined,
+};
+
+/** The filter words the plugins table understands, for its placeholder and help. */
+export const PLUGIN_FILTERS = [
+  "is:running",
+  "is:failed",
+  "is:off",
+  "is:halted",
+  "is:locked",
+  "is:configurable",
+  "is:faulted",
+  "kind:host",
+  "kind:web",
+  "source:user",
+];
+
+/**
+ * A plugins table filter: `is:<state>`, `kind:host|web`, `source:bundled|user|project`,
+ * and words matched against `pluginText`; `-` before any term excludes it. Every term must hold.
+ */
+export const matchPlugins = (entries: readonly KindedPlugin[], query: string): KindedPlugin[] => {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const test = (term: string, { kind, plugin }: KindedPlugin): boolean => {
+    const [key, value] = term.includes(":") ? [term.slice(0, term.indexOf(":")), term.slice(term.indexOf(":") + 1)] : [undefined, term];
+    if (key === "is") return STATES[value]?.(plugin) ?? false;
+    if (key === "kind") return kind === value;
+    if (key === "source") return plugin.source === value;
+    return `${pluginText(plugin)} ${kind}`.toLowerCase().includes(term);
+  };
+  return entries.filter((entry) => terms.every((term) => (term.startsWith("-") && term.length > 1 ? !test(term.slice(1), entry) : test(term, entry))));
+};
+
+/** Plugins requiring `key`, by id. */
+export const usersOf = (plugins: readonly PluginStatus[], key: string): string[] =>
+  plugins.filter((plugin) => plugin.requires.includes(key)).map((plugin) => plugin.id);
+
+/** The plugin providing `key`: the enabled one when several do. */
+export const providerOf = (plugins: readonly PluginStatus[], key: string): PluginStatus | undefined =>
+  plugins.find((plugin) => plugin.enabled && plugin.provides.includes(key)) ?? plugins.find((plugin) => plugin.provides.includes(key));
