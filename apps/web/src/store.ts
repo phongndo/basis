@@ -12,7 +12,7 @@ import { applyDelta, emptyLive, endTurn, reconcileLive, settleStep } from "./mod
 import type { LiveState } from "./model/live.ts";
 import { branchSlug } from "./model/format.ts";
 import { DEFAULT_THINKING, clampThinking, resolveModel } from "./model/prefs.ts";
-import { resolveLeaf, upsertSession } from "./model/sessions.ts";
+import { resolveLeaf, trackTurn, upsertSession } from "./model/sessions.ts";
 import { createProjector, pendingToolCalls } from "./model/transcript.ts";
 
 /**
@@ -224,6 +224,9 @@ const updateLive = (sessionId: string, update: (state: LiveState) => LiveState):
   if (next !== current) setLive({ ...live(), [sessionId]: next });
 };
 
+/** The last ended turn per session, so a late `turn-started` cannot mark it running again (see `trackTurn`). */
+let endedTurns: Readonly<Record<string, string>> = {};
+
 export const onEvent = (event: HostEvent): void => {
   switch (event.type) {
     case "session-appended": {
@@ -241,13 +244,18 @@ export const onEvent = (event: HostEvent): void => {
     case "delta":
       updateLive(event.sessionId, (s) => applyDelta(s, event.turnId, event.stepId, event.event));
       return;
-    case "turn-started":
-      if (!state.running.includes(event.sessionId)) setState("running", (running) => [...running, event.sessionId]);
+    case "turn-started": {
+      const next = trackTurn({ running: state.running, ended: endedTurns }, event);
+      setState("running", next.running);
       return;
-    case "turn-ended":
-      setState("running", (running) => running.filter((id) => id !== event.sessionId));
+    }
+    case "turn-ended": {
+      const next = trackTurn({ running: state.running, ended: endedTurns }, event);
+      endedTurns = next.ended;
+      setState("running", next.running);
       updateLive(event.sessionId, (s) => endTurn(s, event.turnId));
       return;
+    }
     case "interaction":
       setState("interactions", (open) => [...open.filter((request) => request.id !== event.request.id), event.request]);
       return;

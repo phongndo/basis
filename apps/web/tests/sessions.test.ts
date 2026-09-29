@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionInfo } from "@basis/contracts";
-import { groupSessions, resolveLeaf, upsertSession } from "../src/model/sessions.ts";
+import { groupSessions, resolveLeaf, trackTurn, upsertSession } from "../src/model/sessions.ts";
 
 const info = (id: string, cwd: string, updatedAt: number, lastSeq = 0): SessionInfo => ({ id, cwd, createdAt: 0, updatedAt, lastSeq });
 const ev = (id: string, parent: string | null, seq: number): SessionEvent => ({ seq, id, parent, at: seq, data: { type: "title", title: id } });
@@ -39,5 +39,24 @@ describe("resolveLeaf", () => {
     expect(resolveLeaf(events, "zzz")).toBe("4");
     expect(resolveLeaf(events, undefined)).toBe("4");
     expect(resolveLeaf([], "1")).toBeUndefined();
+  });
+});
+
+describe("trackTurn", () => {
+  const start = (sessionId: string, turnId: string) => ({ type: "turn-started" as const, sessionId, turnId });
+  const end = (sessionId: string, turnId: string) => ({ type: "turn-ended" as const, sessionId, turnId });
+  const idle = { running: [], ended: {} };
+
+  it("marks a session running from start to end", () => {
+    const started = trackTurn(idle, start("s", "t1"));
+    expect(started.running).toEqual(["s"]);
+    expect(trackTurn(started, end("s", "t1")).running).toEqual([]);
+  });
+
+  it("stays idle when a turn's end overtakes its start", () => {
+    const ended = trackTurn(idle, end("s", "t1"));
+    expect(trackTurn(ended, start("s", "t1")).running).toEqual([]);
+    // The next turn still counts.
+    expect(trackTurn(trackTurn(ended, start("s", "t1")), start("s", "t2")).running).toEqual(["s"]);
   });
 });

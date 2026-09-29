@@ -51,3 +51,27 @@ export const resolveLeaf = (events: readonly SessionEvent[], leaf: string | unde
 };
 
 export const sessionTitle = (session: SessionInfo | undefined): string => session?.title?.trim() || "New session";
+
+export interface TurnTracking {
+  /** Sessions with a turn in progress. */
+  readonly running: readonly string[];
+  /** The last ended turn per session. */
+  readonly ended: Readonly<Record<string, string>>;
+}
+
+/**
+ * Running sessions after a live turn event. The host delivers `turn-started`
+ * and `turn-ended` on separate queues, so an end can overtake its own start;
+ * a start for the turn that already ended is ignored.
+ */
+export const trackTurn = (
+  tracking: TurnTracking,
+  event: { readonly type: "turn-started" | "turn-ended"; readonly sessionId: string; readonly turnId: string },
+): TurnTracking => {
+  const { running, ended } = tracking;
+  if (event.type === "turn-ended") {
+    return { running: running.filter((id) => id !== event.sessionId), ended: { ...ended, [event.sessionId]: event.turnId } };
+  }
+  if (ended[event.sessionId] === event.turnId || running.includes(event.sessionId)) return tracking;
+  return { running: [...running, event.sessionId], ended };
+};
