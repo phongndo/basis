@@ -41,9 +41,13 @@ export const clampThinking = (model: ModelInfo | undefined, preferred: ThinkingL
   return levels.find((level) => order.indexOf(level) > rank) ?? levels.filter((level) => order.indexOf(level) < rank).at(-1);
 };
 
-/** The stored model if still available; otherwise undefined (the host picks its default). */
+/**
+ * The stored model if still available; otherwise the first available one,
+ * which is what the host runs a turn on when none is named (and no
+ * `agent.defaultModel` is set), so the composer shows the model a turn will use.
+ */
 export const resolveModel = (models: readonly ModelInfo[], stored: string | undefined): ModelInfo | undefined =>
-  stored === undefined ? undefined : models.find((model) => model.ref === stored);
+  (stored === undefined ? undefined : models.find((model) => model.ref === stored)) ?? models[0];
 
 /** Projects to offer: the host's directory, every session's, and added ones, most recently used first. */
 export const knownProjects = (

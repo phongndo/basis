@@ -13,7 +13,7 @@ import {
   truncateLines,
 } from "../src/model/format.ts";
 import { branchSlug, contextSize } from "../src/model/format.ts";
-import { clampThinking, filterModels, knownProjects, thinkingLevels } from "../src/model/prefs.ts";
+import { clampThinking, filterModels, knownProjects, resolveModel, thinkingLevels } from "../src/model/prefs.ts";
 import { usage } from "./fixtures.ts";
 
 describe("format", () => {
@@ -87,6 +87,14 @@ describe("prefs", () => {
     contextWindow: 1,
     maxTokens: 1,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+  it("shows the chosen model, else the one the host would run", () => {
+    const models = [model("opencode-go/glm", []), model("opencode-go/kimi", [])];
+    expect(resolveModel(models, "opencode-go/kimi")?.ref).toBe("opencode-go/kimi");
+    // Nothing chosen yet, or a choice whose provider is gone: the first available, as the host picks.
+    expect(resolveModel(models, undefined)?.ref).toBe("opencode-go/glm");
+    expect(resolveModel(models, "anthropic/claude")?.ref).toBe("opencode-go/glm");
+    expect(resolveModel([], undefined)).toBeUndefined();
   });
   it("filters and groups models by provider", () => {
     const groups = filterModels([model("a/one", []), model("b/two", []), model("a/three", [])], "a o");
