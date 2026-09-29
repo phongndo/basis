@@ -38,11 +38,13 @@ import {
   answerCommand,
   cancelCommand,
   dismissCommand,
+  doCommand,
   eventsCommand,
   loginCommand,
   logoutCommand,
   modelsCommand,
   providersCommand,
+  listCommandsCommand,
   questionsCommand,
   runCommand,
 } from "./live.ts";
@@ -78,11 +80,16 @@ Sessions and turns
     --cwd <dir>                  Directory for a new session
   cancel <id>                    Cancel the session's running turn
 
+Commands (what the web app's command palette runs; plugins add them)
+  do                             List commands: id, title, category, and the plugin that added it
+  do <command>                   Run one in the current directory (or --cwd); --session <id> for its session
+                                 Its questions are answered like a login's (see --questions, --answer)
+
 Questions the host asks (logins, tools that confirm)
   questions                      Open questions, with their ids
   answer <question> <value>      Answer one: yes/no, text, or an option (value, label, or number)
   dismiss <question>             Dismiss one
-    While run --follow, login, or events --questions … is attached:
+    While run --follow, login, do, or events --questions … is attached:
     --questions ask|ignore|dismiss   ask at the terminal (default when there is one), leave them
                                      to another client such as the web app (default otherwise), or dismiss
     --answer <value>               Answer the next question with this (repeatable, in order)
@@ -180,6 +187,9 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
     case "cancel":
       if (sub === undefined) return usage("cancel needs a session id");
       return extra(2) ?? cancelCommand(sub);
+    case "do":
+      if (sub === undefined) return listCommandsCommand;
+      return extra(2) ?? doCommand(sub);
     case "questions":
       return extra(1) ?? questionsCommand;
     case "answer":

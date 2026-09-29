@@ -15,7 +15,7 @@ import type {
 import type { HostRpcClient } from "@basis/client";
 import { CliError, ExitCode, usage } from "./command.ts";
 import type { Command, Connection, Io, Options, Output } from "./command.ts";
-import { formatModels, formatProviders, formatQuestions, formatTurnResult } from "./format.ts";
+import { formatCommands, formatModels, formatProviders, formatQuestions, formatTurnResult } from "./format.ts";
 
 /**
  * Commands that act on the host and, with `--follow`, watch it: they
@@ -357,3 +357,23 @@ export const logoutCommand =
   (provider: string): Command =>
   ({ rpc }) =>
     Effect.as(rpc.Llm.Logout({ provider }), { json: { loggedOut: provider }, text: `logged out of ${provider}` });
+
+/** `basis do`: lists the commands plugins registered; `basis do <id>` runs one, answering its questions per the policy. */
+export const listCommandsCommand: Command = ({ rpc }) => Effect.map(rpc.Command.List(), (commands) => ({ json: commands, text: formatCommands(commands) }));
+
+export const doCommand =
+  (id: string): Command =>
+  (connection, io, options) =>
+    Effect.gen(function* () {
+      const rpc = yield* connection.live;
+      const answer = questionHandler(rpc, io, options);
+      yield* subscribe(rpc, (event) =>
+        Effect.gen(function* () {
+          if (event.type === "notice") io.err(noticeLine(event));
+          if (event.type === "interaction") yield* answer(event.request);
+        }),
+      );
+      const cwd = resolve(io.cwd, options.cwd ?? ".");
+      const result = yield* rpc.Command.Run({ id, cwd, ...(options.session === undefined ? {} : { sessionId: options.session }) });
+      return { json: { command: id, ...result }, text: result.message ?? `${id}: done` };
+    });

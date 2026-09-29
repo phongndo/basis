@@ -1,5 +1,6 @@
 import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@basis/contracts";
 import type {
+  CommandInfo,
   DirectoryListing,
   GitBranch,
   HostInfo,
@@ -368,6 +369,11 @@ export const formatProviders = (providers: readonly ProviderInfo[]): string =>
       provider.auth.map((auth) => auth.type).join(", "),
     ]),
   ]);
+
+export const formatCommands = (commands: readonly CommandInfo[]): string =>
+  commands.length === 0
+    ? "No commands."
+    : pad([["command", "title", "category", "from"], ...commands.map((command) => [command.id, command.title, command.category ?? "", command.source])]);
 
 export const formatQuestions = (questions: readonly InteractionRequest[]): string =>
   questions.length === 0

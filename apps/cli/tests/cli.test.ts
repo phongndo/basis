@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
@@ -198,6 +198,28 @@ describe("against a running host", () => {
     expect(JSON.parse((await invoke(["plugins", "restart", "project-context", "--json"], home)).out)).toEqual({ restarted: "project-context" });
     expect(await invoke(["reload"], home)).toMatchObject({ code: ExitCode.ok, out: "nothing changed" });
   });
+
+  test("do lists the commands plugins registered and runs one, answering its questions", async () => {
+    const listed = JSON.parse((await invoke(["do", "--json"], home)).out).map((command: { id: string }) => command.id);
+    expect(listed).toEqual(expect.arrayContaining(["host.reload", "host.restart-plugin", "llm.logout", "workspace.checkout", "workspace.new-branch"]));
+    expect(await invoke(["do", "host.reload"], home)).toMatchObject({ code: ExitCode.ok, out: "Config reloaded; nothing changed" });
+
+    const repo = await mkdtemp(join(tmpdir(), "basis-cli-repo-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"], { cwd: repo });
+      expect(await invoke(["do", "workspace.new-branch", "--answer", "topic"], home, repo)).toMatchObject({
+        code: ExitCode.ok,
+        out: "Created and switched to topic",
+      });
+      const dismissed = await invoke(["do", "workspace.checkout", "--questions", "dismiss", "--json"], home, repo);
+      expect(dismissed.code).toBe(ExitCode.failed);
+      expect(JSON.parse(dismissed.err.split("\n").at(-1)!).error).toMatchObject({ code: "Cancelled", subject: "workspace.checkout" });
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+    expect(JSON.parse((await invoke(["do", "nope", "--json"], home)).err).error).toMatchObject({ code: "NotFound", subject: "nope" });
+  }, 30_000);
 
   test("a rejected token fails instead of waiting", async () => {
     const other = await mkdtemp(join(tmpdir(), "basis-cli-"));
