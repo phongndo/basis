@@ -20,6 +20,7 @@ import {
 } from "../store.ts";
 import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, KeyIcon, SearchIcon, SendIcon, StarIcon, StopIcon, XIcon } from "./icons.tsx";
 import { Popover } from "./popover.tsx";
+import type { Placement } from "./popover.tsx";
 import { WorkspaceBar } from "./workspace-bar.tsx";
 
 /** The formats every provider accepts; others (SVG, HEIC, TIFF…) would fail every later request in the session. */
@@ -224,8 +225,13 @@ export function Composer() {
         />
         <div class="composer-bar">
           <div class="composer-controls">
-            <ModelPicker />
-            <ThinkingPicker />
+            <ModelPicker
+              afterPick={focusPrompt}
+              controller={(handle) => {
+                openPicker = handle.open;
+              }}
+            />
+            <ThinkingPicker afterPick={focusPrompt} />
           </div>
           <div class="composer-actions">
             <button type="button" class="icon-button" data-tip="Attach images" aria-label="Attach images" onClick={() => fileInput.click()}>
@@ -273,7 +279,7 @@ const LEVEL_LABEL: Record<ThinkingLevel, string> = {
 };
 
 /** The selected model's own reasoning levels; the choice is remembered per model. */
-function ThinkingPicker() {
+export function ThinkingPicker(props: { placement?: Placement; afterPick?: () => void }) {
   const levels = createMemo(() => thinkingLevels(selectedModel()));
   return (
     <Show when={levels().length > 0}>
@@ -282,7 +288,7 @@ function ThinkingPicker() {
         label="Reasoning"
         tip={`Reasoning for ${selectedModel()?.name ?? "this model"}`}
         triggerClass="select-chip"
-        placement="top-start"
+        placement={props.placement ?? "top-start"}
         trigger={
           <>
             <BrainIcon />
@@ -303,7 +309,7 @@ function ThinkingPicker() {
                   onClick={() => {
                     chooseThinking(level);
                     close();
-                    focusPrompt();
+                    props.afterPick?.();
                   }}
                 >
                   <span class="menu-check">
@@ -324,7 +330,8 @@ function ThinkingPicker() {
 
 type Rail = "favorites" | "all" | string;
 
-function ModelPicker() {
+/** Picks the preferred model, shared by the composer and settings. */
+export function ModelPicker(props: { placement?: Placement; afterPick?: () => void; controller?: (handle: { readonly open: () => void }) => void }) {
   const [query, setQuery] = createSignal("");
   const [rail, setRail] = createSignal<Rail>("all");
   const providerName = (id: string) => state.providers.find((provider) => provider.id === id)?.name ?? id;
@@ -340,7 +347,7 @@ function ModelPicker() {
   const pick = (ref: string, close: () => void) => {
     chooseModel(ref);
     close();
-    focusPrompt();
+    props.afterPick?.();
   };
   const railKeys = (event: KeyboardEvent) => {
     if (query() !== "" || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
@@ -355,16 +362,14 @@ function ModelPicker() {
       label="Model"
       tip={selectedModel() === undefined ? "Model" : `${providerName(selectedModel()!.provider)} · ${selectedModel()!.id}`}
       triggerClass="select-chip"
-      placement="top-start"
+      placement={props.placement ?? "top-start"}
       menuClass="model-menu"
       onOpen={() => {
         setQuery("");
         const current = selectedModel();
         setRail(favoriteModels().length > 0 && (current === undefined || favoriteModels().includes(current.ref)) ? "favorites" : (current?.provider ?? "all"));
       }}
-      controller={(handle) => {
-        openPicker = handle.open;
-      }}
+      {...(props.controller === undefined ? {} : { controller: props.controller })}
       trigger={
         <>
           <span class="picker-label">{label()}</span>
