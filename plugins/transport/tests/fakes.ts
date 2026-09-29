@@ -20,6 +20,7 @@ import {
   Sessions,
   TurnEnded,
   TurnStarted,
+  UiChanged,
   Workspace,
   WorkspaceError,
 } from "@lemma/contracts";
@@ -33,6 +34,7 @@ import type {
   PluginInfo,
   SessionEvent,
   SessionInfo,
+  UiComposition,
   WorkspaceStatus,
 } from "@lemma/contracts";
 import { definePlugin, Events, Hooks, ReloadError, Diagnostic } from "@lemma/core";
@@ -239,6 +241,8 @@ export interface ControlHolder {
   readonly restarted: string[];
   /** Plugins `configure` turned off, with the scope written. */
   readonly off: Record<string, ConfigScope>;
+  /** The web app's rows and files; `configureUi` merges rows in and publishes it, as the host app does. */
+  ui: UiComposition;
 }
 
 /** Delegates to the test's core once it exists, as the host app does with its loader. */
@@ -292,6 +296,15 @@ export const fakeHostControl = (holder: ControlHolder) =>
               yield* changed;
               const ids = Object.keys(rows);
               return { started: [], stopped: ids.filter((id) => holder.off[id]), restarted: [], unchanged: [], failed: [], interrupted: 0, faults: [] };
+            }),
+          ui: Effect.sync(() => holder.ui),
+          configureUi: (rows) =>
+            Effect.gen(function* () {
+              const plugins = { ...holder.ui.plugins };
+              for (const [id, row] of Object.entries(rows)) plugins[id] = { ...plugins[id], ...(row.enabled === undefined ? {} : { enabled: row.enabled }) };
+              holder.ui = { ...holder.ui, plugins };
+              yield* events.publish(UiChanged, holder.ui);
+              return holder.ui;
             }),
         };
       }),

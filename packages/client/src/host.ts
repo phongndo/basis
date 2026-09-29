@@ -10,8 +10,9 @@ import type {
   HostEvent,
   HostInfo,
   InteractionAnswer,
+  InteractionRequest,
   ModelInfo,
-  PluginRow,
+  PluginChange,
   PluginStatus,
   PromptContent,
   ProviderInfo,
@@ -19,6 +20,7 @@ import type {
   SessionEvent,
   SessionInfo,
   TurnOptions,
+  UiComposition,
   WorkspaceStatus,
 } from "@lemma/contracts";
 import { makeHostRpc, rpcUrl } from "./rpc.ts";
@@ -66,6 +68,8 @@ export interface Host {
     readonly logout: (provider: string) => Promise<void>;
   };
   readonly interaction: {
+    /** Questions still waiting on an answer. */
+    readonly list: () => Promise<readonly InteractionRequest[]>;
     readonly answer: (id: string, answer: InteractionAnswer) => Promise<void>;
     readonly dismiss: (id: string) => Promise<void>;
   };
@@ -90,7 +94,13 @@ export interface Host {
     readonly restartPlugin: (pluginId: string, options?: { force?: boolean }) => Promise<void>;
     readonly reload: () => Promise<ReloadResult>;
     /** Write plugin rows into the user (default) or project config file and apply them; a rejected change is undone. */
-    readonly configure: (plugins: Readonly<Record<string, PluginRow>>, options?: { scope?: ConfigScope }) => Promise<ReloadResult>;
+    readonly configure: (plugins: Readonly<Record<string, PluginChange>>, options?: { scope?: ConfigScope }) => Promise<ReloadResult>;
+  };
+  readonly ui: {
+    /** The web app's `ui` rows and UI files, which it plans and runs itself. */
+    readonly composition: () => Promise<UiComposition>;
+    /** Write `ui` rows; every client hears `ui-changed`. */
+    readonly configure: (plugins: Readonly<Record<string, PluginChange>>, options?: { scope?: ConfigScope }) => Promise<UiComposition>;
   };
   readonly status: () => ConnectionStatus;
   /** Called immediately with the current status, then on every change. */
@@ -213,6 +223,7 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       logout: (provider) => unit(rpc.Llm.Logout({ provider })),
     },
     interaction: {
+      list: () => call(rpc.Interaction.List()),
       answer: (id, answer) => unit(rpc.Interaction.Answer({ id, answer })),
       dismiss: (id) => unit(rpc.Interaction.Dismiss({ id })),
     },
@@ -245,6 +256,10 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       restartPlugin: (pluginId, options) => unit(rpc.Host.RestartPlugin(options?.force === undefined ? { pluginId } : { pluginId, force: options.force })),
       reload: () => call(rpc.Host.Reload()),
       configure: (plugins, options) => call(rpc.Host.Configure(options?.scope === undefined ? { plugins } : { plugins, scope: options.scope })),
+    },
+    ui: {
+      composition: () => call(rpc.Ui.Composition()),
+      configure: (plugins, options) => call(rpc.Ui.Configure(options?.scope === undefined ? { plugins } : { plugins, scope: options.scope })),
     },
     status: () => status,
     onStatus: (listener) => {

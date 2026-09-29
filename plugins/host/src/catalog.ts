@@ -1,6 +1,11 @@
-import type { ConfigScope, PluginInfo, PluginRow, PluginSource } from "@lemma/contracts";
+import { Cause } from "effect";
+import { configValues, describeConfig } from "@lemma/contracts";
+import type { ConfigField, ConfigScope, FaultRecord, PluginChange, PluginInfo, PluginSource } from "@lemma/contracts";
 import { Events, Hooks, PluginContext } from "@lemma/core";
-import type { Composition, Plugin, PluginSnapshot } from "@lemma/core";
+import type { Composition, EventSnapshot, HookSnapshot, Plugin, PluginSnapshot, ReportedFault } from "@lemma/core";
+
+/** The plugin that loads every other one. Defined here, not in config.ts, so this module stays free of Node APIs for the web app. */
+export const HOST_PLUGIN_ID = "host";
 
 /** A plugin definition the app can load, with where it came from. */
 export interface KnownPlugin {
@@ -62,6 +67,26 @@ export function resolveComposition(known: readonly KnownPlugin[], composition: C
   return { composition: { plugins }, haltedBy };
 }
 
+/**
+ * What a change to `ids` restarts: those plugins and, transitively, every
+ * known plugin requiring a capability one of them provides, since the loader
+ * reconstructs dependents along with what they depend on.
+ */
+export function restartedBy(known: readonly KnownPlugin[], ids: readonly string[]): Set<string> {
+  const byId = new Map(known.map((entry) => [entry.plugin.id, entry.plugin]));
+  const found = new Set(ids);
+  const queue = [...ids];
+  while (queue.length) {
+    const provides = new Set(byId.get(queue.shift()!)?.provides.map((tag) => tag.key) ?? []);
+    for (const { plugin } of known) {
+      if (found.has(plugin.id) || !plugin.requires.some((tag) => provides.has(tag.key))) continue;
+      found.add(plugin.id);
+      queue.push(plugin.id);
+    }
+  }
+  return found;
+}
+
 /** Every plugin a pinned plugin needs, directly or through other plugins, with the pinned plugin's id. */
 function neededBy(known: readonly KnownPlugin[], composition: Composition, pinned: readonly string[]): Map<string, string> {
   const byId = new Map(known.map((entry) => [entry.plugin.id, entry.plugin]));
@@ -90,10 +115,29 @@ export interface CatalogInput {
   readonly resolved: Resolved;
   /** `core.inspect` of the running composition. */
   readonly snapshots: readonly PluginSnapshot[];
+  /** `core.inspect` hooks and events: who intercepts and observes what. */
+  readonly hooks?: readonly HookSnapshot[];
+  readonly events?: readonly EventSnapshot[];
+  /** Recent faults by plugin id, newest first (see `faultHistory`). */
+  readonly faults?: ReadonlyMap<string, readonly FaultRecord[]>;
   readonly enabledIn: Readonly<Record<string, ConfigScope>>;
+  /** Per plugin id, the file whose row sets `config`. */
+  readonly configIn?: Readonly<Record<string, ConfigScope>>;
   /** Plugins the app never turns off, each with the reason shown to the user. */
   readonly pinned: Readonly<Record<string, string>>;
 }
+
+const forms = new WeakMap<object, ConfigField[]>();
+/** A plugin's settings form, projected once per config Schema. */
+const formOf = (plugin: Plugin): ConfigField[] | undefined => {
+  if (plugin.config === undefined) return undefined;
+  let fields = forms.get(plugin.config);
+  if (fields === undefined) {
+    fields = describeConfig(plugin.config);
+    forms.set(plugin.config, fields);
+  }
+  return fields;
+};
 
 /**
  * A capability has one provider, so turning on a plugin that provides what
@@ -104,9 +148,9 @@ export interface CatalogInput {
 export function withReplacements(
   known: readonly KnownPlugin[],
   composition: Composition,
-  rows: Readonly<Record<string, PluginRow>>,
-): Record<string, PluginRow> {
-  const result: Record<string, PluginRow> = { ...rows };
+  rows: Readonly<Record<string, PluginChange>>,
+): Record<string, PluginChange> {
+  const result: Record<string, PluginChange> = { ...rows };
   for (const [id, row] of Object.entries(rows)) {
     if (row.enabled !== true) continue;
     const plugin = known.find((entry) => entry.plugin.id === id)?.plugin;
@@ -121,7 +165,18 @@ export function withReplacements(
 }
 
 /** Every known plugin in `known` order, joined with its config row and its core snapshot. */
-export function catalog({ known, composition, resolved, snapshots, enabledIn, pinned }: CatalogInput): PluginInfo[] {
+export function catalog({
+  known,
+  composition,
+  resolved,
+  snapshots,
+  hooks = [],
+  events = [],
+  faults,
+  enabledIn,
+  configIn = {},
+  pinned,
+}: CatalogInput): PluginInfo[] {
   const running = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
   const needed = neededBy(known, composition, Object.keys(pinned));
   return known.map(({ plugin, source, shadows }) => {
@@ -130,6 +185,14 @@ export function catalog({ known, composition, resolved, snapshots, enabledIn, pi
     const locked = pinned[plugin.id] ?? (needs === undefined ? undefined : `Needed by ${needs}`);
     const haltedBy = snapshot?.haltedBy ?? resolved.haltedBy.get(plugin.id);
     const scope = enabledIn[plugin.id];
+    const configScope = configIn[plugin.id];
+    // The host's own config is the resolved paths, which no file sets.
+    const fields = plugin.id === HOST_PLUGIN_ID ? undefined : formOf(plugin);
+    const intercepts = hooks.flatMap((hook) =>
+      hook.handlers.filter((handler) => handler.pluginId === plugin.id).map(({ order }) => ({ name: hook.name, order })),
+    );
+    const observes = events.filter((event) => event.observers.includes(plugin.id)).map((event) => event.name);
+    const history = faults?.get(plugin.id);
     return {
       id: plugin.id,
       ...(plugin.version === undefined ? {} : { version: plugin.version }),
@@ -143,6 +206,41 @@ export function catalog({ known, composition, resolved, snapshots, enabledIn, pi
       ...(snapshot === undefined ? {} : { state: snapshot.state }),
       ...(snapshot?.fault === undefined ? {} : { fault: snapshot.fault }),
       ...(haltedBy === undefined ? {} : { haltedBy }),
+      ...(fields === undefined || fields.length === 0
+        ? {}
+        : { configFields: fields, config: configValues(plugin.config!, composition.plugins[plugin.id]?.config, fields) }),
+      ...(configScope === undefined ? {} : { configScope }),
+      ...(intercepts.length === 0 ? {} : { hooks: intercepts }),
+      ...(observes.length === 0 ? {} : { observes }),
+      ...(history === undefined || history.length === 0 ? {} : { faults: history }),
     };
   });
+}
+
+/** A fault as text: the kernel's message and its cause, squashed. */
+export const faultMessage = (fault: { readonly message: string; readonly cause: Cause.Cause<unknown> }): string => {
+  const cause = Cause.squash(fault.cause);
+  return `${fault.message}: ${cause instanceof Error ? cause.message : String(cause)}`;
+};
+
+/**
+ * Recent faults per plugin, newest first and at most `limit` each: the core
+ * keeps only an instance's latest, and a restart clears it, so the history of
+ * a flaky plugin lives here, fed by `core.faults`.
+ */
+export function faultHistory(limit = 20) {
+  const byPlugin = new Map<string, FaultRecord[]>();
+  return {
+    record: (fault: ReportedFault, at: number = Date.now()): void => {
+      const record: FaultRecord = {
+        sequence: fault.sequence,
+        at,
+        phase: fault.phase,
+        ...(fault.operation === undefined ? {} : { operation: fault.operation }),
+        message: faultMessage(fault),
+      };
+      byPlugin.set(fault.pluginId, [record, ...(byPlugin.get(fault.pluginId) ?? [])].slice(0, limit));
+    },
+    get: (): ReadonlyMap<string, readonly FaultRecord[]> => byPlugin,
+  };
 }

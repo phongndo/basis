@@ -2,6 +2,7 @@ import { Context, Schema } from "effect";
 import type { Effect } from "effect";
 import { Event } from "@lemma/core";
 import type { CoreClosed, PluginFault, PluginState, ReloadError, ReloadReport, RestartOptions } from "@lemma/core";
+import { ConfigField, ConfigValues } from "./config.ts";
 
 /**
  * Locations the host resolves once. Plugins never compute paths themselves.
@@ -29,6 +30,18 @@ export class Paths extends Context.Tag("lemma/Paths")<
 export const PluginRow = Schema.Struct({ enabled: Schema.optional(Schema.Boolean), config: Schema.optional(Schema.Unknown) });
 export type PluginRow = typeof PluginRow.Type;
 
+/**
+ * A change to one plugin's row. `config` replaces the row's whole config;
+ * `values` sets single config keys and keeps the others (`null` removes a key),
+ * which is how a settings form edits one field without restating the rest.
+ */
+export const PluginChange = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean),
+  config: Schema.optional(Schema.Unknown),
+  values: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
+export type PluginChange = typeof PluginChange.Type;
+
 /** Which config file a change is written to. The project file needs the project to be trusted. */
 export const ConfigScope = Schema.Literal("user", "project");
 export type ConfigScope = typeof ConfigScope.Type;
@@ -37,17 +50,36 @@ export type ConfigScope = typeof ConfigScope.Type;
  * Composition file (JSONC). User and project files merge: project rows override
  * user rows by plugin id; `config` objects are replaced, not deep-merged.
  * A project's file and plugins load only when the user file trusts the project.
+ * `ui` rows configure the web app's plugins the same way; the web app plans
+ * that composition itself, because only it can load those plugins.
  */
 export const ConfigFile = Schema.Struct({
   /** User file only: absolute directories whose projects (and their subdirectories) may configure the host and load plugins. */
   trustedProjects: Schema.optional(Schema.Array(Schema.String)),
   plugins: Schema.optional(Schema.Record({ key: Schema.String, value: PluginRow })),
+  ui: Schema.optional(Schema.Record({ key: Schema.String, value: PluginRow })),
 });
 export type ConfigFile = typeof ConfigFile.Type;
 
 /** Where a plugin's definition came from: the app, `<home>/plugins`, or a trusted project's `.lemma/plugins`. */
 export const PluginSource = Schema.Literal("bundled", "user", "project");
 export type PluginSource = typeof PluginSource.Type;
+
+/** A hook a plugin intercepts, with its handler's order (lower runs first). */
+export const HookUse = Schema.Struct({ name: Schema.String, order: Schema.Number });
+export type HookUse = typeof HookUse.Type;
+
+/** A fault as clients keep it: flattened to text, with when it was reported. */
+export const FaultRecord = Schema.Struct({
+  /** The core's fault sequence; a gap means faults were dropped. */
+  sequence: Schema.Number,
+  /** Epoch ms when the app received it. */
+  at: Schema.Number,
+  phase: Schema.String,
+  operation: Schema.optional(Schema.String),
+  message: Schema.String,
+});
+export type FaultRecord = typeof FaultRecord.Type;
 
 /**
  * One plugin the host knows, running or not. `enabled` is the config files'
@@ -72,6 +104,18 @@ export interface PluginInfo {
   readonly state?: PluginState;
   readonly fault?: PluginFault;
   readonly haltedBy?: string;
+  /** Its settings form, projected from its config Schema; absent when it takes no config. */
+  readonly configFields?: readonly ConfigField[];
+  /** The config it runs with, as the form shows it. */
+  readonly config?: ConfigValues;
+  /** The config file whose row sets `config`; absent when neither does. */
+  readonly configScope?: ConfigScope;
+  /** Hooks its running instance intercepts. */
+  readonly hooks?: readonly HookUse[];
+  /** Events its running instance observes. */
+  readonly observes?: readonly string[];
+  /** Its recent faults, newest first, across restarts. */
+  readonly faults?: readonly FaultRecord[];
 }
 
 /** Identifies the running plugin set, so a logged request can name what produced it. */
@@ -98,6 +142,16 @@ export type NoticePayload = typeof NoticePayload.Type;
 export const Notice = Event.make<NoticePayload>("lemma/notice");
 
 /**
+ * What a configure did. `deferred`: the change restarts the transport serving
+ * this call, so it was checked and written, and applies once the reply is sent;
+ * the report is then empty, and clients reconnect. A deferred change that still
+ * fails is undone in the file and reported as an error `Notice`.
+ */
+export interface ConfigureReport extends ReloadReport {
+  readonly deferred?: boolean;
+}
+
+/**
  * Handle on the loader, provided by the host application (which owns it) so
  * transports and UIs can inspect and change the running composition without
  * reaching into the kernel.
@@ -117,9 +171,49 @@ export class HostControl extends Context.Tag("lemma/HostControl")<
      * result. A change the host rejects is undone in the file, so a bad row never
      * outlives the call; the diagnostics say why.
      */
-    readonly configure: (plugins: Readonly<Record<string, PluginRow>>, options?: { readonly scope?: ConfigScope }) => Effect.Effect<ReloadReport, ReloadError>;
+    readonly configure: (
+      plugins: Readonly<Record<string, PluginChange>>,
+      options?: { readonly scope?: ConfigScope },
+    ) => Effect.Effect<ConfigureReport, ReloadError>;
+    /** The web app's rows and files. */
+    readonly ui: Effect.Effect<UiComposition>;
+    /** Write `ui` rows into a config file; web apps apply them when `UiChanged` arrives. */
+    readonly configureUi: (
+      plugins: Readonly<Record<string, PluginChange>>,
+      options?: { readonly scope?: ConfigScope },
+    ) => Effect.Effect<UiComposition, ReloadError>;
   }
 >() {}
+
+/**
+ * A file in `<home>/ui` or a trusted project's `.lemma/ui` that the web app
+ * loads: a script is an ES module whose default export makes UI plugins, a
+ * style is a stylesheet applied after the app's own.
+ */
+export const UiFile = Schema.Struct({
+  name: Schema.String,
+  source: Schema.Literal("user", "project"),
+  kind: Schema.Literal("script", "style"),
+  /** Where it is on the host. */
+  path: Schema.String,
+  /** Served by the transport under `/api` (it needs the token); changes when the file does. */
+  url: Schema.String,
+});
+export type UiFile = typeof UiFile.Type;
+
+/** What the web app needs to plan its own composition: the `ui` rows of both config files, and the files to load. */
+export const UiComposition = Schema.Struct({
+  plugins: Schema.Record({ key: Schema.String, value: PluginRow }),
+  /** Per plugin id, the file whose row sets `enabled` (the project's wins). */
+  enabledIn: Schema.Record({ key: Schema.String, value: ConfigScope }),
+  /** Per plugin id, the file whose row sets `config`. */
+  configIn: Schema.Record({ key: Schema.String, value: ConfigScope }),
+  files: Schema.Array(UiFile),
+});
+export type UiComposition = typeof UiComposition.Type;
+
+/** Emitted when the `ui` rows or UI files change, so web apps apply them. */
+export const UiChanged = Event.make<UiComposition>("lemma/ui.changed");
 
 /** Emitted after any composition change or plugin fault so clients can refresh plugin views. */
 export const PluginsChanged = Event.make<{ readonly plugins: readonly PluginInfo[] }>("lemma/plugins.changed");

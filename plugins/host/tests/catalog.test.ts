@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { Context, Layer } from "effect";
-import { definePlugin } from "@lemma/core";
+import { Cause, Context, Layer, Schema } from "effect";
+import { secret } from "@lemma/contracts";
+import { definePlugin, PluginFault } from "@lemma/core";
 import type { Composition, PluginSnapshot } from "@lemma/core";
-import { catalog, resolveComposition, withReplacements } from "../src/index.ts";
+import { catalog, faultHistory, resolveComposition, restartedBy, withReplacements } from "../src/index.ts";
 import type { KnownPlugin } from "../src/index.ts";
 
 class Llm extends Context.Tag("test/Llm")<Llm, string>() {}
@@ -98,6 +99,35 @@ describe("catalog", () => {
     // Nothing is pinned, so nothing is locked.
     expect(entries.every((entry) => entry.locked === undefined)).toBe(true);
   });
+
+  test("describes a plugin's config as a form with its current values, keeping secrets out", () => {
+    const Config = Schema.Struct({
+      port: Schema.optionalWith(Schema.Number, { default: () => 7433 }).annotations({ description: "Where it listens" }),
+      token: Schema.optional(Schema.String).annotations(secret),
+    });
+    const server = definePlugin({ id: "server", config: Config, layer: () => Layer.empty });
+    const withServer: KnownPlugin[] = [...known, { plugin: server, source: "bundled" }];
+    const composition = { plugins: { ...everyone().plugins, server: { config: { port: 9000, token: "hunter2" } } } };
+    const entries = catalog({
+      known: withServer,
+      composition,
+      resolved: resolveComposition(withServer, composition),
+      snapshots: [],
+      enabledIn: {},
+      configIn: { server: "project" },
+      pinned: {},
+    });
+    const entry = entries.find((candidate) => candidate.id === "server")!;
+    expect(entry.configFields?.map((field) => [field.key, field.type, field.secret ?? false])).toEqual([
+      ["port", "number", false],
+      ["token", "string", true],
+    ]);
+    expect(entry.config).toEqual({ values: { port: 9000 }, secretsSet: ["token"] });
+    expect(entry.configScope).toBe("project");
+    expect(JSON.stringify(entries)).not.toContain("hunter2");
+    // A plugin without a config Schema has no form.
+    expect(entries.find((candidate) => candidate.id === "llm")?.configFields).toBeUndefined();
+  });
 });
 
 describe("withReplacements", () => {
@@ -115,5 +145,55 @@ describe("withReplacements", () => {
       llm: { enabled: false },
       bash: { enabled: true },
     });
+  });
+});
+
+describe("wiring and faults", () => {
+  test("lists the hooks a plugin intercepts, the events it observes, and its recent faults, newest first", () => {
+    const composition = everyone();
+    const history = faultHistory(2);
+    const fault = (sequence: number, message: string) =>
+      Object.assign(new PluginFault({ pluginId: "agent", phase: "observe", operation: "lemma/turn.ended", cause: Cause.fail(new Error(message)) }), {
+        sequence,
+      });
+    history.record(fault(1, "one"), 10);
+    history.record(fault(2, "two"), 20);
+    history.record(fault(3, "three"), 30);
+    const entries = catalog({
+      known,
+      composition,
+      resolved: resolveComposition(known, composition),
+      snapshots: [],
+      hooks: [
+        {
+          name: "lemma/llm.request",
+          handlers: [
+            { pluginId: "tools", order: 0 },
+            { pluginId: "agent", order: 10 },
+          ],
+        },
+      ],
+      events: [{ name: "lemma/turn.ended", observers: ["agent", "transport"] }],
+      faults: history.get(),
+      enabledIn: {},
+      pinned: {},
+    });
+    const agent = entries.find((entry) => entry.id === "agent")!;
+    expect(agent.hooks).toEqual([{ name: "lemma/llm.request", order: 10 }]);
+    expect(agent.observes).toEqual(["lemma/turn.ended"]);
+    expect(agent.faults?.map((record) => [record.sequence, record.at, record.message])).toEqual([
+      [3, 30, 'Plugin "agent" failed during observe lemma/turn.ended: three'],
+      [2, 20, 'Plugin "agent" failed during observe lemma/turn.ended: two'],
+    ]);
+    expect(entries.find((entry) => entry.id === "llm")).not.toHaveProperty("hooks");
+  });
+});
+
+describe("restartedBy", () => {
+  test("follows provided capabilities to every dependent, transitively", () => {
+    expect([...restartedBy(known, ["tools"])].sort()).toEqual(["agent", "bash", "tools", "transport"]);
+    expect([...restartedBy(known, ["bash"])]).toEqual(["bash"]);
+    // A second provider of the same capability counts too: turning it on replaces the first.
+    expect(restartedBy(known, ["my-llm"]).has("transport")).toBe(true);
   });
 });

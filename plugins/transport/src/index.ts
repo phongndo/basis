@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Effect, Layer, Schema } from "effect";
-import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, Sessions, Workspace } from "@lemma/contracts";
+import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, secret, Sessions, Workspace } from "@lemma/contracts";
 import { definePlugin, Events, PluginContext } from "@lemma/core";
 import { makeHandlers } from "./handlers.ts";
 import { makeHub } from "./hub.ts";
@@ -17,16 +17,22 @@ export { toHostError, toPluginStatus } from "./errors.ts";
 export const VERSION = "0.1.0";
 
 export const TransportConfig = Schema.Struct({
-  /** Loopback by default; set explicitly to expose the host beyond this machine. */
-  host: Schema.optionalWith(Schema.String, { default: () => "127.0.0.1" }),
-  /** `0` asks the OS for a free port; the chosen one lands in `transport.json`. */
-  port: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.between(0, 65535)), { default: () => 7433 }),
-  /** Generated once per host process when absent, so plugin restarts keep it. */
-  token: Schema.optional(Schema.NonEmptyString),
-  /** A built web app served at `/`, with `index.html` as the fallback for client-side routes. */
-  staticDir: Schema.optional(Schema.String),
-  /** How long an open interaction waits for a client to (re)connect before failing `Unavailable`. */
-  interactionGraceMs: Schema.optionalWith(Schema.Number.pipe(Schema.nonNegative()), { default: () => 15_000 }),
+  host: Schema.optionalWith(Schema.String, { default: () => "127.0.0.1" }).annotations({
+    description: "Loopback by default; set explicitly to expose the host beyond this machine.",
+  }),
+  port: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.between(0, 65535)), { default: () => 7433 }).annotations({
+    description: "0 asks the OS for a free port; the chosen one lands in transport.json.",
+  }),
+  token: Schema.optional(Schema.NonEmptyString).annotations({
+    ...secret,
+    description: "Generated once per host process when absent, so plugin restarts keep it.",
+  }),
+  staticDir: Schema.optional(Schema.String).annotations({
+    description: "A built web app served at /, with index.html as the fallback for client-side routes.",
+  }),
+  interactionGraceMs: Schema.optionalWith(Schema.Number.pipe(Schema.nonNegative()), { default: () => 15_000 }).annotations({
+    description: "How long an open interaction waits for a client to (re)connect before failing Unavailable.",
+  }),
 });
 export type TransportConfig = typeof TransportConfig.Type;
 
@@ -68,7 +74,10 @@ export default definePlugin({
         const handlers = HostRpcs.toLayer(
           makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, login }),
         );
-        const address = yield* startServer({ host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir }, handlers);
+        const address = yield* startServer(
+          { host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir, ui: control.ui },
+          handlers,
+        );
         const url = `http://${clientHost(address.hostname)}:${address.port}`;
         yield* publishDiscovery(paths.home, { url, token, pid: process.pid, startedAt: Date.now() });
         yield* events.publish(Notice, {

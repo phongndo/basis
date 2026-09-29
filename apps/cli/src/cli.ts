@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import {
   branchOf,
   HostError,
+  parseConfigValue,
   LEDGER_SORTS,
   ledger,
   parseLedgerFilter,
@@ -15,14 +16,16 @@ import {
   sortRecords,
   trajectory,
 } from "@lemma/contracts";
-import type { LedgerSort, TrajectoryStep, TrajectoryTurn } from "@lemma/contracts";
+import type { ConfigScope, LedgerSort, PluginChange, TrajectoryStep, TrajectoryTurn } from "@lemma/contracts";
 import { makeHostRpc, makeHostRpcHttp, rpcUrl } from "@lemma/client";
 import { resolvePaths } from "@lemma/plugin-host";
 import { readDiscovery } from "@lemma/plugin-transport";
 import { CliError, ExitCode, usage } from "./command.ts";
 import type { Command, Failure, Io, Options, QuestionPolicy } from "./command.ts";
 import {
+  formatConfig,
   formatDiff,
+  formatPlugin,
   formatPlugins,
   formatRecords,
   formatReload,
@@ -33,6 +36,7 @@ import {
   formatSystem,
   formatTools,
   formatTrajectory,
+  formatUi,
 } from "./format.ts";
 import {
   answerCommand,
@@ -65,9 +69,21 @@ Host
   plugins enable <id>            Turn a plugin on: removes its "enabled" row from the user config
   plugins disable <id>           Turn a plugin off: writes "enabled": false; plugins needing it stop too
     --project                    ...in the project's .lemma/config.jsonc instead (a trusted project)
+  plugins show <id>              One plugin: state and why, what it provides and requires and who is on
+                                 the other end, the hooks and events it takes part in, its recent faults
   plugins restart <id>           Restart a failed plugin and the plugins it halted
     --force                      ...also when it is running, unless the host depends on it
+  plugins config <id>            Its settings: each field, its value or default, and what it does
+  plugins config <id> <key> <value>
+                                 Set one field in the config file that sets its config (user by default)
+    --unset                      ...remove the field instead, back to its default
   reload                         Re-read config files and apply them
+
+Web app (plugins the web app loads: bundled, and files in ~/.lemma/ui)
+  ui                             The "ui" rows of the config files and the UI files found
+  ui enable <id>                 Turn a web app plugin on (--project: in the project's config)
+  ui disable <id>                Turn one off; open web apps apply it at once
+  ui config <id> <key> <value>   Set one field of its config (JSON or text; --unset removes it)
   events [--session <id>]        Follow everything the host publishes (NDJSON with --json)
 
 Sessions and turns
@@ -195,7 +211,60 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
             })))
         );
       }
+      if (sub === "show") {
+        if (arg === undefined) return usage("plugins show needs a plugin id");
+        return (
+          extra(3) ??
+          (({ rpc }) =>
+            Effect.flatMap(rpc.Host.Plugins(), (plugins) => {
+              const plugin = plugins.find((candidate) => candidate.id === arg);
+              return plugin === undefined
+                ? Effect.fail(new HostError({ code: "NotFound", message: `No plugin "${arg}"`, subject: arg }))
+                : Effect.succeed({ json: plugin, text: formatPlugin(plugins, plugin) });
+            }))
+        );
+      }
+      if (sub === "config") {
+        if (arg === undefined) return usage("plugins config needs a plugin id");
+        const [key, value, ...more] = rest;
+        if (more.length) return usage(`Unexpected argument "${more[0]}"`);
+        if (key === undefined) {
+          return ({ rpc }) =>
+            Effect.flatMap(rpc.Host.Plugins(), (plugins) => {
+              const plugin = plugins.find((candidate) => candidate.id === arg);
+              return plugin === undefined
+                ? Effect.fail(new HostError({ code: "NotFound", message: `No plugin "${arg}"`, subject: arg }))
+                : Effect.succeed({ json: { id: plugin.id, fields: plugin.configFields ?? [], ...plugin.config }, text: formatConfig(plugin) });
+            });
+        }
+        if ((value === undefined) === !options.unset) return usage("plugins config <id> <key> needs a value, or --unset");
+        return ({ rpc }) =>
+          Effect.gen(function* () {
+            const plugin = (yield* rpc.Host.Plugins()).find((candidate) => candidate.id === arg);
+            if (plugin === undefined) return yield* new HostError({ code: "NotFound", message: `No plugin "${arg}"`, subject: arg });
+            const field = plugin.configFields?.find((candidate) => candidate.key === key);
+            if (field === undefined) {
+              const keys = (plugin.configFields ?? []).map((candidate) => candidate.key);
+              return yield* new HostError({
+                code: "Usage",
+                message: keys.length ? `${arg} has no "${key}"; its fields are ${keys.join(", ")}` : `${arg} takes no config`,
+                subject: arg,
+              });
+            }
+            const parsed = options.unset ? { value: null } : parseConfigValue(field, value!);
+            if ("error" in parsed) return yield* new HostError({ code: "Usage", message: parsed.error, subject: arg });
+            const scope: ConfigScope = options.project ? "project" : (plugin.configScope ?? "user");
+            const change: PluginChange = { values: { [key]: parsed.value } };
+            const report = yield* rpc.Host.Configure({ plugins: { [arg]: change }, ...(scope === "project" ? { scope } : {}) });
+            return {
+              json: { id: arg, key, ...(options.unset ? { unset: true } : { value: parsed.value }), scope, ...report },
+              text: `${options.unset ? `unset ${arg}.${key}` : `set ${arg}.${key} = ${JSON.stringify(parsed.value)}`} in the ${scope} config: ${formatReload(report)}`,
+            };
+          });
+      }
       return usage(`Unknown plugins command "${sub}"`);
+    case "ui":
+      return uiCommand(sub, arg, rest, options);
     case "reload":
       return extra(1) ?? (({ rpc }) => Effect.map(rpc.Host.Reload(), (report) => ({ json: report, text: formatReload(report) })));
     case "events":
@@ -240,6 +309,44 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
       return usage("No command given");
     default:
       return usage(`Unknown command "${command}"`);
+  }
+};
+
+/** The web app plans its own composition from these rows; the host only stores them and tells open web apps. */
+const uiCommand = (sub: string | undefined, arg: string | undefined, rest: readonly string[], options: Options): Command | CliError => {
+  const scope = options.project ? { scope: "project" as const } : {};
+  switch (sub) {
+    case undefined:
+    case "list":
+      if (arg !== undefined) return usage(`Unexpected argument "${arg}"`);
+      return ({ rpc }) => Effect.map(rpc.Ui.Composition(), (ui) => ({ json: ui, text: formatUi(ui) }));
+    case "enable":
+    case "disable": {
+      if (arg === undefined) return usage(`ui ${sub} needs a plugin id`);
+      if (rest.length) return usage(`Unexpected argument "${rest[0]}"`);
+      const enabled = sub === "enable";
+      return ({ rpc }) =>
+        Effect.map(rpc.Ui.Configure({ plugins: { [arg]: { enabled } }, ...scope }), (ui) => ({
+          json: ui,
+          text: `${enabled ? "enabled" : "disabled"} ${arg} in the ${options.project ? "project" : "user"} config; open web apps apply it`,
+        }));
+    }
+    case "config": {
+      const [key, value, ...more] = rest;
+      if (arg === undefined || key === undefined) return usage("ui config needs a plugin id and a key");
+      if (more.length) return usage(`Unexpected argument "${more[0]}"`);
+      if ((value === undefined) === !options.unset) return usage("ui config <id> <key> needs a value, or --unset");
+      // Only the web app knows the plugin's fields, so the value is JSON when it parses and text otherwise.
+      const parsed = options.unset ? { value: null } : parseConfigValue(undefined, value!);
+      if ("error" in parsed) return usage(parsed.error);
+      return ({ rpc }) =>
+        Effect.map(rpc.Ui.Configure({ plugins: { [arg]: { values: { [key]: parsed.value } } }, ...scope }), (ui) => ({
+          json: ui,
+          text: `${options.unset ? `unset ${arg}.${key}` : `set ${arg}.${key} = ${JSON.stringify(parsed.value)}`}; open web apps apply it`,
+        }));
+    }
+    default:
+      return usage(`Unknown ui command "${sub}"`);
   }
 };
 
@@ -460,6 +567,7 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
         session: { type: "string" },
         force: { type: "boolean", default: false },
         project: { type: "boolean", default: false },
+        unset: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -500,6 +608,7 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
     session: values.session,
     force: values.force,
     project: values.project,
+    unset: values.unset,
   };
   const command = route(positionals, options, io);
   if (command instanceof CliError) return report(io, options.json, command);

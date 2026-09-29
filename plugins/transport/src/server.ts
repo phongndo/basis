@@ -10,6 +10,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { RpcSerialization, RpcServer } from "@effect/rpc";
 import type { Rpc, RpcGroup } from "@effect/rpc";
 import { HostRpcs } from "@lemma/contracts";
+import type { UiComposition } from "@lemma/contracts";
 
 export type HostHandlers = Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<typeof HostRpcs>>>;
 
@@ -19,6 +20,8 @@ export interface ServerOptions {
   readonly token: string;
   readonly version: string;
   readonly staticDir?: string | undefined;
+  /** The web app's UI files; `/api/ui/<source>/<name>` serves only a file listed here. */
+  readonly ui?: Effect.Effect<UiComposition>;
 }
 
 const equalTokens = (a: string, b: string): boolean => {
@@ -66,7 +69,8 @@ const serveStatic = (root: string, pathname: string) =>
 /**
  * Binds the address and serves until the scope closes. `/rpc` (WebSocket,
  * JSON) and `/rpc/http` (streaming HTTP, NDJSON) share one handler set;
- * `/rpc*` and `/api*` require the token, static assets do not.
+ * `/rpc*` and `/api*` require the token, static assets do not. UI files are
+ * served under `/api` because they run in the page with its token.
  */
 export const startServer = (options: ServerOptions, handlers: HostHandlers): Effect.Effect<HttpServer.TcpAddress, HttpServerError.ServeError, Scope.Scope> =>
   Effect.gen(function* () {
@@ -111,6 +115,15 @@ const serve = (options: ServerOptions, handlers: HostHandlers, node: ReturnType<
         if (path === "/rpc") return yield* websocket;
         if (path === "/rpc/http" && request.method === "POST") return yield* http;
         if (path === "/api/health") return HttpServerResponse.unsafeJson({ ok: true, version: options.version });
+        if (under(path, "/api/ui") && options.ui !== undefined && (request.method === "GET" || request.method === "HEAD")) {
+          const listed = (yield* options.ui).files.find((file) => file.url.slice(0, file.url.indexOf("?")) === path);
+          if (listed === undefined) return HttpServerResponse.unsafeJson({ error: "Not found" }, { status: 404 });
+          // The version in the URL makes an edited file a new URL, so nothing needs revalidating by date.
+          return yield* HttpServerResponse.file(listed.path, { headers: { "cache-control": "no-cache" } }).pipe(
+            Effect.provide(platform),
+            Effect.catchAll(() => Effect.succeed(HttpServerResponse.text("Cannot read file", { status: 500 }))),
+          );
+        }
         return HttpServerResponse.unsafeJson({ error: "Not found" }, { status: 404 });
       }
       if (request.method !== "GET" && request.method !== "HEAD") return HttpServerResponse.empty({ status: 405 });

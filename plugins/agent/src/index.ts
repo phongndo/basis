@@ -9,14 +9,14 @@ export type { EnvironmentFacts } from "./prompt.ts";
 export { runTurn } from "./turn.ts";
 
 export const AgentConfig = Schema.Struct({
-  /** `<provider>/<model>` for turns that name none. Absent: the first available model. */
-  defaultModel: Schema.optional(Schema.String),
-  /** Replaces the default base prompt; the environment section is still added. */
-  systemPrompt: Schema.optional(Schema.String),
-  /** Shell command that runs the `lemma` CLI; named in the environment section so the agent can inspect itself. */
-  cli: Schema.optional(Schema.String),
-  /** Model calls allowed in one turn before it ends with `max-steps`. */
-  maxSteps: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 200 }),
+  defaultModel: Schema.optional(Schema.String).annotations({ description: "<provider>/<model> for turns that name none. Absent: the first available model." }),
+  systemPrompt: Schema.optional(Schema.String).annotations({ description: "Replaces the default base prompt; the environment section is still added." }),
+  cli: Schema.optional(Schema.String).annotations({
+    description: "Shell command that runs the lemma CLI; named in the environment section so the agent can inspect itself.",
+  }),
+  maxSteps: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 200 }).annotations({
+    description: "Model calls allowed in one turn before it ends with max-steps.",
+  }),
 });
 export type AgentConfig = typeof AgentConfig.Type;
 

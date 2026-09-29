@@ -19,7 +19,8 @@ export interface HostPluginOptions {
  * Provides `Paths` from its config and `HostControl` from the app's handle, and
  * publishes `PluginsChanged` after every change it can observe: a reload or
  * restart through the handle, and any fault. Faults also become an error
- * `Notice`; the app's log remains the durable record.
+ * `Notice`; the app's log remains the durable record. The app publishes
+ * `UiChanged` itself: it also sees the UI files change.
  */
 export function hostPlugin(options: HostPluginOptions): Plugin<readonly [typeof Paths, typeof HostControl]> {
   return definePlugin({
@@ -54,6 +55,8 @@ export function hostPlugin(options: HostPluginOptions): Plugin<readonly [typeof 
               reload: options.control.reload.pipe(Effect.tap(() => changed)),
               // Like a restart: a rejected change is undone in the file, but an exclusive plugin it stopped may stay down.
               configure: (plugins, configureOptions) => options.control.configure(plugins, configureOptions).pipe(Effect.ensuring(changed)),
+              ui: options.control.ui,
+              configureUi: options.control.configureUi,
             };
           }),
         ),

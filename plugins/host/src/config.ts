@@ -4,12 +4,14 @@ import { Effect, Either, ParseResult, Schema } from "effect";
 import { applyEdits, modify, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import type { ParseError } from "jsonc-parser";
 import { ConfigFile } from "@lemma/contracts";
-import type { ConfigScope, PluginRow } from "@lemma/contracts";
+import type { ConfigScope, PluginChange, PluginRow } from "@lemma/contracts";
 import { Diagnostic } from "@lemma/core";
 import type { Composition, PluginEntry } from "@lemma/core";
 import type { PathsService } from "./paths.ts";
 
-export const HOST_PLUGIN_ID = "host";
+import { HOST_PLUGIN_ID } from "./catalog.ts";
+
+export { HOST_PLUGIN_ID };
 
 export interface LoadedComposition {
   /** Always contains the `host` row carrying `paths`; the host plugin cannot be disabled by a file. */
@@ -22,6 +24,35 @@ export interface LoadedComposition {
   readonly trusted: boolean;
   /** Per plugin id, the file whose row sets `enabled` (the project's wins), so a change can target the file that decides. */
   readonly enabledIn: Readonly<Record<string, ConfigScope>>;
+  /** Per plugin id, the file whose row sets `config`. */
+  readonly configIn: Readonly<Record<string, ConfigScope>>;
+  /** The `ui` section, merged the same way: rows for the web app's plugins. */
+  readonly ui: MergedRows;
+}
+
+export interface MergedRows {
+  readonly plugins: Readonly<Record<string, PluginRow>>;
+  readonly enabledIn: Readonly<Record<string, ConfigScope>>;
+  readonly configIn: Readonly<Record<string, ConfigScope>>;
+}
+
+/** Which part of a config file rows live in: the host's plugins, or the web app's. */
+export type ConfigSection = "plugins" | "ui";
+
+/** Project rows override user rows by plugin id: `enabled` and `config` are each taken from the project row when present. */
+function mergeRows(files: readonly { readonly scope: ConfigScope; readonly rows: Readonly<Record<string, PluginRow>> }[]): MergedRows {
+  const plugins: Record<string, PluginRow> = {};
+  const enabledIn: Record<string, ConfigScope> = {};
+  const configIn: Record<string, ConfigScope> = {};
+  for (const { scope, rows } of files) {
+    for (const [id, row] of Object.entries(rows)) {
+      // JSON cannot express undefined, so decoded rows only carry the keys the file wrote.
+      plugins[id] = { ...plugins[id], ...row };
+      if (row.enabled !== undefined) enabledIn[id] = scope;
+      if (row.config !== undefined) configIn[id] = scope;
+    }
+  }
+  return { plugins, enabledIn, configIn };
 }
 
 /** `<cwd>/.lemma/plugins`: plugin files that load only in a trusted project. */
@@ -70,27 +101,24 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
         }),
       );
     }
-    const plugins: Record<string, PluginEntry> = {};
-    const enabledIn: Record<string, ConfigScope> = {};
     for (const file of [user, project]) {
-      for (const [id, row] of Object.entries(file.plugins)) {
-        if (id === HOST_PLUGIN_ID) {
-          diagnostics.push(
-            new Diagnostic({
-              severity: "warning",
-              pluginId: id,
-              message: `${file.path}: the "${HOST_PLUGIN_ID}" row is ignored; the host plugin is always loaded with the resolved paths`,
-              suggestion: `Remove the "${HOST_PLUGIN_ID}" row`,
-            }),
-          );
-          continue;
-        }
-        // JSON cannot express undefined, so decoded rows only carry the keys the file wrote.
-        plugins[id] = { ...plugins[id], ...row } as PluginEntry;
-        if (row.enabled !== undefined) enabledIn[id] = file === user ? "user" : "project";
+      if (file.plugins[HOST_PLUGIN_ID] !== undefined) {
+        diagnostics.push(
+          new Diagnostic({
+            severity: "warning",
+            pluginId: HOST_PLUGIN_ID,
+            message: `${file.path}: the "${HOST_PLUGIN_ID}" row is ignored; the host plugin is always loaded with the resolved paths`,
+            suggestion: `Remove the "${HOST_PLUGIN_ID}" row`,
+          }),
+        );
       }
     }
-    plugins[HOST_PLUGIN_ID] = { config: paths };
+    const withoutHost = (rows: Readonly<Record<string, PluginRow>>) => Object.fromEntries(Object.entries(rows).filter(([id]) => id !== HOST_PLUGIN_ID));
+    const merged = mergeRows([
+      { scope: "user", rows: withoutHost(user.plugins) },
+      { scope: "project", rows: withoutHost(project.plugins) },
+    ]);
+    const plugins: Record<string, PluginEntry> = { ...(merged.plugins as Record<string, PluginEntry>), [HOST_PLUGIN_ID]: { config: paths } };
     return {
       composition: { plugins },
       diagnostics,
@@ -99,38 +127,61 @@ export function loadComposition(paths: PathsService): Effect.Effect<LoadedCompos
         { path: project.path, found: project.found },
       ],
       trusted,
-      enabledIn,
+      enabledIn: merged.enabledIn,
+      configIn: merged.configIn,
+      ui: mergeRows([
+        { scope: "user", rows: user.ui },
+        { scope: "project", rows: project.ui },
+      ]),
     };
   });
 }
 
 const FORMAT = { formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" } };
 
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
  * The config text with each plugin's row updated in place, keeping comments and
  * other rows. A key present in `row` is written, and a row left with no keys is
  * removed. In the user file `enabled: true` is the default, so it removes the
  * key; in the project file it is written out, because only an explicit `true`
- * overrides a user row that says `false`. The text must be valid JSONC (or
- * empty); check with `parseConfig` first.
+ * overrides a user row that says `false`. `values` edits single keys of the
+ * row's `config` (null removes one), dropping a `config` left empty. The text
+ * must be valid JSONC (or empty); check with `parseConfig` first.
  */
-export function patchConfig(text: string, rows: Readonly<Record<string, PluginRow>>, scope: ConfigScope = "user"): string {
+export function patchConfig(
+  text: string,
+  rows: Readonly<Record<string, PluginChange>>,
+  scope: ConfigScope = "user",
+  section: ConfigSection = "plugins",
+): string {
   let next = text;
+  const rowOf = (id: string): Record<string, unknown> => {
+    const current: unknown = parseJsonc(next, [], { allowTrailingComma: true })?.[section]?.[id];
+    return isObject(current) ? { ...current } : {};
+  };
   for (const [id, row] of Object.entries(rows)) {
     const edits: Record<string, unknown> = {};
     if (row.enabled !== undefined) edits.enabled = row.enabled && scope === "user" ? undefined : row.enabled;
     if (row.config !== undefined) edits.config = row.config;
-    const current: unknown = parseJsonc(next, [], { allowTrailingComma: true })?.plugins?.[id];
-    const before = typeof current === "object" && current !== null ? { ...(current as Record<string, unknown>) } : {};
-    const after = { ...before, ...edits };
-    if (Object.values(after).every((value) => value === undefined)) {
-      if (Object.keys(before).length) next = applyEdits(next, modify(next, ["plugins", id], undefined, FORMAT));
-      continue;
-    }
+    const before = rowOf(id);
     for (const [key, value] of Object.entries(edits)) {
       if (value === undefined && !(key in before)) continue;
-      next = applyEdits(next, modify(next, ["plugins", id, key], value, FORMAT));
+      next = applyEdits(next, modify(next, [section, id, key], value, FORMAT));
     }
+    if (row.values !== undefined) {
+      if (!isObject(rowOf(id).config)) next = applyEdits(next, modify(next, [section, id, "config"], {}, FORMAT));
+      for (const [key, value] of Object.entries(row.values)) {
+        const config = rowOf(id).config;
+        if (value === null && !(isObject(config) && key in config)) continue;
+        next = applyEdits(next, modify(next, [section, id, "config", key], value === null ? undefined : value, FORMAT));
+      }
+      const config = rowOf(id).config;
+      if (isObject(config) && Object.keys(config).length === 0) next = applyEdits(next, modify(next, [section, id, "config"], undefined, FORMAT));
+    }
+    const rows: unknown = parseJsonc(next, [], { allowTrailingComma: true })?.[section];
+    if (isObject(rows) && isObject(rows[id]) && Object.keys(rows[id]).length === 0) next = applyEdits(next, modify(next, [section, id], undefined, FORMAT));
   }
   return next;
 }
@@ -157,11 +208,16 @@ export interface ConfigUpdate {
 }
 
 /** Applies `patchConfig` to the file at `path`, creating it and its directory if needed. */
-export function updateConfig(path: string, rows: Readonly<Record<string, PluginRow>>, scope: ConfigScope = "user"): Effect.Effect<ConfigUpdate, Diagnostic> {
+export function updateConfig(
+  path: string,
+  rows: Readonly<Record<string, PluginChange>>,
+  scope: ConfigScope = "user",
+  section: ConfigSection = "plugins",
+): Effect.Effect<ConfigUpdate, Diagnostic> {
   return Effect.gen(function* () {
     const previous = yield* readConfigText(path);
     if (previous !== undefined && previous.trim() !== "") yield* parseConfig(path, previous);
-    const text = patchConfig(previous ?? "", rows, scope);
+    const text = patchConfig(previous ?? "", rows, scope, section);
     yield* Effect.tryPromise({
       try: async () => {
         await mkdir(dirname(path), { recursive: true });
@@ -186,6 +242,7 @@ interface ReadConfig {
   readonly path: string;
   readonly found: boolean;
   readonly plugins: NonNullable<ConfigFile["plugins"]>;
+  readonly ui: NonNullable<ConfigFile["ui"]>;
   readonly trustedProjects: readonly string[];
   readonly diagnostics: readonly Diagnostic[];
 }
@@ -200,11 +257,18 @@ const exists = (path: string): Effect.Effect<boolean> =>
 
 /** An untrusted project's file: only whether it exists, never its contents. */
 const skipConfig = (path: string): Effect.Effect<ReadConfig> =>
-  Effect.map(exists(path), (found) => ({ path, found, plugins: {}, trustedProjects: [], diagnostics: [] }));
+  Effect.map(exists(path), (found) => ({ path, found, plugins: {}, ui: {}, trustedProjects: [], diagnostics: [] }));
 
 const readConfig = (path: string): Effect.Effect<ReadConfig> =>
   Effect.gen(function* () {
-    const empty = (found: boolean, diagnostics: readonly Diagnostic[] = []): ReadConfig => ({ path, found, plugins: {}, trustedProjects: [], diagnostics });
+    const empty = (found: boolean, diagnostics: readonly Diagnostic[] = []): ReadConfig => ({
+      path,
+      found,
+      plugins: {},
+      ui: {},
+      trustedProjects: [],
+      diagnostics,
+    });
     const text = yield* Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: (cause) => cause as NodeJS.ErrnoException }).pipe(Effect.either);
     if (Either.isLeft(text)) {
       if (text.left.code === "ENOENT") return empty(false);
@@ -218,7 +282,14 @@ const readConfig = (path: string): Effect.Effect<ReadConfig> =>
     }
     const parsed = parseConfig(path, text.right);
     if (Either.isLeft(parsed)) return empty(true, [parsed.left]);
-    return { path, found: true, plugins: parsed.right.plugins ?? {}, trustedProjects: parsed.right.trustedProjects ?? [], diagnostics: [] };
+    return {
+      path,
+      found: true,
+      plugins: parsed.right.plugins ?? {},
+      ui: parsed.right.ui ?? {},
+      trustedProjects: parsed.right.trustedProjects ?? [],
+      diagnostics: [],
+    };
   });
 
 /** JSONC with comments and trailing commas; anything else the parser recovers from is still an error here. */
@@ -246,7 +317,7 @@ export function parseConfig(path: string, text: string): Either.Either<ConfigFil
         ...(typeof at[1] === "string" ? { pluginId: at[1] } : {}),
         path: at,
         message: `${path}: invalid config at ${at.length ? at.join(".") : "root"}: ${issue?.message ?? ParseResult.TreeFormatter.formatErrorSync(decoded.left)}`,
-        suggestion: `Expected { "trustedProjects"?: string[], "plugins"?: { "<id>": { "enabled"?: boolean, "config"?: unknown } } }`,
+        suggestion: `Expected { "trustedProjects"?: string[], "plugins"?: { "<id>": { "enabled"?: boolean, "config"?: unknown } }, "ui"?: { "<id>": { … } } }`,
       }),
     );
   }

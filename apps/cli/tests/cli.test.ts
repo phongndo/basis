@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,21 @@ const invoke = async (argv: readonly string[], home: string, cwd = "/") => {
     err: (text) => err.push(text),
   });
   return { code, out: out.replace(/\n$/, ""), err: err.join("\n") };
+};
+
+/** Retries `read` until it answers without throwing, while a restarting transport comes back (a new port here) and rewrites transport.json. */
+const settled = async <A>(read: () => Promise<A | undefined>, until: (value: A) => boolean = () => true): Promise<A | undefined> => {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const value = await read();
+      if (value !== undefined && until(value)) return value;
+    } catch {
+      /* not back yet */
+    }
+    if (Date.now() > deadline) return undefined;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 };
 
 const mockProvider = fileURLToPath(new URL("../../../scripts/fixtures/mock-openai.ts", import.meta.url));
@@ -84,6 +99,14 @@ describe("without a host", () => {
       ["session", "checkout", "s"],
       ["events", "x"],
       ["events", "--questions", "maybe"],
+      ["plugins", "config"],
+      ["plugins", "show"],
+      ["plugins", "config", "agent", "maxSteps"],
+      ["plugins", "config", "agent", "maxSteps", "5", "--unset"],
+      ["ui", "bogus"],
+      ["ui", "enable"],
+      ["ui", "config", "theme"],
+      ["ui", "config", "theme", "accent"],
     ]) {
       expect((await invoke(argv, home)).code, argv.join(" ")).toBe(ExitCode.usage);
     }
@@ -253,6 +276,87 @@ describe("against a running host", () => {
       expect((await rows(userConfig))["project-context"]).toBeUndefined();
     } finally {
       await rm(join(home, ".lemma"), { recursive: true, force: true });
+      await writeFile(userConfig, original);
+      await invoke(["reload"], home);
+    }
+  });
+
+  test("plugins show prints a plugin's wiring: who provides, who uses, and the hooks and events it takes part in", async () => {
+    const shown = await invoke(["plugins", "show", "agent"], home);
+    expect(shown.code).toBe(ExitCode.ok);
+    expect(shown.out).toContain("Agent  used by transport");
+    expect(shown.out).toContain("Llm  from llm");
+    const transport = JSON.parse((await invoke(["plugins", "show", "transport", "--json"], home)).out);
+    expect(transport.observes).toEqual(expect.arrayContaining(["lemma/session.appended", "lemma/notice"]));
+    expect(transport.hooks).toEqual(expect.arrayContaining([expect.objectContaining({ name: "lemma/interaction.request" })]));
+    expect(JSON.parse((await invoke(["plugins", "show", "nope", "--json"], home)).err).error.code).toBe("NotFound");
+  });
+
+  test("plugins config shows a plugin's fields and sets or unsets one in the file that sets its config", async () => {
+    const userConfig = join(home, "config.jsonc");
+    const original = await readFile(userConfig, "utf8");
+    const config = async (id: string) => JSON.parse((await invoke(["plugins", "config", id, "--json"], home)).out);
+    try {
+      const agent = await config("agent");
+      expect(agent.fields.find((field: { key: string }) => field.key === "maxSteps")).toMatchObject({ type: "integer", default: 200 });
+      expect(agent.values.maxSteps).toBe(200);
+      expect((await invoke(["plugins", "config", "agent"], home)).out).toContain("Model calls allowed in one turn");
+
+      // The transport needs the agent, so the change is written, answered, and then applied, restarting the transport.
+      const set = await invoke(["plugins", "config", "agent", "maxSteps", "80", "--json"], home);
+      expect(set.code).toBe(ExitCode.ok);
+      expect(JSON.parse(set.out)).toMatchObject({ id: "agent", key: "maxSteps", value: 80, scope: "user", deferred: true });
+      expect(JSON.parse(await readFile(userConfig, "utf8")).plugins.agent).toEqual({ config: { maxSteps: 80 } });
+      const maxSteps = async () => (await config("agent")).values.maxSteps as number;
+      expect(await settled(maxSteps, (value) => value === 80)).toBe(80);
+
+      const wrong = await invoke(["plugins", "config", "agent", "maxSteps", "1.5", "--json"], home);
+      expect(wrong.code).toBe(ExitCode.failed);
+      expect(JSON.parse(wrong.err).error).toMatchObject({ code: "Usage", message: "maxSteps must be a whole number" });
+      const unknown = await invoke(["plugins", "config", "agent", "speed", "9", "--json"], home);
+      expect(JSON.parse(unknown.err).error.message).toContain("its fields are defaultModel, systemPrompt, cli, maxSteps");
+
+      await invoke(["plugins", "config", "agent", "maxSteps", "--unset"], home);
+      expect(JSON.parse(await readFile(userConfig, "utf8")).plugins.agent).toBeUndefined();
+      expect(await settled(maxSteps, (value) => value === 200)).toBe(200);
+      // The transport's token is secret: clients learn only whether it is set.
+      const transport = await config("transport");
+      expect(transport.fields.find((field: { key: string }) => field.key === "token")).toMatchObject({ secret: true });
+      expect(transport.values.token).toBeUndefined();
+      expect(transport.values.port).toBe(0);
+    } finally {
+      await writeFile(userConfig, original);
+      await settled(async () => (await invoke(["reload"], home)).code === ExitCode.ok || undefined);
+    }
+  });
+
+  test("ui lists and writes the web app's rows, and finds UI files as they appear", async () => {
+    const userConfig = join(home, "config.jsonc");
+    const original = await readFile(userConfig, "utf8");
+    const ui = async () => JSON.parse((await invoke(["ui", "--json"], home)).out);
+    try {
+      expect(await ui()).toEqual({ plugins: {}, enabledIn: {}, configIn: {}, files: [] });
+      expect((await invoke(["ui", "disable", "composer"], home)).out).toBe("disabled composer in the user config; open web apps apply it");
+      await invoke(["ui", "config", "theme", "accent", "red"], home);
+      await invoke(["ui", "config", "theme", "scale", "1.2"], home);
+      expect(JSON.parse(await readFile(userConfig, "utf8")).ui).toEqual({ composer: { enabled: false }, theme: { config: { accent: "red", scale: 1.2 } } });
+      expect(await ui()).toMatchObject({ enabledIn: { composer: "user" }, configIn: { theme: "user" } });
+      await invoke(["ui", "enable", "composer"], home);
+      await invoke(["ui", "config", "theme", "accent", "--unset"], home);
+      expect(JSON.parse(await readFile(userConfig, "utf8")).ui).toEqual({ theme: { config: { scale: 1.2 } } });
+
+      await mkdir(join(home, "ui"), { recursive: true });
+      await writeFile(join(home, "ui", "theme.css"), ":root { --accent: red; }");
+      const deadline = Date.now() + 5_000;
+      let files: { name: string; kind: string; url: string }[] = [];
+      while (files.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        files = (await ui()).files;
+      }
+      expect(files).toMatchObject([{ name: "theme.css", kind: "style" }]);
+      expect((await invoke(["ui"], home)).out).toContain("user/theme.css");
+    } finally {
+      await rm(join(home, "ui"), { recursive: true, force: true });
       await writeFile(userConfig, original);
       await invoke(["reload"], home);
     }

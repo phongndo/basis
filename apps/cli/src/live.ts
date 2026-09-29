@@ -12,6 +12,7 @@ import type {
   TextContent,
   ThinkingLevel as Thinking,
   TurnOptions,
+  UiComposition,
 } from "@lemma/contracts";
 import type { HostRpcClient } from "@lemma/client";
 import { CliError, ExitCode, usage } from "./command.ts";
@@ -286,7 +287,14 @@ const eventLine = (event: HostEvent): string => {
       return `plugins: ${event.plugins.map((plugin) => `${plugin.id}=${plugin.state}`).join(" ")}`;
     case "commands-changed":
       return `commands: ${event.commands.map((command) => command.id).join(" ")}`;
+    case "ui-changed":
+      return uiLine(event.ui);
   }
+};
+
+const uiLine = (ui: UiComposition): string => {
+  const rows = Object.entries(ui.plugins).map(([id, row]) => `${id}${row.enabled === false ? "=off" : ""}${row.config === undefined ? "" : "+config"}`);
+  return `ui: ${rows.length ? rows.join(" ") : "no rows"}; files ${ui.files.length ? ui.files.map((file) => `${file.source}/${file.name}`).join(" ") : "none"}`;
 };
 
 /** Open questions: the host replays them to every new subscriber. */

@@ -3,6 +3,7 @@ import type { FSWatcher } from "node:fs";
 import { basename, dirname } from "node:path";
 import { Duration, Effect, Stream } from "effect";
 import type { PathsService } from "./paths.ts";
+import { projectUiDir, userUiDir } from "./ui.ts";
 
 export interface WatchOptions {
   /** Quiet period before a burst of changes becomes one emission. Default 250ms. */
@@ -36,6 +37,49 @@ export function watchConfig(paths: PathsService, options: WatchOptions = {}): St
     }
     return Effect.sync(() => {
       for (const watcher of watchers) watcher.close();
+    });
+  }).pipe(Stream.debounce(Duration.millis(options.debounceMs ?? 250)));
+}
+
+/**
+ * Emits after a file in `<home>/ui` or the project's `.lemma/ui` changes. A
+ * directory created while the host runs is picked up: its parent is watched
+ * for it, and any change to that entry (created, removed, replaced) swaps in
+ * a fresh watcher, since a removed directory's watcher on Linux goes quiet
+ * without an error.
+ */
+export function watchUi(paths: PathsService, options: WatchOptions = {}): Stream.Stream<void> {
+  const dirs = [userUiDir(paths), projectUiDir(paths)];
+  return Stream.async<void>((emit) => {
+    const watchers = new Map<string, FSWatcher>();
+    const attach = (path: string, onChange: (name: string | null) => void) => {
+      if (watchers.has(path)) return;
+      try {
+        const watcher = watch(path, (_, name) => onChange(name));
+        watcher.on("error", () => {
+          watcher.close();
+          watchers.delete(path);
+        });
+        watchers.set(path, watcher);
+      } catch {
+        // Absent: its parent's watcher attaches one when it appears.
+      }
+    };
+    for (const dir of dirs) {
+      const watchDir = () => {
+        watchers.get(dir)?.close();
+        watchers.delete(dir);
+        attach(dir, () => emit.single(undefined));
+      };
+      attach(dirname(dir), (name) => {
+        if (name !== null && name !== basename(dir)) return;
+        watchDir();
+        emit.single(undefined);
+      });
+      watchDir();
+    }
+    return Effect.sync(() => {
+      for (const watcher of watchers.values()) watcher.close();
     });
   }).pipe(Stream.debounce(Duration.millis(options.debounceMs ?? 250)));
 }

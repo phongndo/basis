@@ -2,7 +2,8 @@ import { Rpc, RpcGroup } from "@effect/rpc";
 import { Schema } from "effect";
 import { PromptContent, TurnOptions } from "./agent.ts";
 import { CommandInfo, CommandResult } from "./commands.ts";
-import { CompositionInfo, ConfigScope, NoticePayload, PluginRow, PluginSource } from "./host.ts";
+import { ConfigField, ConfigValues } from "./config.ts";
+import { CompositionInfo, ConfigScope, FaultRecord, HookUse, NoticePayload, PluginChange, PluginSource, UiComposition } from "./host.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
 import { AuthType, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
 import { SessionEvent, SessionInfo } from "./sessions.ts";
@@ -35,6 +36,12 @@ export const PluginStatus = Schema.Struct({
   fault: Schema.optional(Schema.Struct({ phase: Schema.String, operation: Schema.optional(Schema.String), message: Schema.String })),
   /** The plugin whose failure or absence keeps this one from running. */
   haltedBy: Schema.optional(Schema.String),
+  configFields: Schema.optional(Schema.Array(ConfigField)),
+  config: Schema.optional(ConfigValues),
+  configScope: Schema.optional(ConfigScope),
+  hooks: Schema.optional(Schema.Array(HookUse)),
+  observes: Schema.optional(Schema.Array(Schema.String)),
+  faults: Schema.optional(Schema.Array(FaultRecord)),
 });
 export type PluginStatus = typeof PluginStatus.Type;
 
@@ -43,6 +50,8 @@ export const ReloadResult = Schema.Struct({
   started: Schema.Array(Schema.String),
   restarted: Schema.Array(Schema.String),
   stopped: Schema.Array(Schema.String),
+  /** Applied after the reply, because it restarts the transport; see `ConfigureReport`. */
+  deferred: Schema.optional(Schema.Boolean),
 });
 export type ReloadResult = typeof ReloadResult.Type;
 
@@ -64,6 +73,7 @@ export const HostEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literal("notice"), notice: NoticePayload }),
   Schema.Struct({ type: Schema.Literal("plugins-changed"), plugins: Schema.Array(PluginStatus) }),
   Schema.Struct({ type: Schema.Literal("commands-changed"), commands: Schema.Array(CommandInfo) }),
+  Schema.Struct({ type: Schema.Literal("ui-changed"), ui: UiComposition }),
 );
 export type HostEvent = typeof HostEvent.Type;
 
@@ -98,6 +108,8 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Llm.Login", { payload: { provider: Schema.String, type: AuthType }, error: HostError }),
   Rpc.make("Llm.Logout", { payload: { provider: Schema.String }, error: HostError }),
 
+  /** Questions still waiting on an answer, so a client can show them without resubscribing. */
+  Rpc.make("Interaction.List", { success: Schema.Array(InteractionRequest) }),
   Rpc.make("Interaction.Answer", { payload: { id: Schema.String, answer: InteractionAnswer }, error: HostError }),
   Rpc.make("Interaction.Dismiss", { payload: { id: Schema.String }, error: HostError }),
 
@@ -135,10 +147,19 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Host.RestartPlugin", { payload: { pluginId: Schema.String, force: Schema.optional(Schema.Boolean) }, error: HostError }),
   /** Re-read config files and apply the composition; diagnostics come back as the error message. */
   Rpc.make("Host.Reload", { success: ReloadResult, error: HostError }),
-  /** Write plugin rows (`enabled`, `config`) into the user or project config file and apply; a rejected change is undone. */
+  /** Write plugin rows (`enabled`, `config`, `values`) into the user or project config file and apply; a rejected change is undone. */
   Rpc.make("Host.Configure", {
-    payload: { plugins: Schema.Record({ key: Schema.String, value: PluginRow }), scope: Schema.optional(ConfigScope) },
+    payload: { plugins: Schema.Record({ key: Schema.String, value: PluginChange }), scope: Schema.optional(ConfigScope) },
     success: ReloadResult,
+    error: HostError,
+  }),
+
+  /** The web app's `ui` rows and UI files; it plans and runs that composition itself. */
+  Rpc.make("Ui.Composition", { success: UiComposition }),
+  /** Write `ui` rows into the user or project config file; clients apply them on `ui-changed`. */
+  Rpc.make("Ui.Configure", {
+    payload: { plugins: Schema.Record({ key: Schema.String, value: PluginChange }), scope: Schema.optional(ConfigScope) },
+    success: UiComposition,
     error: HostError,
   }),
 ) {}

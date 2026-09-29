@@ -57,6 +57,7 @@ export interface Options {
   readonly session?: string | undefined;
   readonly force: boolean;
   readonly project: boolean;
+  readonly unset: boolean;
 }
 
 export interface Connection {

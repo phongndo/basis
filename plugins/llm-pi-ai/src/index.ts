@@ -10,12 +10,11 @@ import { makeEventMapper, reasoningFor, toContext, toModelInfo } from "./convert
 import { CustomProvider, customProvider, selectProviders, withoutAnthropicOAuth } from "./providers.ts";
 
 export const Config = Schema.Struct({
-  /** Built-in provider ids to register; default all. */
-  include: Schema.optional(Schema.Array(Schema.String)),
-  /** Built-in provider ids to leave out. */
-  exclude: Schema.optional(Schema.Array(Schema.String)),
-  /** Providers on a known wire API (OpenAI-compatible servers, proxies). Replace a built-in with the same id. */
-  providers: Schema.optional(Schema.Array(CustomProvider)),
+  include: Schema.optional(Schema.Array(Schema.String)).annotations({ description: "Built-in provider ids to register; default all." }),
+  exclude: Schema.optional(Schema.Array(Schema.String)).annotations({ description: "Built-in provider ids to leave out." }),
+  providers: Schema.optional(Schema.Array(CustomProvider)).annotations({
+    description: "Providers on a known wire API (OpenAI-compatible servers, proxies). Replace a built-in with the same id.",
+  }),
 });
 export type Config = typeof Config.Type;
 

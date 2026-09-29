@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Deferred, Duration, Effect, Fiber, Layer, Schedule, Stream } from "effect";
 import { HostControl, Notice, Paths, PluginsChanged } from "@lemma/contracts";
+import type { UiComposition } from "@lemma/contracts";
 import { definePlugin, Diagnostic, Events, makeLoader, PluginContext } from "@lemma/core";
 import type { Loader, Plugin, PluginSource } from "@lemma/core";
 import { compositionInfo, hostPlugin, resolvePaths } from "../src/index.ts";
@@ -18,6 +19,7 @@ const flaky = definePlugin({
 const start = Effect.gen(function* () {
   const ready = yield* Deferred.make<Loader>();
   const configured: Record<string, unknown>[] = [];
+  let ui: UiComposition = { plugins: {}, enabledIn: {}, configIn: {}, files: [] };
   const handle: HostControlService = {
     plugins: Effect.flatMap(Deferred.await(ready), (loader) =>
       Effect.map(loader.core.inspect, (snapshot) => snapshot.plugins.map((plugin) => ({ ...plugin, source: "bundled" as const, enabled: true }))),
@@ -31,6 +33,12 @@ const start = Effect.gen(function* () {
       Effect.flatMap(Deferred.await(ready), (loader) => {
         configured.push(rows);
         return loader.apply({ plugins: { host: { config: paths } } });
+      }),
+    ui: Effect.sync(() => ui),
+    configureUi: (rows) =>
+      Effect.sync(() => {
+        ui = { ...ui, plugins: { ...ui.plugins, ...rows } };
+        return ui;
       }),
   };
   const host = hostPlugin({ control: handle, faults: Stream.unwrap(Effect.map(Deferred.await(ready), (loader) => loader.core.faults)) });

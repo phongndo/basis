@@ -328,8 +328,9 @@ export const makeWorkspace = (options: WorkspaceOptions = {}): Context.Tag.Servi
 };
 
 export const WorkspaceConfig = Schema.Struct({
-  /** Where new worktrees go; defaults to `worktrees` in the host's home (`~/.lemma/worktrees`). */
-  worktrees: Schema.optional(Schema.String),
+  worktrees: Schema.optional(Schema.String).annotations({
+    description: "Where new worktrees go; defaults to worktrees in the host's home (~/.lemma/worktrees).",
+  }),
 });
 
 export default definePlugin({

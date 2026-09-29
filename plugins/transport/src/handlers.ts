@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 import type { Context } from "effect";
 import { HostRpcs, InteractionOrigin } from "@lemma/contracts";
-import type { Agent, Commands, HostControl, Llm, Paths, ReloadResult, Sessions, Workspace } from "@lemma/contracts";
-import type { ReloadReport } from "@lemma/core";
+import type { Agent, Commands, ConfigureReport, HostControl, Llm, Paths, ReloadResult, Sessions, Workspace } from "@lemma/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
 import type { Interactions } from "./interactions.ts";
@@ -47,6 +46,7 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Llm.Login": ({ provider, type }) => login(provider, type).pipe(Effect.mapError(toHostError)),
     "Llm.Logout": ({ provider }) => llm.logout(provider).pipe(Effect.mapError(toHostError)),
 
+    "Interaction.List": () => Effect.sync(() => [...interactions.open()]),
     "Interaction.Answer": ({ id, answer }) => interactions.answer(id, answer),
     "Interaction.Dismiss": ({ id }) => interactions.dismiss(id),
 
@@ -72,6 +72,14 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Host.Reload": () => control.reload.pipe(Effect.map(toReloadResult), Effect.mapError(toHostError)),
     "Host.Configure": ({ plugins, scope }) =>
       control.configure(plugins, scope === undefined ? undefined : { scope }).pipe(Effect.map(toReloadResult), Effect.mapError(toHostError)),
+
+    "Ui.Composition": () => control.ui,
+    "Ui.Configure": ({ plugins, scope }) => control.configureUi(plugins, scope === undefined ? undefined : { scope }).pipe(Effect.mapError(toHostError)),
   });
 
-const toReloadResult = (report: ReloadReport): ReloadResult => ({ started: report.started, restarted: report.restarted, stopped: report.stopped });
+const toReloadResult = (report: ConfigureReport): ReloadResult => ({
+  started: report.started,
+  restarted: report.restarted,
+  stopped: report.stopped,
+  ...(report.deferred ? { deferred: true } : {}),
+});

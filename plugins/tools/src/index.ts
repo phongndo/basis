@@ -4,8 +4,9 @@ import { Tools } from "@lemma/contracts";
 import { makeRegistry } from "./registry.ts";
 
 export const ToolsConfig = Schema.Struct({
-  /** Total text characters one result may carry to the model; longer results are cut with a marker. */
-  maxResultChars: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 100_000 }),
+  maxResultChars: Schema.optionalWith(Schema.Int.pipe(Schema.positive()), { default: () => 100_000 }).annotations({
+    description: "Total text characters one result may carry to the model; longer results are cut with a marker.",
+  }),
 });
 export type ToolsConfig = typeof ToolsConfig.Type;
 

@@ -70,7 +70,7 @@ const withHost = <A, E>(
       Effect.gen(function* () {
         const home = owned ?? (yield* Effect.promise(() => mkdtemp(join(tmpdir(), "lemma-transport-"))));
         if (owned === undefined) yield* Effect.addFinalizer(() => Effect.promise(() => rm(home, { recursive: true, force: true })));
-        const holder: ControlHolder = { restarted: [], off: {} };
+        const holder: ControlHolder = { restarted: [], off: {}, ui: { plugins: {}, enabledIn: {}, configIn: {}, files: [] } };
         const core = yield* makeCore(
           [transport, fakeAgent, fakeSessions, fakeLlm, fakeInteraction, fakeHostControl(holder), fakePaths(home), fakeWorkspace, commands, fakeGreeter],
           {
@@ -151,6 +151,38 @@ describe("transport", () => {
           });
         expect(yield* socket("wrong")).toBe("refused");
         expect(yield* socket(host.token)).toBe("open");
+      }),
+    ));
+
+  test("serves listed UI files with the token, and tells clients when the UI composition changes", () =>
+    withHost((host) =>
+      Effect.gen(function* () {
+        const dir = join(host.home, "ui");
+        yield* Effect.promise(() => mkdir(dir, { recursive: true }));
+        yield* Effect.promise(() => writeFile(join(dir, "panel.js"), "export default () => [];"));
+        yield* Effect.promise(() => writeFile(join(dir, "secret.js"), "unlisted"));
+        host.holder.ui = {
+          ...host.holder.ui,
+          files: [{ name: "panel.js", source: "user", kind: "script", path: join(dir, "panel.js"), url: "/api/ui/user/panel.js?v=1" }],
+        };
+        const get = (path: string) => Effect.promise(() => fetch(`${host.url}${path}`));
+        const token = `token=${encodeURIComponent(host.token)}`;
+        expect((yield* get("/api/ui/user/panel.js?v=1")).status).toBe(401);
+        const served = yield* get(`/api/ui/user/panel.js?v=1&${token}`);
+        expect(served.status).toBe(200);
+        expect(served.headers.get("content-type")).toMatch(/javascript/);
+        expect(yield* Effect.promise(() => served.text())).toBe("export default () => [];");
+        // Only listed files are served, whatever else is in the directory.
+        expect((yield* get(`/api/ui/user/secret.js?${token}`)).status).toBe(404);
+        expect((yield* get(`/api/ui/user/..%2Fconfig.jsonc?${token}`)).status).toBe(404);
+
+        const client = yield* host.connect("websocket");
+        const events = yield* subscribe(host, client);
+        expect((yield* client.Ui.Composition()).files.map((file) => file.name)).toEqual(["panel.js"]);
+        const written = yield* client.Ui.Configure({ plugins: { composer: { enabled: false } } });
+        expect(written.plugins).toEqual({ composer: { enabled: false } });
+        const [changed] = (yield* waitFor(events, (event) => event.type === "ui-changed")).slice(-1);
+        expect(changed?.type === "ui-changed" && changed.ui.plugins).toEqual({ composer: { enabled: false } });
       }),
     ));
 
@@ -299,6 +331,8 @@ describe("transport", () => {
           const confirm = yield* Effect.fork(host.core.run(interaction.confirm("Proceed?", "details")));
           const [request] = (yield* waitFor(events, (event) => event.type === "interaction")).slice(-1);
           expect(request).toEqual({ type: "interaction", request: { type: "confirm", id: "i1", title: "Proceed?", detail: "details" } });
+          // A client that was not listening when it was asked can still read it.
+          expect(yield* client.Interaction.List()).toEqual([{ type: "confirm", id: "i1", title: "Proceed?", detail: "details" }]);
 
           expect(hostError(yield* Effect.exit(client.Interaction.Answer({ id: "i1", answer: { type: "ask", value: "x" } })))).toMatchObject({
             code: "Mismatch",
@@ -309,6 +343,7 @@ describe("transport", () => {
           });
           yield* client.Interaction.Answer({ id: "i1", answer: { type: "confirm", value: true } });
           expect(yield* Fiber.join(confirm)).toBe(true);
+          expect(yield* client.Interaction.List()).toEqual([]);
           yield* waitFor(events, (event) => event.type === "interaction-closed" && event.id === "i1");
           expect(hostError(yield* Effect.exit(client.Interaction.Answer({ id: "i1", answer: { type: "confirm", value: false } })))).toMatchObject({
             code: "NotFound",

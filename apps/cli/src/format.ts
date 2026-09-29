@@ -15,6 +15,7 @@ import type {
   TrajectoryRequest,
   TrajectoryStep,
   TrajectoryTurn,
+  UiComposition,
   Usage,
   WorkspaceStatus,
 } from "@lemma/contracts";
@@ -92,11 +93,94 @@ export const formatPlugins = (plugins: readonly PluginStatus[]): string =>
     ]),
   );
 
+const show = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value));
+
+const capability = (key: string) => key.slice(key.lastIndexOf("/") + 1);
+
+/**
+ * One plugin as the web app's inspector shows it: its state and why, what it
+ * provides and requires and who is on the other end, the hooks it intercepts
+ * and events it observes, and its recent faults.
+ */
+export const formatPlugin = (plugins: readonly PluginStatus[], plugin: PluginStatus): string => {
+  const users = (key: string) => plugins.filter((other) => other.requires.includes(key)).map((other) => other.id);
+  const provider = (key: string) =>
+    (plugins.find((other) => other.enabled && other.provides.includes(key)) ?? plugins.find((other) => other.provides.includes(key)))?.id;
+  const handlers = (name: string) =>
+    plugins
+      .flatMap((other) => other.hooks?.filter((hook) => hook.name === name).map((hook) => ({ id: other.id, order: hook.order })) ?? [])
+      .sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1));
+  const lines = [
+    `${plugin.id}${plugin.version === undefined ? "" : ` ${plugin.version}`}  ${plugin.state}${plugin.enabled ? "" : " (off)"}  ${plugin.source}${plugin.shadows ? " (shadows bundled)" : ""}`,
+    ...(pluginNote(plugins, plugin) === "" ? [] : [`  ${pluginNote(plugins, plugin)}`]),
+    "",
+    "Provides",
+    ...(plugin.provides.length === 0 ? ["  nothing"] : plugin.provides.map((key) => `  ${capability(key)}  used by ${users(key).join(", ") || "no plugin"}`)),
+    "Requires",
+    ...(plugin.requires.length === 0 ? ["  nothing"] : plugin.requires.map((key) => `  ${capability(key)}  from ${provider(key) ?? "no plugin"}`)),
+    "Hooks",
+    ...(plugin.hooks?.length
+      ? plugin.hooks.map((hook) => {
+          const all = handlers(hook.name);
+          return `  ${hook.name}  order ${hook.order}, ${all.length > 1 ? `${all.findIndex((entry) => entry.id === plugin.id) + 1} of ${all.length}` : "only handler"}`;
+        })
+      : ["  none"]),
+    "Observes",
+    ...(plugin.observes?.length ? plugin.observes.map((event) => `  ${event}`) : ["  none"]),
+    "Faults",
+    ...(plugin.faults?.length
+      ? plugin.faults.map(
+          (fault) =>
+            `  ${new Date(fault.at).toISOString()}  #${fault.sequence} ${fault.phase}${fault.operation === undefined ? "" : ` ${fault.operation}`}: ${fault.message}`,
+        )
+      : ["  none since the host started"]),
+  ];
+  return lines.join("\n");
+};
+
+/** A plugin's settings: each field with its value (or default), and where it is set. */
+export const formatConfig = (plugin: PluginStatus): string => {
+  const fields = plugin.configFields ?? [];
+  if (fields.length === 0) return `${plugin.id} takes no config`;
+  const values = plugin.config?.values ?? {};
+  const rows = fields.map((field) => {
+    const value = field.secret
+      ? plugin.config?.secretsSet.includes(field.key)
+        ? "(set)"
+        : "(not set)"
+      : field.type === "other"
+        ? "(edit in config.jsonc)"
+        : field.key in values
+          ? show(values[field.key])
+          : "(not set)";
+    const type = field.type === "enum" ? (field.options ?? []).join("|") : field.type;
+    return [field.key, type, value, field.description ?? ""];
+  });
+  return `${pad(rows)}\n\nSet in the ${plugin.configScope ?? "user"} config. lemma plugins config ${plugin.id} <key> <value> (or --unset) changes one.`;
+};
+
+/** The web app's rows and files; which plugins exist is known only to the web app, which loads them. */
+export const formatUi = (ui: UiComposition): string => {
+  const rows = Object.entries(ui.plugins).map(([id, row]) => [
+    id,
+    row.enabled === false ? "off" : row.enabled === true ? "on" : "",
+    row.config === undefined ? "" : JSON.stringify(row.config),
+    ui.enabledIn[id] ?? ui.configIn[id] ?? "",
+  ]);
+  const files = ui.files.map((file) => [`${file.source}/${file.name}`, file.kind, file.path]);
+  return [
+    rows.length ? `Rows\n${pad(rows)}` : "No ui rows: every web app plugin runs with its default config.",
+    files.length ? `Files\n${pad(files)}` : "No UI files in ~/.lemma/ui.",
+  ].join("\n\n");
+};
+
 export const formatReload = (report: {
   readonly started: readonly string[];
   readonly restarted: readonly string[];
   readonly stopped: readonly string[];
+  readonly deferred?: boolean | undefined;
 }): string => {
+  if (report.deferred) return "applying: the host restarts the plugins that use it, the transport among them, so clients reconnect";
   const parts = [
     report.started.length ? `started ${report.started.join(", ")}` : "",
     report.restarted.length ? `restarted ${report.restarted.join(", ")}` : "",

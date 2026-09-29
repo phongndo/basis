@@ -1,26 +1,30 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { Cause, Deferred, Effect, Exit, Option, Stream } from "effect";
-import { HostControl } from "@lemma/contracts";
-import { Diagnostic, makeLoader, ReloadError } from "@lemma/core";
-import type { Composition, Loader, Plugin, PluginSource, ReloadReport } from "@lemma/core";
+import { Cause, Deferred, Duration, Effect, Either, Exit, Option, ParseResult, Schema, Stream } from "effect";
+import { HostControl, Notice, PluginsChanged, UiChanged } from "@lemma/contracts";
+import { Diagnostic, Events, makeLoader, ReloadError } from "@lemma/core";
+import type { Composition, CoreSnapshot, Event, Loader, Plugin, PluginSource, ReloadReport } from "@lemma/core";
 import {
   catalog,
   compositionInfo,
+  faultHistory,
   HOST_PLUGIN_ID,
   hostPlugin,
+  listUiFiles,
   loadComposition,
   projectPluginsDir,
   readConfigText,
   resolveComposition,
   resolvePaths,
+  restartedBy,
   updateConfig,
   watchConfig,
+  watchUi,
   withReplacements,
 } from "@lemma/plugin-host";
-import type { HostControlService, KnownPlugin, Resolved } from "@lemma/plugin-host";
-import type { ConfigScope } from "@lemma/contracts";
+import type { ConfigSection, HostControlService, KnownPlugin, Resolved } from "@lemma/plugin-host";
+import type { ConfigScope, ConfigureReport, PluginChange, UiComposition } from "@lemma/contracts";
 import { readDiscovery } from "@lemma/plugin-transport";
 import { bundled, withDefaults } from "./bundled.ts";
 import { loadLocalPlugins } from "./local.ts";
@@ -58,13 +62,21 @@ interface Loaded {
   /** What the loader runs: `composition` minus plugins whose requirements a disabled plugin leaves unmet. */
   readonly resolved: Resolved;
   readonly enabledIn: Readonly<Record<string, ConfigScope>>;
+  readonly configIn: Readonly<Record<string, ConfigScope>>;
   readonly trusted: boolean;
+  /** The web app's rows and files, which it plans itself. */
+  readonly ui: UiComposition;
 }
 
 /** The last load the loader accepted; the catalog and `configure` reason about this. */
 let applied!: Loaded;
-/** Config file contents this process last wrote (undefined: removed), so the watcher skips its own changes. */
-const written = new Map<string, string | undefined>();
+/**
+ * What each config file held when the host last read or wrote it. The watcher
+ * debounces both files into one event naming only the last, so an event
+ * rereads both and reloads when either differs: the host's own write to one
+ * file must not hide a hand edit to the other.
+ */
+const seenConfig = new Map<string, string | undefined>();
 const source: PluginSource = {
   resolve: (id) => {
     const plugin = applied.known.find((entry) => entry.plugin.id === id)?.plugin;
@@ -137,7 +149,8 @@ const load = (host: Plugin): Effect.Effect<Loaded, ReloadError> =>
     if (errors.length) return yield* new ReloadError({ diagnostics: errors });
     // Only for a composition that will run: a rejected one's warnings describe nothing that happens.
     yield* printDiagnostics(diagnostics.filter((diagnostic) => diagnostic.severity === "warning"));
-    return { known, composition, resolved, enabledIn: loaded.enabledIn, trusted: loaded.trusted };
+    const files = yield* listUiFiles(paths, loaded.trusted);
+    return { known, composition, resolved, enabledIn: loaded.enabledIn, configIn: loaded.configIn, trusted: loaded.trusted, ui: { ...loaded.ui, files } };
   });
 
 const describe = (report: ReloadReport): string => {
@@ -171,30 +184,143 @@ const openBrowser = (url: string) =>
 
 const rejected = (diagnostic: Diagnostic) => new ReloadError({ diagnostics: [diagnostic] });
 
+/** Both config files' text, undefined for one that is missing or unreadable. */
+const readConfigFiles = Effect.forEach([paths.userConfig, paths.projectConfig], (path) =>
+  Effect.map(readConfigText(path).pipe(Effect.orElseSucceed(() => undefined)), (text) => [path, text] as const),
+);
+
+/** How long a deferred change waits for its reply to leave before the transport that sends it restarts. */
+const DEFER = Duration.millis(250);
+
+/** Decodes the configs of `ids` as the loader will, so a change that restarts the transport is refused before it is applied. */
+const checkConfigs = (next: Loaded, ids: readonly string[]): Effect.Effect<void, ReloadError> => {
+  const diagnostics: Diagnostic[] = [];
+  for (const id of ids) {
+    const plugin = next.known.find((entry) => entry.plugin.id === id)?.plugin;
+    const entry = next.resolved.composition.plugins[id];
+    if (plugin?.config === undefined || entry === undefined) continue;
+    const decoded = Schema.decodeUnknownEither(plugin.config)(entry.config ?? {});
+    if (Either.isRight(decoded)) continue;
+    const issue = ParseResult.ArrayFormatter.formatErrorSync(decoded.left)[0];
+    const at = issue?.path.filter((segment): segment is string | number => typeof segment !== "symbol") ?? [];
+    diagnostics.push(
+      new Diagnostic({
+        severity: "error",
+        pluginId: id,
+        path: ["config", ...at],
+        message: `Invalid config for "${id}"${at.length ? ` at ${at.join(".")}` : ""}: ${issue?.message ?? "does not match its schema"}`,
+      }),
+    );
+  }
+  return diagnostics.length ? Effect.fail(new ReloadError({ diagnostics })) : Effect.void;
+};
+
 const program = Effect.gen(function* () {
+  const programScope = yield* Effect.scope;
   // The host plugin activates inside makeLoader, so its handle binds to the loader once it exists.
   const ready = yield* Deferred.make<Loader>();
   const reloading = yield* Effect.makeSemaphore(1);
   const withLoader = <A, E>(f: (loader: Loader) => Effect.Effect<A, E>) => Effect.flatMap(Deferred.await(ready), f);
   let host: Plugin;
+  const publish = <P>(loader: Loader, event: Event<P>, payload: P) => loader.core.run(Effect.flatMap(Events, (events) => events.publish(event, payload)));
+  const faults = faultHistory();
+  /** Every known plugin as clients see it, from the last applied load and a core snapshot. */
+  const catalogOf = (snapshot: CoreSnapshot) =>
+    catalog({ ...applied, snapshots: snapshot.plugins, hooks: snapshot.hooks, events: snapshot.events, faults: faults.get(), pinned });
+  /** Web apps apply `ui` rows and files themselves; tell them when either changed. */
+  const publishUi = (loader: Loader, previous: UiComposition, next: UiComposition) =>
+    JSON.stringify(previous) === JSON.stringify(next) ? Effect.void : publish(loader, UiChanged, next);
   // The source resolves ids against the load being applied, so the next set is visible before the loader accepts it.
   const apply = (loader: Loader, next: Loaded) =>
     Effect.gen(function* () {
       const previous = applied;
       applied = next;
-      return yield* loader.apply(next.resolved.composition).pipe(
+      const report = yield* loader.apply(next.resolved.composition).pipe(
         Effect.tapError(() =>
           Effect.sync(() => {
             applied = previous;
           }),
         ),
       );
+      yield* publishUi(loader, previous.ui, next.ui).pipe(Effect.ignore);
+      return report;
     });
+  /** Writes rows into a config file and applies the result; a change the host rejects is undone in the file. */
+  const write = (loader: Loader, rows: Readonly<Record<string, PluginChange>>, scope: ConfigScope, section: ConfigSection) =>
+    Effect.gen(function* () {
+      const path = scope === "user" ? paths.userConfig : paths.projectConfig;
+      const update = yield* updateConfig(path, rows, scope, section).pipe(Effect.mapError(rejected));
+      seenConfig.set(path, update.text);
+      // The written rows are read back like any other change; if the host rejects them, the file is put back.
+      return yield* Effect.flatMap(load(host), (next) => apply(loader, next)).pipe(
+        Effect.tapError(() => update.restore.pipe(Effect.tap(() => Effect.sync(() => seenConfig.set(path, update.previous))))),
+      );
+    });
+  /**
+   * A change that restarts the transport would drop the connection asking for
+   * it, so it is checked and written now and applied once the reply is out
+   * (see `ConfigureReport`). If applying still fails, the file is put back and
+   * clients hear why.
+   */
+  const writeDeferred = (loader: Loader, rows: Readonly<Record<string, PluginChange>>, scope: ConfigScope) =>
+    Effect.gen(function* () {
+      const path = scope === "user" ? paths.userConfig : paths.projectConfig;
+      const update = yield* updateConfig(path, rows, scope, "plugins").pipe(Effect.mapError(rejected));
+      seenConfig.set(path, update.text);
+      const restore = update.restore.pipe(Effect.tap(() => Effect.sync(() => seenConfig.set(path, update.previous))));
+      const next = yield* load(host).pipe(Effect.tapError(() => restore));
+      yield* checkConfigs(next, Object.keys(rows)).pipe(Effect.tapError(() => restore));
+      const later = reloading
+        .withPermits(1)(Effect.flatMap(load(host), (loaded) => apply(loader, loaded)))
+        .pipe(
+          Effect.matchEffect({
+            onSuccess: (report) =>
+              log(`applied a config change: ${describe(report)}`).pipe(
+                Effect.zipRight(Effect.flatMap(handle.plugins, (plugins) => publish(loader, PluginsChanged, { plugins }))),
+              ),
+            onFailure: (error) =>
+              restore.pipe(
+                Effect.zipRight(printDiagnostics(error.diagnostics)),
+                Effect.zipRight(
+                  publish(loader, Notice, {
+                    level: "error",
+                    source: HOST_PLUGIN_ID,
+                    message: `The config change could not be applied and was undone: ${error.diagnostics.map((diagnostic) => diagnostic.message).join("; ")}`,
+                  }),
+                ),
+              ),
+          }),
+          Effect.ignore,
+        );
+      yield* Effect.forkIn(Effect.delay(later, DEFER), programScope);
+      const report: ConfigureReport = { started: [], restarted: [], stopped: [], unchanged: [], failed: [], interrupted: 0, faults: [], deferred: true };
+      return report;
+    });
+  const untrustedProject = () =>
+    rejected(
+      new Diagnostic({
+        severity: "error",
+        message: `${paths.projectConfig} is not read because ${paths.cwd} is not a trusted project`,
+        suggestion: `Add "${paths.cwd}" to "trustedProjects" in ${paths.userConfig}, or change the user config instead`,
+      }),
+    );
   // One change at a time, reading and applying together: the watcher, `Host.Reload`, and `Host.Configure` can
   // race, and a reload that read the files earlier must not apply after one that read them later.
   const reload = withLoader((loader) => reloading.withPermits(1)(Effect.flatMap(load(host), (next) => apply(loader, next))));
   const handle: HostControlService = {
-    plugins: withLoader((loader) => Effect.map(loader.core.inspect, (snapshot) => catalog({ ...applied, snapshots: snapshot.plugins, pinned }))),
+    plugins: withLoader((loader) => Effect.map(loader.core.inspect, catalogOf)),
+    ui: Effect.sync(() => applied.ui),
+    configureUi: (rows, options) =>
+      withLoader((loader) =>
+        reloading.withPermits(1)(
+          Effect.gen(function* () {
+            const scope = options?.scope ?? "user";
+            if (scope === "project" && !applied.trusted) return yield* untrustedProject();
+            yield* write(loader, rows, scope, "ui");
+            return applied.ui;
+          }),
+        ),
+      ),
     composition: withLoader((loader) =>
       Effect.gen(function* () {
         const composition = yield* loader.composition;
@@ -207,7 +333,7 @@ const program = Effect.gen(function* () {
         Effect.gen(function* () {
           // Replacing a plugin the transport needs restarts the transport too, dropping the client that asked; refuse rather than surprise.
           if (options?.force) {
-            const entry = catalog({ ...applied, snapshots: (yield* loader.core.inspect).plugins, pinned }).find((candidate) => candidate.id === pluginId);
+            const entry = catalogOf(yield* loader.core.inspect).find((candidate) => candidate.id === pluginId);
             if (entry?.locked !== undefined && entry.state === "active") {
               return yield* rejected(
                 new Diagnostic({
@@ -228,17 +354,9 @@ const program = Effect.gen(function* () {
         reloading.withPermits(1)(
           Effect.gen(function* () {
             const scope = options?.scope ?? "user";
-            if (scope === "project" && !applied.trusted) {
-              return yield* rejected(
-                new Diagnostic({
-                  severity: "error",
-                  message: `${paths.projectConfig} is not read because ${paths.cwd} is not a trusted project`,
-                  suggestion: `Add "${paths.cwd}" to "trustedProjects" in ${paths.userConfig}, or change the user config instead`,
-                }),
-              );
-            }
+            if (scope === "project" && !applied.trusted) return yield* untrustedProject();
             // Checked here so the answer is immediate and the file is never touched: the load would refuse these too.
-            const entries = catalog({ ...applied, snapshots: (yield* loader.core.inspect).plugins, pinned });
+            const entries = catalogOf(yield* loader.core.inspect);
             for (const [id, row] of Object.entries(requested)) {
               if (id === HOST_PLUGIN_ID) {
                 return yield* rejected(
@@ -270,18 +388,19 @@ const program = Effect.gen(function* () {
                 );
               }
             }
-            const path = scope === "user" ? paths.userConfig : paths.projectConfig;
-            const update = yield* updateConfig(path, rows, scope).pipe(Effect.mapError(rejected));
-            written.set(path, update.text);
-            // The written rows are read back like any other change; if the host rejects them, the file is put back.
-            return yield* Effect.flatMap(load(host), (next) => apply(loader, next)).pipe(
-              Effect.tapError(() => update.restore.pipe(Effect.tap(() => Effect.sync(() => written.set(path, update.previous))))),
-            );
+            // The transport serves this call; a change that restarts it is applied after the reply.
+            const restarts = restartedBy(applied.known, Object.keys(rows));
+            if (Object.keys(pinned).some((id) => restarts.has(id))) return yield* writeDeferred(loader, rows, scope);
+            return yield* write(loader, rows, scope, "plugins");
           }),
         ),
       ),
   };
-  host = hostPlugin({ control: handle, faults: Stream.unwrap(withLoader((loader) => Effect.succeed(loader.core.faults))) });
+  // Recorded on the stream the host plugin reacts to, so the catalog it publishes already has the fault.
+  host = hostPlugin({
+    control: handle,
+    faults: Stream.unwrap(withLoader((loader) => Effect.succeed(loader.core.faults))).pipe(Stream.tap((fault) => Effect.sync(() => faults.record(fault)))),
+  });
 
   applied = yield* load(host);
   const loader = yield* makeLoader({ source, composition: applied.resolved.composition });
@@ -299,16 +418,16 @@ const program = Effect.gen(function* () {
       }),
     ),
   );
+  for (const [path, text] of yield* readConfigFiles) seenConfig.set(path, text);
   yield* Effect.forkScoped(
-    Stream.runForEach(watchConfig(paths), (file) =>
+    Stream.runForEach(watchConfig(paths), () =>
       Effect.gen(function* () {
-        // A change this process wrote (a configure, or its undo) is already applied.
-        const content = yield* readConfigText(file).pipe(Effect.orElseSucceed(() => undefined));
-        if (written.has(file) && written.get(file) === content) {
-          written.delete(file);
-          return;
-        }
-        yield* log(`${file} changed; reloading`).pipe(
+        // Only what differs from the last read or write is new; a change this process wrote (a configure, or its undo) is already applied.
+        const current = yield* readConfigFiles;
+        const changed = current.filter(([path, text]) => seenConfig.get(path) !== text).map(([path]) => path);
+        if (changed.length === 0) return;
+        for (const [path, text] of current) seenConfig.set(path, text);
+        yield* log(`${changed.length === 1 ? changed[0] : changed.join(" and ")} changed; reloading`).pipe(
           Effect.zipRight(control.reload),
           Effect.matchEffect({
             onFailure: (error) => printDiagnostics(error.diagnostics).pipe(Effect.zipRight(log("reload rejected; the running composition is unchanged"))),
@@ -316,6 +435,20 @@ const program = Effect.gen(function* () {
           }),
         );
       }),
+    ),
+  );
+
+  // A UI file added, edited, or removed changes only what web apps load.
+  yield* Effect.forkScoped(
+    Stream.runForEach(watchUi(paths), () =>
+      reloading.withPermits(1)(
+        Effect.gen(function* () {
+          const previous = applied;
+          const files = yield* listUiFiles(paths, previous.trusted);
+          applied = { ...previous, ui: { ...previous.ui, files } };
+          yield* publishUi(loader, previous.ui, applied.ui).pipe(Effect.ignore);
+        }),
+      ),
     ),
   );
 

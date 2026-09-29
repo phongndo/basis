@@ -64,6 +64,7 @@ describe("loadComposition", () => {
         "tools": { "enabled": true, "config": { "shell": "bash" } },
         "sessions": {},
       },
+      "ui": { "composer": { "enabled": false }, "theme": { "config": { "accent": "red" } } },
     }`,
       );
       await writeFile(
@@ -74,6 +75,7 @@ describe("loadComposition", () => {
         "tools": { "enabled": false },
         "mcp": { "config": { "servers": [] } },
       },
+      "ui": { "composer": { "enabled": true } },
     }`,
       );
       const loaded = await Effect.runPromise(loadComposition(paths));
@@ -86,6 +88,13 @@ describe("loadComposition", () => {
         sessions: {},
         mcp: { config: { servers: [] } },
         host: { config: paths },
+      });
+      expect(loaded.enabledIn).toEqual({ tools: "project" });
+      expect(loaded.configIn).toEqual({ llm: "project", tools: "user", mcp: "project" });
+      expect(loaded.ui).toEqual({
+        plugins: { composer: { enabled: true }, theme: { config: { accent: "red" } } },
+        enabledIn: { composer: "project" },
+        configIn: { theme: "user" },
       });
     }));
 
@@ -192,6 +201,50 @@ describe("patchConfig", () => {
     const patched = patchConfig(`{ "plugins": { "bash": { "enabled": false } } }`, { bash: { enabled: true }, edit: { enabled: true } }, "project");
     expect(parseJsonc(patched)).toEqual({ plugins: { bash: { enabled: true }, edit: { enabled: true } } });
     expect(parseJsonc(patchConfig(patched, { bash: { enabled: false }, edit: { enabled: true } }, "user"))).toEqual({ plugins: { bash: { enabled: false } } });
+  });
+
+  test("values set and remove single config keys, keeping the others and comments", () => {
+    const start = `{
+  "plugins": {
+    "agent": {
+      "config": {
+        // the house model
+        "defaultModel": "a/b",
+        "maxSteps": 50,
+      },
+    },
+  },
+}`;
+    const patched = patchConfig(start, { agent: { values: { maxSteps: 80, systemPrompt: "Be brief" } } });
+    expect(patched).toContain("// the house model");
+    expect(parseJsonc(patched, [], { allowTrailingComma: true })).toEqual({
+      plugins: { agent: { config: { defaultModel: "a/b", maxSteps: 80, systemPrompt: "Be brief" } } },
+    });
+    expect(parseJsonc(patchConfig(patched, { agent: { values: { maxSteps: null, missing: null } } }), [], { allowTrailingComma: true })).toEqual({
+      plugins: { agent: { config: { defaultModel: "a/b", systemPrompt: "Be brief" } } },
+    });
+    // Removing the last key removes the config, and then the row.
+    expect(
+      parseJsonc(patchConfig(`{ "plugins": { "tools": { "config": { "maxResultChars": 5 } } } }`, { tools: { values: { maxResultChars: null } } })),
+    ).toEqual({
+      plugins: {},
+    });
+    expect(parseJsonc(patchConfig("", { tools: { values: { maxResultChars: 5 } } }))).toEqual({ plugins: { tools: { config: { maxResultChars: 5 } } } });
+    // Unsetting a key nobody set writes nothing.
+    expect(patchConfig(start, { tools: { values: { maxResultChars: null } } })).toBe(start);
+  });
+
+  test("the ui section takes the same rows, apart from the host's", () => {
+    const patched = patchConfig(
+      `{ "plugins": { "bash": { "enabled": false } } }`,
+      { composer: { enabled: false }, theme: { values: { accent: "red" } } },
+      "user",
+      "ui",
+    );
+    expect(parseJsonc(patched)).toEqual({
+      plugins: { bash: { enabled: false } },
+      ui: { composer: { enabled: false }, theme: { config: { accent: "red" } } },
+    });
   });
 });
 
