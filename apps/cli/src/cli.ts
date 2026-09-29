@@ -2,13 +2,14 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Data, Effect } from "effect";
 import type { RpcClientError } from "@effect/rpc";
-import { branchOf, HostError } from "@basis/contracts";
+import { branchOf, HostError, trajectory } from "@basis/contracts";
+import type { TrajectoryStep, TrajectoryTurn } from "@basis/contracts";
 import { makeHostRpcHttp } from "@basis/client";
 import type { HostRpcClient } from "@basis/client";
 import { resolvePaths } from "@basis/plugin-host";
 import { readDiscovery } from "@basis/plugin-transport";
 import type { Discovery } from "@basis/plugin-transport";
-import { formatPlugins, formatReload, formatSession, formatSessions, formatStatus } from "./format.ts";
+import { formatPlugins, formatReload, formatSession, formatSessions, formatStatus, formatStep, formatTrajectory } from "./format.ts";
 
 export const USAGE = `Usage: basis <command> [--json]
 
@@ -21,6 +22,11 @@ Commands:
   session list [--cwd <dir>]   Sessions for a directory (default: the current one)
   session list --all           Sessions for every directory
   session show <id>            Session info and its current branch
+  inspect <id>                 Turns and steps: model, history, usage, timing, tools
+  inspect <id> --step <step>   One step's request: each system section and tool
+                               with the plugin that contributed it, then the
+                               response and tool runs. <step> is a step id,
+                               <turn>.<step> (e.g. 2.1), or "last"
 
 Options:
   --json      Print the result (or {"error": {...}} on stderr) as JSON
@@ -54,6 +60,7 @@ interface Options {
   readonly json: boolean;
   readonly all: boolean;
   readonly cwd?: string | undefined;
+  readonly step?: string | undefined;
 }
 
 interface Connection {
@@ -115,11 +122,38 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
         });
       }
       return usage(sub === undefined ? "session needs a command: list or show" : `Unknown session command "${sub}"`);
+    case "inspect": {
+      if (sub === undefined) return usage("inspect needs a session id");
+      const selector = options.step;
+      return extra(2) ?? (({ rpc }) => Effect.gen(function* () {
+        const [info, events] = yield* Effect.all([rpc.Session.Get({ sessionId: sub }), rpc.Session.Events({ sessionId: sub })], { concurrency: "unbounded" });
+        const turns = trajectory(branchOf(events, info.leaf));
+        if (selector === undefined) return { json: { info, turns }, text: formatTrajectory(turns) };
+        const found = findStep(turns, selector);
+        if (found === undefined) {
+          return yield* new CliError({ code: "NotFound", message: `No step "${selector}" on the current branch of ${sub}`, subject: selector, exit: ExitCode.failed });
+        }
+        return { json: { info, turn: found.turn.index, step: found.step }, text: formatStep(found.turn, found.step) };
+      }));
+    }
     case undefined:
       return usage("No command given");
     default:
       return usage(`Unknown command "${command}"`);
   }
+};
+
+/** A step by id, by `<turn>.<step>` (1-based), or the last step that sent a request. */
+const findStep = (turns: readonly TrajectoryTurn[], selector: string): { turn: TrajectoryTurn; step: TrajectoryStep } | undefined => {
+  const all = turns.flatMap((turn) => turn.steps.map((step) => ({ turn, step })));
+  if (selector === "last") return all.filter(({ step }) => step.request !== undefined).at(-1);
+  const position = /^(\d+)\.(\d+)$/.exec(selector);
+  if (position !== null) {
+    const turn = turns[Number(position[1]) - 1];
+    const step = turn?.steps[Number(position[2]) - 1];
+    return turn === undefined || step === undefined ? undefined : { turn, step };
+  }
+  return all.find(({ step }) => step.stepId === selector);
 };
 
 /** The running host for this `BASIS_HOME`, over one-shot HTTP calls (no event subscription, so it never answers questions). */
@@ -170,6 +204,7 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
         json: { type: "boolean", default: false },
         all: { type: "boolean", default: false },
         cwd: { type: "string" },
+        step: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -181,7 +216,7 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
     io.out(USAGE);
     return ExitCode.ok;
   }
-  const options: Options = { json: values.json, all: values.all, cwd: values.cwd };
+  const options: Options = { json: values.json, all: values.all, cwd: values.cwd, step: values.step };
   const command = route(positionals, options, io);
   if (command instanceof CliError) return report(io, options.json, command);
 

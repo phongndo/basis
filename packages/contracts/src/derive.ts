@@ -4,7 +4,7 @@ import type { SessionEvent } from "./sessions.ts";
 
 /**
  * Pure projections over session events. Every reader (the agent loop, the
- * trace command, the web client) uses these, so they agree on what the model
+ * `basis inspect` command, the web client) uses these, so they agree on what the model
  * saw.
  */
 

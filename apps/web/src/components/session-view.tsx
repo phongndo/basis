@@ -1,15 +1,15 @@
 import { Match, Show, Switch, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import { tildePath } from "../model/format.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import { activeSession, isBusy, pendingChatCwd, sessionLog, state, transcript } from "../store.ts";
+import { activeSession, isBusy, pendingChatCwd, sessionLog, setView, state, transcript } from "../store.ts";
 import { Composer } from "./composer.tsx";
-import { ChevronDownIcon, SidebarIcon, Spinner } from "./icons.tsx";
+import { ChatIcon, ChevronDownIcon, SidebarIcon, Spinner, TrajectoryIcon } from "./icons.tsx";
+import { Trajectory } from "./trajectory.tsx";
 import { Transcript } from "./transcript.tsx";
 
 /**
  * The main area for one session: header, the active view, and the composer.
  * Views are siblings over the same session log; `state.view` selects one.
- * Add the Trajectory view as another `Match` (and a tab in the header).
  */
 export function SessionView(props: { onToggleSidebar: () => void }) {
   const cwd = () => activeSession()?.cwd ?? pendingChatCwd() ?? state.info?.cwd;
@@ -23,9 +23,18 @@ export function SessionView(props: { onToggleSidebar: () => void }) {
         </div>
         <span class="spacer" />
         <Show when={isBusy()}><span class="busy-chip"><Spinner /> Running</span></Show>
+        <Show when={state.activeId !== undefined}>
+          <div class="view-tabs" role="tablist" aria-label="Session view">
+            <button role="tab" class="view-tab" aria-label="Chat" data-tip="Chat" aria-selected={state.view === "chat"} onClick={() => setView("chat")}><ChatIcon /></button>
+            <button role="tab" class="view-tab" aria-label="Trajectory" data-tip="Trajectory" aria-selected={state.view === "trajectory"} onClick={() => setView("trajectory")}><TrajectoryIcon /></button>
+          </div>
+        </Show>
       </header>
       <Switch>
-        <Match when={state.view === "chat"}><ChatView /></Match>
+        <Match when={state.view === "chat" || state.activeId === undefined}><ChatView /></Match>
+        <Match when={state.view === "trajectory"}>
+          <Trajectory />
+        </Match>
       </Switch>
       <Composer />
     </main>

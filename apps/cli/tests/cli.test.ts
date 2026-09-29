@@ -6,9 +6,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { trajectory } from "@basis/contracts";
 import type { SessionEvent, SessionInfo } from "@basis/contracts";
 import { ExitCode, run } from "../src/cli.ts";
-import { formatSession } from "../src/format.ts";
+import { formatSession, formatStep, formatTrajectory } from "../src/format.ts";
 
 const hostMain = fileURLToPath(new URL("../../host/src/main.ts", import.meta.url));
 
@@ -141,5 +142,48 @@ describe("formatSession", () => {
       "── turn ended: cancelled",
     ].join("\n"));
     expect(output).toContain("events   6 (6 on the current branch)");
+  });
+});
+
+describe("inspect formatting", () => {
+  const usage = { input: 1200, output: 40, cacheRead: 0, cacheWrite: 0, totalTokens: 1240, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const spec = { name: "bash", description: "Run", parameters: {} };
+  const events: SessionEvent[] = ([
+    { type: "turn-start", turnId: "t" },
+    { type: "message", turnId: "t", message: { role: "user", content: [{ type: "text", text: "Run ls" }], timestamp: 0 } },
+    { type: "step-start", turnId: "t", stepId: "s1" },
+    {
+      type: "request", turnId: "t", stepId: "s1", model: "p/m", composition: "abc", system: "BASE\n\nCTX", tools: [spec],
+      contributions: [
+        { source: "agent", kind: "system", label: "base", chars: 4 },
+        { source: "project-context", kind: "system", label: "project-context", chars: 3 },
+        { source: "bash", kind: "tool", label: "bash", chars: JSON.stringify(spec).length },
+      ],
+    },
+    {
+      type: "message", turnId: "t", stepId: "s1", timing: { startedAt: 0, firstTokenAt: 500, endedAt: 2000 },
+      message: { role: "assistant", api: "x", provider: "p", model: "m", usage, stopReason: "toolUse", timestamp: 0, content: [{ type: "toolCall", id: "c", name: "bash", arguments: { command: "ls" } }] },
+    },
+    { type: "message", turnId: "t", stepId: "s1", timing: { startedAt: 2000, endedAt: 2300 }, message: { role: "toolResult", toolCallId: "c", toolName: "bash", content: [], isError: false, timestamp: 0 } },
+    { type: "step-end", turnId: "t", stepId: "s1" },
+    { type: "turn-end", turnId: "t", reason: "done" },
+  ] satisfies SessionEvent["data"][]).map((data, i) => ({ seq: i + 1, id: `e${i + 1}`, parent: i === 0 ? null : `e${i}`, at: i * 1000, data }));
+  const turns = trajectory(events);
+
+  test("the overview has one line per step", () => {
+    expect(formatTrajectory(turns)).toBe([
+      "Turn 1 · done · 1 step · ↑1.2k ↓40 · 7.0s",
+      '  "Run ls"',
+      "  1  s1  m  1 msg  ↑1.2k ↓40  ttft 500ms  2.0s  → bash",
+    ].join("\n"));
+  });
+
+  test("a step names the plugin behind every part of the request", () => {
+    const output = formatStep(turns[0]!, turns[0]!.steps[0]!);
+    expect(output).toContain("  base from agent, 4 chars (changed)\n    BASE");
+    expect(output).toContain("  project-context from project-context, 3 chars (changed)\n    CTX");
+    expect(output).toMatch(/ {2}bash {2}from bash {2}\d+ chars {2}\(changed\)/);
+    expect(output).toContain("composition  abc");
+    expect(output).toMatch(/Tool runs:\n {2}bash {2}ok {2}300ms/);
   });
 });

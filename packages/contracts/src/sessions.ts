@@ -47,6 +47,9 @@ export const EventData = Schema.Union(
   /**
    * The request header, logged before the model call. `system` and `tools` are
    * omitted when unchanged since the previous `request` on the branch.
+   * `system` is the text of the `system` contributions, in order, with empty
+   * ones dropped, joined by a blank line (`"\n\n"`); `chars` is each text's
+   * length, so `trajectory` can split it back into sections.
    */
   Schema.Struct({
     type: Schema.Literal("request"), turnId: Schema.String, stepId: Schema.String,

@@ -1,4 +1,4 @@
-import { emptyUsage } from "@basis/contracts";
+import { addUsage, emptyUsage } from "@basis/contracts";
 import type {
   AssistantMessage, ImageContent, SessionEvent, TextContent, Timing, ToolCall, ToolResultMessage, Usage,
 } from "@basis/contracts";
@@ -93,22 +93,6 @@ export interface Transcript {
   readonly turns: readonly TurnView[];
   readonly title?: string;
 }
-
-export const addUsage = (a: Usage, b: Usage): Usage => ({
-  input: a.input + b.input,
-  output: a.output + b.output,
-  cacheRead: a.cacheRead + b.cacheRead,
-  cacheWrite: a.cacheWrite + b.cacheWrite,
-  totalTokens: a.totalTokens + b.totalTokens,
-  ...(a.reasoning === undefined && b.reasoning === undefined ? {} : { reasoning: (a.reasoning ?? 0) + (b.reasoning ?? 0) }),
-  cost: {
-    input: a.cost.input + b.cost.input,
-    output: a.cost.output + b.cost.output,
-    cacheRead: a.cost.cacheRead + b.cost.cacheRead,
-    cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
-    total: a.cost.total + b.cost.total,
-  },
-});
 
 interface Cache {
   readonly get: <T>(key: string, signature: string, make: () => T) => T;

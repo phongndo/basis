@@ -54,3 +54,5 @@ export const StarIcon = (props: { filled?: boolean }) => (
 export const MoreIcon = () => <Icon><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none" /></Icon>;
 export const BrainIcon = () => <Icon><path d="M6 3a2 2 0 00-2 2 2 2 0 00-1 3.5A2 2 0 005 12a2 2 0 003 .5V3.5A2 2 0 006 3zM10 3a2 2 0 012 2 2 2 0 011 3.5 2 2 0 01-2 3.5 2 2 0 01-3 .5" /></Icon>;
 export const Spinner = () => <span class="spinner" aria-hidden="true" />;
+export const ChatIcon = () => <Icon><path d="M3 4.5A1.5 1.5 0 014.5 3h7A1.5 1.5 0 0113 4.5v5a1.5 1.5 0 01-1.5 1.5H7l-3 2.5V11h.5A1.5 1.5 0 013 9.5z" /></Icon>;
+export const TrajectoryIcon = () => <Icon><path d="M2.5 4h4M4.5 8h6M8.5 12h5" /><path d="M2.5 2.5v11" stroke-opacity="0.45" /></Icon>;

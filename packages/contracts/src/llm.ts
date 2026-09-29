@@ -65,6 +65,22 @@ export const emptyUsage: Usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+export const addUsage = (a: Usage, b: Usage): Usage => ({
+  input: a.input + b.input,
+  output: a.output + b.output,
+  cacheRead: a.cacheRead + b.cacheRead,
+  cacheWrite: a.cacheWrite + b.cacheWrite,
+  ...(a.reasoning === undefined && b.reasoning === undefined ? {} : { reasoning: (a.reasoning ?? 0) + (b.reasoning ?? 0) }),
+  totalTokens: a.totalTokens + b.totalTokens,
+  cost: {
+    input: a.cost.input + b.cost.input,
+    output: a.cost.output + b.cost.output,
+    cacheRead: a.cost.cacheRead + b.cost.cacheRead,
+    cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
+    total: a.cost.total + b.cost.total,
+  },
+});
+
 export const StopReason = Schema.Literal("stop", "length", "toolUse", "error", "aborted");
 export type StopReason = typeof StopReason.Type;
 

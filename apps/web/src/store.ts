@@ -2,7 +2,7 @@ import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { SessionLog, describeError, startPrompt } from "@basis/client";
 import type { ConnectionStatus, Host } from "@basis/client";
-import { branchOf } from "@basis/contracts";
+import { branchOf, trajectory as projectTrajectory } from "@basis/contracts";
 import type {
   AuthType, HostEvent, HostInfo, InteractionAnswer, InteractionRequest, ModelInfo, NoticePayload, PluginStatus,
   PromptContent, ProviderInfo, SessionEvent, SessionInfo, ThinkingLevel, TurnOptions, WorkspaceStatus,
@@ -31,8 +31,8 @@ export interface Toast {
 }
 
 export type Dialog = "providers" | "plugins" | "models" | "add-project" | undefined;
-/** Main-area views of a session. Only the chat exists today; "trajectory" is planned. */
-export type SessionViewKind = "chat";
+/** Main-area views of a session, over the same log. The choice carries over when switching sessions. */
+export type SessionViewKind = "chat" | "trajectory";
 
 interface State {
   status: ConnectionStatus;
@@ -117,6 +117,8 @@ const derived = createRoot(() => {
     return projector(branch());
   });
   const pending = createMemo(() => pendingToolCalls(transcript()));
+  // Computed only while the Trajectory view is open.
+  const trajectory = createMemo(() => (state.view === "trajectory" ? projectTrajectory(branch()) : []));
   const selectedModel = createMemo(() => resolveModel(state.models, state.model));
   const thinking = createMemo(() => {
     const model = selectedModel();
@@ -125,11 +127,13 @@ const derived = createRoot(() => {
   const activeLive = createMemo(() => (state.activeId === undefined ? undefined : live()[state.activeId]) ?? emptyLive);
   const busy = createMemo(() => state.activeId !== undefined && state.running.includes(state.activeId));
   const configured = createMemo(() => state.providers.some((provider) => provider.configured));
-  return { active, branch, transcript, pending, selectedModel, thinking, activeLive, busy, configured };
+  return { active, branch, transcript, pending, trajectory, selectedModel, thinking, activeLive, busy, configured };
 });
 
 export const activeSession = derived.active;
 export const transcript = derived.transcript;
+export const activeBranch = derived.branch;
+export const trajectory = derived.trajectory;
 export const pendingCalls = derived.pending;
 export const selectedModel = derived.selectedModel;
 export const effectiveThinking = derived.thinking;
@@ -290,7 +294,7 @@ export const selectSession = async (sessionId: string | undefined): Promise<void
   log = undefined;
   stopLog = undefined;
   batch(() => {
-    setState({ activeId: sessionId, view: "chat" });
+    setState({ activeId: sessionId, ...(sessionId === undefined ? { view: "chat" as const } : {}) });
     setEvents([]);
     setLogState({ loaded: sessionId === undefined, syncing: false });
   });
@@ -520,5 +524,7 @@ export const reloadConfig = async (): Promise<void> => {
     reportError(error, "Reload failed");
   }
 };
+
+export const setView = (view: SessionViewKind): void => { setState("view", view); };
 
 export const openDialog = (dialog: Dialog): void => { setState({ dialog, ...(dialog === undefined ? { welcome: false } : {}) }); };

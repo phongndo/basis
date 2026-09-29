@@ -3,7 +3,7 @@ import { Cause, Effect, Exit, Stream } from "effect";
 import type { Context } from "effect";
 import type { Events, Hooks } from "@basis/core";
 import {
-  AgentContinueHook, AgentError, AgentRequestHook, AssistantDelta, deriveMessages, emptyUsage, rebuildRequest, requestState,
+  addUsage, AgentContinueHook, AgentError, AgentRequestHook, AssistantDelta, deriveMessages, emptyUsage, rebuildRequest, requestState,
   ToolInvocation, TurnEnded, TurnStarted,
 } from "@basis/contracts";
 import type {
@@ -45,22 +45,6 @@ type TurnReason = "done" | "cancelled" | "error" | "max-steps";
 interface Ended { readonly reason: TurnReason; readonly error?: string }
 
 export const newId = (): string => randomBytes(6).toString("base64url");
-
-const addUsage = (a: Usage, b: Usage): Usage => ({
-  input: a.input + b.input,
-  output: a.output + b.output,
-  cacheRead: a.cacheRead + b.cacheRead,
-  cacheWrite: a.cacheWrite + b.cacheWrite,
-  ...(a.reasoning === undefined && b.reasoning === undefined ? {} : { reasoning: (a.reasoning ?? 0) + (b.reasoning ?? 0) }),
-  totalTokens: a.totalTokens + b.totalTokens,
-  cost: {
-    input: a.cost.input + b.cost.input,
-    output: a.cost.output + b.cost.output,
-    cacheRead: a.cost.cacheRead + b.cost.cacheRead,
-    cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
-    total: a.cost.total + b.cost.total,
-  },
-});
 
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
