@@ -1,18 +1,33 @@
 import { createEffect } from "solid-js";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { markdownBlocks } from "../lib/markdown.ts";
 
-/** Sanitized markdown. Code blocks get a copy button (handled by a delegated listener in `copyCode`). */
+/**
+ * Sanitized markdown. Code blocks get a copy button (handled by a delegated
+ * listener in `copyCode`). Blocks whose source is unchanged keep their DOM,
+ * so a streaming message re-renders only its tail and a selection in earlier
+ * text survives.
+ */
 export function Markdown(props: { text: string; class?: string }) {
   let el!: HTMLDivElement;
+  let mounted: { readonly key: string; readonly nodes: readonly ChildNode[] }[] = [];
   createEffect(() => {
-    el.innerHTML = renderMarkdown(props.text);
-    for (const pre of el.querySelectorAll("pre")) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "copy-code";
-      button.textContent = "Copy";
-      button.setAttribute("aria-label", "Copy code");
-      pre.append(button);
+    const blocks = markdownBlocks(props.text);
+    let same = 0;
+    while (same < mounted.length && same < blocks.length && mounted[same]!.key === blocks[same]!.key) same++;
+    for (const block of mounted.splice(same)) for (const node of block.nodes) node.remove();
+    for (const block of blocks.slice(same)) {
+      const template = document.createElement("template");
+      template.innerHTML = block.html();
+      for (const pre of template.content.querySelectorAll("pre")) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "copy-code";
+        button.textContent = "Copy";
+        button.setAttribute("aria-label", "Copy code");
+        pre.append(button);
+      }
+      mounted.push({ key: block.key, nodes: [...template.content.childNodes] });
+      el.append(template.content);
     }
   });
   return <div ref={el} class={`md ${props.class ?? ""}`} />;

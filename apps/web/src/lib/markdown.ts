@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
+import type { Token, TokensList } from "marked";
 
 const marked = new Marked({ gfm: true, breaks: false, async: false });
 
@@ -17,6 +18,12 @@ const hook = () => {
   });
 };
 
+const sanitize = (html: string): string => DOMPurify.sanitize(html, {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ["img", "style", "form", "input", "button", "textarea", "select"],
+  FORBID_ATTR: ["style", "class", "id"],
+});
+
 /**
  * Model markdown to sanitized HTML. Raw HTML in the source is sanitized, never
  * trusted. Styling attributes are dropped too: with `style`, `class`, or `id`
@@ -25,10 +32,28 @@ const hook = () => {
  */
 export const renderMarkdown = (source: string): string => {
   hook();
-  const html = marked.parse(source) as string;
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ["img", "style", "form", "input", "button", "textarea", "select"],
-    FORBID_ATTR: ["style", "class", "id"],
-  });
+  return sanitize(marked.parse(source) as string);
+};
+
+export interface MarkdownBlock {
+  /** Equal keys render equal HTML. */
+  readonly key: string;
+  readonly html: () => string;
+}
+
+/**
+ * `source` as top-level blocks (paragraphs, lists, code blocks), each rendered
+ * like `renderMarkdown`. A streaming message only grows at the end, so a view
+ * that keeps the blocks whose key is unchanged re-renders just the last ones.
+ * Reference-link definitions apply across blocks and are part of every key.
+ */
+export const markdownBlocks = (source: string): MarkdownBlock[] => {
+  hook();
+  const tokens = marked.lexer(source);
+  const links = tokens.links;
+  const definitions = JSON.stringify(links);
+  return tokens.map((token: Token) => ({
+    key: `${definitions}\u0000${token.raw}`,
+    html: () => sanitize(marked.parser(Object.assign([token], { links }) as TokensList)),
+  }));
 };
