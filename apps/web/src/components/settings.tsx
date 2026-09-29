@@ -84,6 +84,10 @@ const WIDTHS: readonly { value: ContentWidth; label: string }[] = [
   { value: "full", label: "Full" },
 ];
 
+let focusSearch: (() => void) | undefined;
+/** Puts focus in the settings search (the `/` shortcut); does nothing while settings are closed. */
+export const focusSettingsSearch = (): void => focusSearch?.();
+
 /**
  * Settings, covering the app while open. The search runs across every
  * section; clearing it returns to the section being browsed.
@@ -101,7 +105,14 @@ export function SettingsView() {
     if (allModels() === undefined) void loadAllModels();
     queueMicrotask(() => search.focus());
   });
-  onCleanup(() => previous?.focus?.());
+  focusSearch = () => {
+    search.focus();
+    search.select();
+  };
+  onCleanup(() => {
+    focusSearch = undefined;
+    previous?.focus?.();
+  });
   createEffect(on([section, searching], () => main.scrollTo({ top: 0 }), { defer: true }));
 
   const run = async (key: string, action: () => Promise<void>) => {
@@ -303,6 +314,11 @@ export function SettingsView() {
               }
             }}
           />
+          <Show when={query() === ""}>
+            <span class="search-key" data-tip="Press / to search">
+              /
+            </span>
+          </Show>
           <Show when={query() !== ""}>
             <button class="icon-button search-clear" aria-label="Clear search" onClick={() => setQuery("")}>
               <XIcon />

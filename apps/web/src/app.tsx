@@ -6,7 +6,7 @@ import { InteractionModal } from "./components/interaction.tsx";
 import { EventsDialog } from "./components/events.tsx";
 import { Palette } from "./components/palette.tsx";
 import { SessionView } from "./components/session-view.tsx";
-import { SettingsView } from "./components/settings.tsx";
+import { SettingsView, focusSettingsSearch } from "./components/settings.tsx";
 import { Sidebar } from "./components/sidebar.tsx";
 import { Toasts } from "./components/toasts.tsx";
 import { TooltipLayer } from "./components/tooltip.tsx";
@@ -97,9 +97,10 @@ export function App() {
     } else if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
       event.preventDefault();
       startChat();
-    } else if (event.key === "/" && !mod && !typing(event.target) && !modal && !settings) {
+    } else if (event.key === "/" && !mod && !typing(event.target) && !modal) {
       event.preventDefault();
-      focusPrompt();
+      if (settings) focusSettingsSearch();
+      else focusPrompt();
     } else if (event.key === "Escape" && !modal && isBusy() && !typing(event.target)) {
       event.preventDefault();
       cancel();
