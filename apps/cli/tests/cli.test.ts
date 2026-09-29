@@ -198,7 +198,64 @@ describe("against a running host", () => {
 
   test("restart and reload go through the host", async () => {
     expect(JSON.parse((await invoke(["plugins", "restart", "project-context", "--json"], home)).out)).toEqual({ restarted: "project-context" });
+    expect(JSON.parse((await invoke(["plugins", "restart", "project-context", "--force", "--json"], home)).out)).toEqual({ restarted: "project-context" });
     expect(await invoke(["reload"], home)).toMatchObject({ code: ExitCode.ok, out: "nothing changed" });
+  });
+
+  test("disable and enable write the config that decides, refuse locked plugins, and undo rejected changes", async () => {
+    const userConfig = join(home, "config.jsonc");
+    const projectConfig = join(home, ".lemma", "config.jsonc");
+    const original = await readFile(userConfig, "utf8");
+    const rows = async (path: string) => JSON.parse(await readFile(path, "utf8")).plugins;
+    const find = async (id: string) => JSON.parse((await invoke(["plugins", "--json"], home)).out).find((plugin: { id: string }) => plugin.id === id);
+    try {
+      const off = await invoke(["plugins", "disable", "project-context", "--json"], home);
+      expect(off.code).toBe(ExitCode.ok);
+      expect(JSON.parse(off.out)).toMatchObject({ disabled: "project-context", stopped: ["project-context"] });
+      expect((await rows(userConfig))["project-context"]).toEqual({ enabled: false });
+      expect(await find("project-context")).toMatchObject({ enabled: false, state: "disabled", scope: "user", source: "bundled" });
+      expect(await find("llm")).toMatchObject({ enabled: true, state: "active", locked: "Needed by transport" });
+      expect((await invoke(["plugins"], home)).out).toContain("off in the user config");
+
+      // A pinned plugin, and one a pinned plugin needs, refuse; the file is left as it was.
+      const pinned = await invoke(["plugins", "disable", "transport", "--json"], home);
+      expect(pinned.code).toBe(ExitCode.failed);
+      expect(JSON.parse(pinned.err).error).toMatchObject({ code: "ReloadError", subject: "transport" });
+      const locked = await invoke(["plugins", "disable", "llm", "--json"], home);
+      expect(locked.code).toBe(ExitCode.failed);
+      expect(JSON.parse(locked.err).error).toMatchObject({ code: "ReloadError", subject: "llm" });
+      expect(JSON.parse(locked.err).error.message).toContain("Needed by transport");
+      expect((await rows(userConfig)).transport).toEqual({ config: { port: 0 } });
+      expect((await rows(userConfig)).llm.enabled).toBeUndefined();
+      // Nor can a plugin the host depends on be restarted by force while it runs; a failed one still can.
+      const forced = await invoke(["plugins", "restart", "llm", "--force", "--json"], home);
+      expect(forced.code).toBe(ExitCode.failed);
+      expect(JSON.parse(forced.err).error).toMatchObject({ code: "ReloadError", subject: "llm" });
+      expect(JSON.parse(forced.err).error.message).toContain("cannot be restarted while running");
+
+      // The project file is only written for a trusted project.
+      const untrusted = await invoke(["plugins", "disable", "bash", "--project", "--json"], home);
+      expect(untrusted.code).toBe(ExitCode.failed);
+      expect(JSON.parse(untrusted.err).error.message).toContain("not a trusted project");
+      expect(existsSync(projectConfig)).toBe(false);
+
+      // Trusted: a project row overrides the user row, so enabling there writes an explicit true.
+      await writeFile(userConfig, JSON.stringify({ ...JSON.parse(await readFile(userConfig, "utf8")), trustedProjects: [home] }));
+      expect(await invoke(["reload"], home)).toMatchObject({ code: ExitCode.ok });
+      expect(JSON.parse((await invoke(["plugins", "disable", "bash", "--json"], home)).out)).toMatchObject({ stopped: ["bash"] });
+      const overridden = await invoke(["plugins", "enable", "bash", "--project", "--json"], home);
+      expect(JSON.parse(overridden.out)).toMatchObject({ enabled: "bash", started: ["bash"] });
+      expect((await rows(projectConfig)).bash).toEqual({ enabled: true });
+      expect(await find("bash")).toMatchObject({ enabled: true, state: "active", scope: "project" });
+
+      const on = await invoke(["plugins", "enable", "project-context", "--json"], home);
+      expect(JSON.parse(on.out)).toMatchObject({ enabled: "project-context", started: ["project-context"] });
+      expect((await rows(userConfig))["project-context"]).toBeUndefined();
+    } finally {
+      await rm(join(home, ".lemma"), { recursive: true, force: true });
+      await writeFile(userConfig, original);
+      await invoke(["reload"], home);
+    }
   });
 
   test("do lists the commands plugins registered and runs one, answering its questions", async () => {

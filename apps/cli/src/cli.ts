@@ -61,8 +61,12 @@ to the running host found in $LEMMA_HOME/transport.json (default ~/.lemma).
 Host
   serve                          Run the host in this terminal
   status                         Host, composition, plugin states, running turns
-  plugins                        Plugin ids, versions, states, and faults
-  plugins restart <id>           Restart one plugin and its dependents
+  plugins                        Every plugin: id, version, state (or "disabled"), source, and why
+  plugins enable <id>            Turn a plugin on: removes its "enabled" row from the user config
+  plugins disable <id>           Turn a plugin off: writes "enabled": false; plugins needing it stop too
+    --project                    ...in the project's .lemma/config.jsonc instead (a trusted project)
+  plugins restart <id>           Restart a failed plugin and the plugins it halted
+    --force                      ...also when it is running, unless the host depends on it
   reload                         Re-read config files and apply them
   events [--session <id>]        Follow everything the host publishes (NDJSON with --json)
 
@@ -170,7 +174,26 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
       }
       if (sub === "restart") {
         if (arg === undefined) return usage("plugins restart needs a plugin id");
-        return extra(3) ?? (({ rpc }) => Effect.as(rpc.Host.RestartPlugin({ pluginId: arg }), { json: { restarted: arg }, text: `restarted ${arg}` }));
+        return (
+          extra(3) ??
+          (({ rpc }) =>
+            Effect.as(rpc.Host.RestartPlugin(options.force ? { pluginId: arg, force: true } : { pluginId: arg }), {
+              json: { restarted: arg },
+              text: `restarted ${arg}`,
+            }))
+        );
+      }
+      if (sub === "enable" || sub === "disable") {
+        if (arg === undefined) return usage(`plugins ${sub} needs a plugin id`);
+        const enabled = sub === "enable";
+        return (
+          extra(3) ??
+          (({ rpc }) =>
+            Effect.map(rpc.Host.Configure({ plugins: { [arg]: { enabled } }, ...(options.project ? { scope: "project" as const } : {}) }), (report) => ({
+              json: { [enabled ? "enabled" : "disabled"]: arg, ...report },
+              text: `${enabled ? "enabled" : "disabled"} ${arg}: ${formatReload(report)}`,
+            })))
+        );
       }
       return usage(`Unknown plugins command "${sub}"`);
     case "reload":
@@ -435,6 +458,8 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
         base: { type: "string" },
         path: { type: "string" },
         session: { type: "string" },
+        force: { type: "boolean", default: false },
+        project: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -473,6 +498,8 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
     base: values.base,
     path: values.path,
     session: values.session,
+    force: values.force,
+    project: values.project,
   };
   const command = route(positionals, options, io);
   if (command instanceof CliError) return report(io, options.json, command);

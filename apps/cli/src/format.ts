@@ -57,17 +57,38 @@ export const formatStatus = (discovery: Discovery, info: HostInfo, plugins: read
     ["running", running.length ? running.join(", ") : "none"],
   ]);
 
+/** `needs agent, which needs tools, which is off`: from a halted plugin to the one turned off. */
+const waitingNote = (plugins: readonly PluginStatus[], plugin: PluginStatus): string => {
+  const byId = new Map(plugins.map((candidate) => [candidate.id, candidate]));
+  const names: string[] = [];
+  let current = plugin;
+  while (current.haltedBy !== undefined && !names.includes(current.haltedBy)) {
+    names.push(current.haltedBy);
+    const next = byId.get(current.haltedBy);
+    if (next === undefined || !next.enabled) break;
+    current = next;
+  }
+  const last = byId.get(names.at(-1)!);
+  return `needs ${names.join(", which needs ")}${last !== undefined && !last.enabled ? ", which is off" : ""}`;
+};
+
+/** Why a plugin is not simply running, or why it cannot be turned off. */
+const pluginNote = (plugins: readonly PluginStatus[], plugin: PluginStatus): string => {
+  if (plugin.fault !== undefined)
+    return `${plugin.fault.phase}${plugin.fault.operation === undefined ? "" : ` ${plugin.fault.operation}`}: ${plugin.fault.message}`;
+  if (plugin.haltedBy !== undefined) return plugin.state === "disabled" ? waitingNote(plugins, plugin) : `halted by ${plugin.haltedBy}`;
+  if (!plugin.enabled) return `off in the ${plugin.scope ?? "user"} config`;
+  return plugin.locked ?? "";
+};
+
 export const formatPlugins = (plugins: readonly PluginStatus[]): string =>
   pad(
     plugins.map((plugin) => [
       plugin.id,
       plugin.version ?? "",
       plugin.state,
-      plugin.fault !== undefined
-        ? `${plugin.fault.phase}${plugin.fault.operation === undefined ? "" : ` ${plugin.fault.operation}`}: ${plugin.fault.message}`
-        : plugin.haltedBy !== undefined
-          ? `halted by ${plugin.haltedBy}`
-          : "",
+      `${plugin.source}${plugin.shadows ? " (shadows bundled)" : ""}`,
+      pluginNote(plugins, plugin),
     ]),
   );
 

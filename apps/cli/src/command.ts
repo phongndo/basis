@@ -55,6 +55,8 @@ export interface Options {
   readonly base?: string | undefined;
   readonly path?: string | undefined;
   readonly session?: string | undefined;
+  readonly force: boolean;
+  readonly project: boolean;
 }
 
 export interface Connection {
