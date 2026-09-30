@@ -226,7 +226,15 @@ const program = Effect.gen(function* () {
   const faults = faultHistory();
   /** Every known plugin as clients see it, from the last applied load and a core snapshot. */
   const catalogOf = (snapshot: CoreSnapshot) =>
-    catalog({ ...applied, snapshots: snapshot.plugins, hooks: snapshot.hooks, events: snapshot.events, faults: faults.get(), pinned });
+    catalog({
+      ...applied,
+      snapshots: snapshot.plugins,
+      hooks: snapshot.hooks,
+      events: snapshot.events,
+      registries: snapshot.registries,
+      faults: faults.get(),
+      pinned,
+    });
   /** Web apps apply `ui` rows and files themselves; tell them when either changed. */
   const publishUi = (loader: Loader, previous: UiComposition, next: UiComposition) =>
     JSON.stringify(previous) === JSON.stringify(next) ? Effect.void : publish(loader, UiChanged, next);

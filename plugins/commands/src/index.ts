@@ -1,58 +1,71 @@
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect, Layer, Stream } from "effect";
 import type { Context } from "effect";
-import { definePlugin, Events, PluginContext } from "@lemma/core";
+import { definePlugin, Events, PluginContext, Registries, Registry } from "@lemma/core";
 import { CommandError, Commands, CommandsChanged, InteractionError } from "@lemma/contracts";
 import type { Command, CommandInfo } from "@lemma/contracts";
 
 type Service = Context.Tag.Service<typeof Commands>;
 
-interface Entry {
-  readonly command: Command;
-  readonly info: CommandInfo;
-}
+/**
+ * What plugins register, in the core's registry: each command belongs to its
+ * plugin and leaves with it, and the plugin's replacement takes over its ids at
+ * the swap. Private to this plugin: contributors go through `Commands.register`.
+ */
+const Entries = Registry.make<Command>("lemma/commands", { key: (command) => command.id, unique: true });
 
 const byCategoryThenTitle = (a: CommandInfo, b: CommandInfo): number =>
   (a.category ?? "").localeCompare(b.category ?? "") || a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
 
 const message = (cause: unknown): string => (cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause));
 
-export const makeRegistry: Effect.Effect<Service, never, Events | PluginContext> = Effect.gen(function* () {
+const infoOf = (items: readonly { readonly item: Command; readonly pluginId: string }[]): CommandInfo[] =>
+  items.map(({ item: { run: _run, ...fields }, pluginId }) => ({ ...fields, source: pluginId })).sort(byCategoryThenTitle);
+
+export const makeRegistry: Effect.Effect<Service, never, Events | PluginContext | Registries> = Effect.gen(function* () {
   const events = yield* Events;
   const owner = yield* PluginContext;
-  const entries = new Map<string, Entry>();
+  const registries = yield* Registries;
+  const snapshot = Effect.map(registries.items(Entries), infoOf);
 
-  const snapshot = () => [...entries.values()].map((entry) => entry.info).sort(byCategoryThenTitle);
-  const changed = Effect.suspend(() => events.publish(CommandsChanged, { commands: snapshot() }));
+  // Clients hear of every change once it is live: after a contributor is published, and after it leaves.
+  yield* owner
+    .background(
+      "commands.changed",
+      Stream.runForEach(Stream.drop(registries.changes(Entries), 1), (items) => events.publish(CommandsChanged, { commands: infoOf(items) })),
+    )
+    .pipe(Effect.orDie);
 
   const register: Service["register"] = (command) =>
     Effect.gen(function* () {
-      const { id: source } = yield* PluginContext;
-      const { run: _run, ...fields } = command;
-      const entry: Entry = { command, info: { ...fields, source } };
-      yield* Effect.acquireRelease(
-        Effect.suspend(() => {
-          const existing = entries.get(command.id);
-          if (existing !== undefined) {
-            return Effect.fail(
-              new CommandError({ command: command.id, reason: "Failed", message: `Command "${command.id}" is already registered by ${existing.info.source}` }),
-            );
-          }
-          entries.set(command.id, entry);
-          return changed;
-        }),
-        () => Effect.suspend(() => (entries.get(command.id) === entry && entries.delete(command.id) ? changed : Effect.void)),
+      const contributor = yield* PluginContext;
+      const remove = yield* contributor.add(Entries, command).pipe(
+        Effect.catchTag("RegistryError", (error) =>
+          Effect.fail(
+            new CommandError({
+              command: command.id,
+              reason: "Failed",
+              message: error.reason === "Conflict" ? `Command "${command.id}" is already registered by ${error.holder}` : error.message,
+              cause: error,
+            }),
+          ),
+        ),
+        Effect.catchTag("CoreClosed", (error) =>
+          Effect.fail(new CommandError({ command: command.id, reason: "Failed", message: "The core has closed", cause: error })),
+        ),
       );
+      // Gone when the registering scope closes, or with the plugin, whichever is first.
+      yield* Effect.addFinalizer(() => remove);
     });
 
   const run: Service["run"] = (id, context) =>
     owner.trace(
       `commands.run ${id}`,
       Effect.gen(function* () {
-        const entry = entries.get(id);
+        const entry = (yield* registries.items(Entries)).find((contribution) => contribution.item.id === id)?.item;
         if (entry === undefined) {
           return yield* new CommandError({ command: id, reason: "NotFound", message: `No command "${id}"` });
         }
-        const result = yield* Effect.suspend(() => entry.command.run(context)).pipe(
+        const result = yield* Effect.suspend(() => entry.run(context)).pipe(
           Effect.catchAllCause((cause) => {
             if (Cause.isInterruptedOnly(cause)) return Effect.failCause(cause as Cause.Cause<never>);
             const error = Cause.squash(cause);
@@ -61,7 +74,7 @@ export const makeRegistry: Effect.Effect<Service, never, Events | PluginContext>
               new CommandError({
                 command: id,
                 reason: dismissed ? "Cancelled" : "Failed",
-                message: dismissed ? `${entry.info.title} was cancelled` : message(error),
+                message: dismissed ? `${entry.title} was cancelled` : message(error),
                 cause: error,
               }),
             );
@@ -71,7 +84,7 @@ export const makeRegistry: Effect.Effect<Service, never, Events | PluginContext>
       }),
     );
 
-  return { register, list: Effect.sync(snapshot), run } satisfies Service;
+  return { register, list: snapshot, run } satisfies Service;
 });
 
 /**

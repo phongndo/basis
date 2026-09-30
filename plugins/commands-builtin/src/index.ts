@@ -151,15 +151,14 @@ export const workspaceCommands = (workspace: Context.Tag.Service<typeof Workspac
 
 /**
  * One plugin per area, so a composition without `Llm` (say) still gets the
- * host and git commands. Exclusive because the registry rejects duplicate ids:
- * a reload must unregister the old commands before the new ones register.
+ * host and git commands. A reload swaps in the new commands without a gap: the
+ * registry lets a plugin's replacement take over its ids.
  */
 const commandsPlugin = <I, S>(id: string, service: Context.Tag<I, S>, commands: (service: S, ask: Ask) => readonly Command[]) =>
   definePlugin({
     id,
     version: "0.1.0",
     requires: [Commands, Interaction, service],
-    exclusive: true,
     layer: Layer.scopedDiscard(
       Effect.gen(function* () {
         const [registry, ask, dependency] = yield* Effect.all([Commands, Interaction, service]);

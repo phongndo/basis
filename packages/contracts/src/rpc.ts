@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { PromptContent, TurnOptions } from "./agent.ts";
 import { CommandInfo, CommandResult } from "./commands.ts";
 import { ConfigField, ConfigValues } from "./config.ts";
-import { CompositionInfo, ConfigScope, FaultRecord, HookUse, NoticePayload, PluginChange, PluginSource, UiComposition } from "./host.ts";
+import { CompositionInfo, ConfigScope, FaultRecord, HookUse, NoticePayload, PluginChange, PluginSource, RegistryUse, UiComposition } from "./host.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
 import { AuthType, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
 import { SessionEvent, SessionInfo } from "./sessions.ts";
@@ -41,6 +41,7 @@ export const PluginStatus = Schema.Struct({
   configScope: Schema.optional(ConfigScope),
   hooks: Schema.optional(Schema.Array(HookUse)),
   observes: Schema.optional(Schema.Array(Schema.String)),
+  contributes: Schema.optional(Schema.Array(RegistryUse)),
   faults: Schema.optional(Schema.Array(FaultRecord)),
 });
 export type PluginStatus = typeof PluginStatus.Type;

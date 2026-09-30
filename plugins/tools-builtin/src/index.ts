@@ -19,16 +19,15 @@ export { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead, truncateTail } from
 
 /**
  * One plugin per tool, with the tool's name as its id, so a composition can
- * disable or replace one (`bash`, say) without touching the others. Exclusive
- * because the registry rejects duplicate names: a reload must unregister the
- * old tool before the new one registers.
+ * disable or replace one (`bash`, say) without touching the others. A reload
+ * swaps in the new tool without a gap: the registry lets a plugin's
+ * replacement take over its names.
  */
 const toolPlugin = (tool: Tool<any>) =>
   definePlugin({
     id: tool.name,
     version: "0.1.0",
     requires: [Tools],
-    exclusive: true,
     layer: Layer.scopedDiscard(Effect.flatMap(Tools, (registry) => registry.register(tool))),
   });
 

@@ -1,8 +1,8 @@
 import { Cause } from "effect";
 import { configValues, describeConfig } from "@lemma/contracts";
 import type { ConfigField, ConfigScope, FaultRecord, PluginChange, PluginInfo, PluginSource } from "@lemma/contracts";
-import { Events, Hooks, PluginContext } from "@lemma/core";
-import type { Composition, EventSnapshot, HookSnapshot, Plugin, PluginSnapshot, ReportedFault } from "@lemma/core";
+import { Events, Hooks, PluginContext, Registries } from "@lemma/core";
+import type { Composition, EventSnapshot, HookSnapshot, Plugin, PluginSnapshot, RegistrySnapshot, ReportedFault } from "@lemma/core";
 
 /** The plugin that loads every other one. Defined here, not in config.ts, so this module stays free of Node APIs for the web app. */
 export const HOST_PLUGIN_ID = "host";
@@ -16,7 +16,7 @@ export interface KnownPlugin {
 }
 
 /** Runtime capabilities the core supplies to every plugin; not dependencies between plugins. */
-const builtins = new Set<string>([Hooks.key, PluginContext.key, Events.key]);
+const builtins = new Set<string>([Hooks.key, PluginContext.key, Events.key, Registries.key]);
 
 const isEnabled = (composition: Composition, id: string): boolean => composition.plugins[id]?.enabled !== false;
 
@@ -115,9 +115,10 @@ export interface CatalogInput {
   readonly resolved: Resolved;
   /** `core.inspect` of the running composition. */
   readonly snapshots: readonly PluginSnapshot[];
-  /** `core.inspect` hooks and events: who intercepts and observes what. */
+  /** `core.inspect` hooks, events, and registries: who intercepts, observes, and contributes what. */
   readonly hooks?: readonly HookSnapshot[];
   readonly events?: readonly EventSnapshot[];
+  readonly registries?: readonly RegistrySnapshot[];
   /** Recent faults by plugin id, newest first (see `faultHistory`). */
   readonly faults?: ReadonlyMap<string, readonly FaultRecord[]>;
   readonly enabledIn: Readonly<Record<string, ConfigScope>>;
@@ -172,6 +173,7 @@ export function catalog({
   snapshots,
   hooks = [],
   events = [],
+  registries = [],
   faults,
   enabledIn,
   configIn = {},
@@ -192,6 +194,11 @@ export function catalog({
       hook.handlers.filter((handler) => handler.pluginId === plugin.id).map(({ order }) => ({ name: hook.name, order })),
     );
     const observes = events.filter((event) => event.observers.includes(plugin.id)).map((event) => event.name);
+    const contributes = registries.flatMap((registry) => {
+      const items = registry.items.filter((item) => item.pluginId === plugin.id);
+      const keys = items.flatMap((item) => (item.key === undefined ? [] : [item.key]));
+      return items.length === 0 ? [] : [{ name: registry.name, items: items.length, ...(keys.length === 0 ? {} : { keys }) }];
+    });
     const history = faults?.get(plugin.id);
     return {
       id: plugin.id,
@@ -212,6 +219,7 @@ export function catalog({
       ...(configScope === undefined ? {} : { configScope }),
       ...(intercepts.length === 0 ? {} : { hooks: intercepts }),
       ...(observes.length === 0 ? {} : { observes }),
+      ...(contributes.length === 0 ? {} : { contributes }),
       ...(history === undefined || history.length === 0 ? {} : { faults: history }),
     };
   });

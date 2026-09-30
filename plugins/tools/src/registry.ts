@@ -1,6 +1,6 @@
 import { Cause, Effect, ParseResult, Schema } from "effect";
 import type { Context } from "effect";
-import { Events, Hooks, PluginContext } from "@lemma/core";
+import { Events, Hooks, PluginContext, Registries, Registry } from "@lemma/core";
 import { ToolError, ToolExecuteHook, ToolExecuted, ToolResult } from "@lemma/contracts";
 import type { Guard, Tool, ToolContext, ToolContribution, ToolInvocation, Tools } from "@lemma/contracts";
 import { capResult } from "./content.ts";
@@ -16,16 +16,24 @@ export interface RegistryOptions {
 /** A registered tool: schema converted and decoder built once. */
 interface Entry {
   readonly tool: Tool<any>;
-  readonly contribution: ToolContribution;
+  readonly spec: ToolContribution["spec"];
   readonly decode: (input: unknown) => Effect.Effect<unknown, ToolError>;
 }
 
 interface GuardEntry {
   /** A tool name, or `*` for every tool. */
   readonly name: string;
-  readonly source: string;
   readonly guard: Guard;
 }
+
+/*
+ * The core's registries hold what plugins register: each item belongs to the
+ * plugin that registered it and leaves with it, and a plugin's replacement
+ * takes over its names at the swap (so contributors need not be exclusive).
+ * Private to this plugin: contributors go through `Tools.register` and `guard`.
+ */
+const ToolEntries = Registry.make<Entry>("lemma/tools", { key: (entry) => entry.tool.name, unique: true });
+const Guards = Registry.make<GuardEntry>("lemma/tools.guards");
 
 const message = (cause: unknown): string => (cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause));
 
@@ -82,21 +90,23 @@ const aborted = (tool: string, signal: AbortSignal) =>
     return Effect.sync(() => signal.removeEventListener("abort", cancel));
   });
 
-export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, never, Hooks | Events | PluginContext> =>
+export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, never, Hooks | Events | PluginContext | Registries> =>
   Effect.gen(function* () {
     const hooks = yield* Hooks;
     const events = yield* Events;
     const owner = yield* PluginContext;
-    const entries = new Map<string, Entry>();
-    let guards: readonly GuardEntry[] = [];
+    const registries = yield* Registries;
+    const entries = registries.items(ToolEntries);
+    const names = Effect.map(entries, (items) => items.map((contribution) => contribution.item.tool.name));
+    const find = (name: string) => Effect.map(entries, (items) => items.find((contribution) => contribution.item.tool.name === name));
 
     const register: Service["register"] = (tool) =>
       Effect.gen(function* () {
-        const { id: source } = yield* PluginContext;
+        const contributor = yield* PluginContext;
         const decodeInput = Schema.decodeUnknown(tool.input);
         const entry: Entry = {
           tool,
-          contribution: { source, spec: { name: tool.name, description: tool.description, parameters: toolParameters(tool.input) } },
+          spec: { name: tool.name, description: tool.description, parameters: toolParameters(tool.input) },
           decode: (input) =>
             decodeInput(input, { errors: "all", onExcessProperty: "ignore" }).pipe(
               Effect.mapError(
@@ -110,52 +120,43 @@ export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, n
               ),
             ),
         };
-        yield* Effect.acquireRelease(
-          Effect.suspend(() => {
-            const existing = entries.get(tool.name);
-            if (existing !== undefined) {
-              return Effect.fail(
-                new ToolError({
-                  tool: tool.name,
-                  reason: "InvalidInput",
-                  message: `Tool "${tool.name}" is already registered by ${existing.contribution.source}`,
-                }),
-              );
-            }
-            entries.set(tool.name, entry);
-            return Effect.void;
-          }),
-          () =>
-            Effect.sync(() => {
-              if (entries.get(tool.name) === entry) entries.delete(tool.name);
-            }),
+        const remove = yield* contributor.add(ToolEntries, entry).pipe(
+          Effect.catchTag("RegistryError", (error) =>
+            Effect.fail(
+              new ToolError({
+                tool: tool.name,
+                reason: "InvalidInput",
+                message: error.reason === "Conflict" ? `Tool "${tool.name}" is already registered by ${error.holder}` : error.message,
+                cause: error,
+              }),
+            ),
+          ),
+          Effect.catchTag("CoreClosed", (error) =>
+            Effect.fail(new ToolError({ tool: tool.name, reason: "Failed", message: "The core has closed", cause: error })),
+          ),
         );
+        // Gone when the registering scope closes, or with the plugin, whichever is first.
+        yield* Effect.addFinalizer(() => remove);
       });
 
+    // Lifted when the installing scope closes, or with the plugin, whichever is first.
     const guard: Service["guard"] = (name, check) =>
-      Effect.gen(function* () {
-        const { id: source } = yield* PluginContext;
-        const entry: GuardEntry = { name, source, guard: check };
-        yield* Effect.acquireRelease(
-          Effect.sync(() => {
-            guards = [...guards, entry];
-          }),
-          () =>
-            Effect.sync(() => {
-              guards = guards.filter((candidate) => candidate !== entry);
-            }),
-        );
-      });
+      Effect.flatMap(PluginContext, (contributor) => contributor.add(Guards, { name, guard: check })).pipe(
+        Effect.orDie,
+        Effect.flatMap((remove) => Effect.addFinalizer(() => remove)),
+      );
 
-    const list: Service["list"] = Effect.sync(() =>
-      [...entries.values()].map((entry) => entry.contribution).sort((a, b) => (a.spec.name < b.spec.name ? -1 : a.spec.name > b.spec.name ? 1 : 0)),
+    const list: Service["list"] = Effect.map(entries, (items) =>
+      items
+        .map((contribution) => ({ source: contribution.pluginId, spec: contribution.item.spec }))
+        .sort((a, b) => (a.spec.name < b.spec.name ? -1 : a.spec.name > b.spec.name ? 1 : 0)),
     );
 
-    const unknown = (name: string) =>
+    const unknown = (name: string, names: string[]) =>
       new ToolError({
         tool: name,
         reason: "NotFound",
-        message: `Tool "${name}" not found. Available tools: ${[...entries.keys()].sort().join(", ") || "(none)"}`,
+        message: `Tool "${name}" not found. Available tools: ${names.sort().join(", ") || "(none)"}`,
       });
 
     /** Guards, then the tool. Runs as the hook's terminal so no handler can route around a guard. */
@@ -163,14 +164,15 @@ export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, n
       (original: ToolInvocation, decoded: unknown, signal: AbortSignal) =>
       (call: ToolInvocation): Effect.Effect<ToolResult, ToolError> =>
         Effect.gen(function* () {
-          const entry = entries.get(call.name);
-          if (entry === undefined) return yield* unknown(call.name);
+          const found = yield* find(call.name);
+          if (found === undefined) return yield* unknown(call.name, yield* names);
+          const entry = found.item;
           // A handler that rewrote the call gets its input validated again.
           const input = call === original ? decoded : yield* entry.decode(call.input);
-          for (const candidate of guards) {
-            if (candidate.name !== "*" && candidate.name !== call.name) continue;
-            const decision = yield* candidate.guard(call);
-            if (decision._tag === "deny") return errorResult(`Tool call denied: ${decision.reason}`, { deniedBy: candidate.source });
+          for (const candidate of yield* registries.items(Guards)) {
+            if (candidate.item.name !== "*" && candidate.item.name !== call.name) continue;
+            const decision = yield* candidate.item.guard(call);
+            if (decision._tag === "deny") return errorResult(`Tool call denied: ${decision.reason}`, { deniedBy: candidate.pluginId });
           }
           return yield* runTool(entry.tool, input, { sessionId: call.sessionId, toolCallId: call.toolCallId, cwd: call.cwd }, signal);
         });
@@ -179,8 +181,9 @@ export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, n
       owner.trace(
         `tools.execute ${invocation.name}`,
         Effect.gen(function* () {
-          const entry = entries.get(invocation.name);
-          if (entry === undefined) return yield* unknown(invocation.name);
+          const found = yield* find(invocation.name);
+          if (found === undefined) return yield* unknown(invocation.name, yield* names);
+          const entry = found.item;
           if (signal.aborted) return yield* new ToolError({ tool: invocation.name, reason: "Cancelled", message: `Tool "${invocation.name}" was cancelled` });
           const started = Date.now();
           const settled = yield* entry.decode(invocation.input).pipe(

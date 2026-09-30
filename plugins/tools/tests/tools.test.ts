@@ -85,16 +85,50 @@ describe("registry", () => {
   });
 
   it("removes a tool when its registering scope closes", async () => {
+    // A tool is attributed to the plugin registering it: this one lends its context to the test.
+    let captured: PluginContext["Type"] | undefined;
+    const lender = definePlugin({
+      id: "temp",
+      layer: Layer.effectDiscard(
+        Effect.map(PluginContext, (context) => {
+          captured = context;
+        }),
+      ),
+    });
     await run(
-      [],
+      [lender],
       Effect.gen(function* () {
         const registry = yield* Tools;
         const scope = yield* Scope.make();
-        const identity = { id: "temp" } as unknown as PluginContext["Type"];
-        yield* registry.register(echo).pipe(Effect.provideService(PluginContext, identity), Scope.extend(scope));
+        yield* registry.register(echo).pipe(Effect.provideService(PluginContext, captured!), Scope.extend(scope));
         expect((yield* registry.list).map((tool) => tool.source)).toEqual(["temp"]);
         yield* Scope.close(scope, { _tag: "Success", value: undefined } as never);
         expect(yield* registry.list).toEqual([]);
+      }),
+    );
+  });
+
+  it("lifts a guard when its installing scope closes", async () => {
+    let captured: PluginContext["Type"] | undefined;
+    const lender = definePlugin({
+      id: "plan-mode",
+      layer: Layer.effectDiscard(
+        Effect.map(PluginContext, (context) => {
+          captured = context;
+        }),
+      ),
+    });
+    await run(
+      [contributor("p", [echo]), lender],
+      Effect.gen(function* () {
+        const registry = yield* Tools;
+        const scope = yield* Scope.make();
+        yield* registry
+          .guard("echo", () => Effect.succeed({ _tag: "deny", reason: "plan mode" }))
+          .pipe(Effect.provideService(PluginContext, captured!), Scope.extend(scope));
+        expect(textOf(yield* call("echo", { text: "hi" }))).toBe("Tool call denied: plan mode");
+        yield* Scope.close(scope, { _tag: "Success", value: undefined } as never);
+        expect(textOf(yield* call("echo", { text: "hi" }))).toBe("hi");
       }),
     );
   });

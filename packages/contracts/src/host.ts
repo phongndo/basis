@@ -75,6 +75,10 @@ export type PluginSource = typeof PluginSource.Type;
 export const HookUse = Schema.Struct({ name: Schema.String, order: Schema.Number });
 export type HookUse = typeof HookUse.Type;
 
+/** A registry a plugin contributes to: how many of its items are there, and their keys where the registry names items. */
+export const RegistryUse = Schema.Struct({ name: Schema.String, items: Schema.Number, keys: Schema.optional(Schema.Array(Schema.String)) });
+export type RegistryUse = typeof RegistryUse.Type;
+
 /** A fault as clients keep it: flattened to text, with when it was reported. */
 export const FaultRecord = Schema.Struct({
   /** The core's fault sequence; a gap means faults were dropped. */
@@ -120,6 +124,8 @@ export interface PluginInfo {
   readonly hooks?: readonly HookUse[];
   /** Events its running instance observes. */
   readonly observes?: readonly string[];
+  /** Registries its running instance contributes to, with how many items. */
+  readonly contributes?: readonly RegistryUse[];
   /** Its recent faults, newest first, across restarts. */
   readonly faults?: readonly FaultRecord[];
 }

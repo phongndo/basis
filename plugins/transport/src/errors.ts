@@ -79,6 +79,7 @@ export const toPluginStatus = (info: PluginInfo): PluginStatus => {
     ...(info.configScope === undefined ? {} : { configScope: info.configScope }),
     ...(info.hooks === undefined ? {} : { hooks: info.hooks }),
     ...(info.observes === undefined ? {} : { observes: info.observes }),
+    ...(info.contributes === undefined ? {} : { contributes: info.contributes }),
     ...(info.faults === undefined ? {} : { faults: info.faults }),
   };
 };
