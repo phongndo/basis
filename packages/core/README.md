@@ -55,7 +55,7 @@ and packs it for local installation into another application.
 - `config` is an Effect Schema. `makeCore(plugins, { configs })` decodes every plugin's config before any activation; a missing value decodes as `{}`; an invalid one is a `CompositionError` (`InvalidConfig`) naming the plugin and the failing path. `layer` may be a function of the decoded config.
 - `exclusive` marks a plugin that cannot coexist with its replacement (a port, a lock, a unique registration in a retained registry); a reload stops it before starting the new instance. `restart` is an Effect `Schedule` consulted after a runtime failure; without one the plugin stays failed. `deadlines` bound activation and disposal (defaults 30s and 10s, overridable per core).
 - Capabilities are ordinary Effect `Context.Tag`s. Share the tags between consumers and providers; use namespaced keys. Effect identifies capabilities by their keys.
-- `provides` declares exports; `requires` declares dependencies supplied by other plugins. `PluginContext`, `Hooks`, and `Events` are available without declaration. The runtime rejects attempts to provide these built-ins or `Scope`.
+- `provides` declares exports; `requires` declares dependencies supplied by other plugins. `PluginContext`, `Hooks`, `Events`, and `Registries` are available without declaration. The runtime rejects attempts to provide these built-ins or `Scope`.
 - `layer` is an ordinary Effect `Layer`. Use `Layer.scoped`, `Effect.acquireRelease`, and `Effect.forkScoped` for resources and background work. Dependencies constructed privately inside a Layer need not be declared.
 - The manifest is needed for runtime graph inspection and validation: Effect's type-level requirements alone cannot describe a dynamically supplied composition. Construction and cleanup still belong to Effect, not a second dependency-injection system.
 
@@ -72,10 +72,12 @@ promise-based operation must cooperate with cancellation, for example by accepti
 an `AbortSignal` passed through `Effect.tryPromise`. The core does not intercept arbitrary
 capability functions or automatically cancel the work they start.
 
-Registrations made in another plugin's registry must be released with the
-contributor's scope. If that registry rejects duplicate names, mark the contributor
-`exclusive: true` so reload can unregister the old value before installing the new
-one. This incurs the same documented interruption gap as any exclusive resource.
+Contributions to another plugin's collection belong in a core registry (below):
+they are released with the contributor's scope and swapped with it on reload. A
+collection a plugin keeps in its own data structure must be released with the
+contributor's scope too; if it rejects duplicate names, mark the contributor
+`exclusive: true` so reload can unregister the old value before installing the
+new one, which incurs the same interruption gap as any exclusive resource.
 
 ## Plugin-defined hooks
 
@@ -123,6 +125,33 @@ available or the subscription closes. An observer's failure becomes a
 nor other observers. `Events.stream` subscribes from outside a plugin. Use events
 only for information that is safe to lose; applications own authoritative state
 and any persistence needed to recover missed notifications.
+
+## Registries
+
+A registry collects what plugins offer: entries in a list other plugins read,
+as opposed to an operation they intercept (a hook) or news they report (an event).
+
+```ts
+const Menu = Registry.make<{ readonly label: string }>("example/menu");
+const Commands = Registry.make<Command>("example/commands", { key: (command) => command.id, unique: true });
+```
+
+A plugin contributes with its `PluginContext`; readers use `Registries`:
+
+```ts
+const owner = yield * PluginContext;
+const remove = yield * owner.add(Menu, { label: "Open" }, { order: 10 });
+
+const registries = yield * Registries;
+const items = yield * registries.items(Menu); // [{ item, pluginId, order }], in order
+const updates = registries.changes(Menu); // the items now, then after each change
+```
+
+- Items come in `order` (lower first), then by plugin id, then in the order that plugin added them. Each carries the contributing plugin's id; `core.inspect` lists who contributes what.
+- An item belongs to the plugin instance that added it. It is hidden while its plugin stages, appears when the plugin is published, and leaves when the plugin is retired or its scope closes. The effect `add` returns removes it sooner.
+- With `unique`, a key held by another plugin (visible or staged) fails `add` with `RegistryError` (`Conflict`, naming the `holder`). The plugin's own replacement may take the key over, so a reload swaps without an exclusive gap.
+- `items` returns an immutable array that changes only when the registry does. `changes` never backs up: a slow reader gets the latest items, not every intermediate list.
+- A name identifies one token per core, as for hooks.
 
 ## Supervision
 

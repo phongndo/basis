@@ -4,6 +4,7 @@ import { CapabilityMismatch, CompositionError, CoreClosed, DeadlineExceeded, Dia
 import type { ReportedFault } from "../errors.ts";
 import { Events } from "../events.ts";
 import { Hooks, PluginContext } from "../hooks.ts";
+import { Registries } from "../registries.ts";
 import type { PluginIdentity } from "../hooks.ts";
 import type { ReloadReport } from "../loader.ts";
 import type { Plugin } from "../plugin.ts";
@@ -12,6 +13,8 @@ import type { ObserverHandle } from "./events.ts";
 import { plan } from "./graph.ts";
 import { attributes, HookRegistry } from "./hooks.ts";
 import type { OwnerHandle } from "./hooks.ts";
+import { RegistryStore } from "./registries.ts";
+import type { ContributorHandle } from "./registries.ts";
 
 /** A plugin and its raw (undecoded) config. */
 export interface Member {
@@ -45,6 +48,7 @@ interface Instance {
   readonly scope: Scope.CloseableScope;
   readonly hooks: OwnerHandle;
   readonly observers: ObserverHandle;
+  readonly contributions: ContributorHandle;
   output: Context.Context<never>;
   state: PluginState;
   fault?: PluginFault;
@@ -108,7 +112,8 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
       });
     const registry = new HookRegistry();
     const bus = new EventBus();
-    const base = Context.empty().pipe(Context.add(Hooks, registry), Context.add(Events, bus)) as Context.Context<never>;
+    const store = new RegistryStore();
+    const base = Context.empty().pipe(Context.add(Hooks, registry), Context.add(Events, bus), Context.add(Registries, store)) as Context.Context<never>;
     /** Owns lifecycle fibers: apply bodies, restart loops, background watchers. */
     const supervisor = yield* Scope.make();
     /** Owns core.run fibers. */
@@ -158,6 +163,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
       instance.state = "draining";
       instance.hooks.retire();
       instance.observers.retire();
+      instance.contributions.retire();
     };
 
     const create = (plugin: Plugin, rawConfig: unknown): Effect.Effect<Instance> =>
@@ -172,6 +178,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
           scope,
           hooks: registry.owner(identity, scope, false),
           observers: bus.owner(identity, scope, false, (fault) => report(instance, fault)),
+          contributions: store.contributor(identity, scope, false),
           output: Context.empty(),
           state: "pending",
         };
@@ -203,6 +210,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
           const context: Context.Tag.Service<PluginContext> = {
             ...instance.identity,
             on: instance.hooks.on,
+            add: instance.contributions.add,
             observe: instance.observers.observe,
             background: <R>(name: string, task: Effect.Effect<unknown, unknown, R>, options?: { readonly required?: boolean }) =>
               background(instance, name, task, options?.required ?? false) as Effect.Effect<void, CoreClosed, R>,
@@ -213,6 +221,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
             [Hooks.key, registry],
             [PluginContext.key, context],
             [Events.key, bus],
+            [Registries.key, store],
           ]);
           for (const tag of instance.plugin.requires) {
             if (!inputs.has(tag.key)) inputs.set(tag.key, environment.unsafeMap.get(tag.key));
@@ -268,6 +277,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
         Effect.gen(function* () {
           instance.hooks.stop();
           instance.observers.retire();
+          instance.contributions.stop();
           const limit = Duration.decode(instance.plugin.deadlines?.dispose ?? defaults.dispose);
           const settled = yield* Deferred.make<void>();
           pendingDisposals.add(settled);
@@ -512,6 +522,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
             for (const instance of staged) {
               instance.hooks.publish();
               instance.observers.publish();
+              instance.contributions.publish();
               instances.set(instance.id, instance);
             }
             for (const id of stops) instances.delete(id);
@@ -565,6 +576,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
             // until both have actually stopped. A caller deadline never kills them.
             yield* Effect.all([Scope.close(work, Exit.void), Scope.close(supervisor, Exit.void)], { concurrency: "unbounded", discard: true });
             registry.close();
+            store.close();
             yield* bus.close();
             yield* awaitDisposals;
             let cause: Cause.Cause<unknown> | undefined;
@@ -635,6 +647,7 @@ export function makeRuntime(options: Pick<CoreOptions, "deadlines" | "shutdownTi
         plugins: order.map((id) => snapshot(instances.get(id)!)),
         hooks: registry.inspect(),
         events: bus.inspect(),
+        registries: store.inspect(),
       })),
       faults: Stream.fromPubSub(faults, { maxChunkSize: 1 }),
       restart: (id, options) =>

@@ -1,7 +1,7 @@
 import { cpus } from "node:os";
 import { Context, Effect, Layer } from "effect";
 import { finish, record } from "./budgets.ts";
-import { definePlugin, Event, Events, Hook, Hooks, makeCore, makeLoader, PluginContext } from "../src/index.ts";
+import { definePlugin, Event, Events, Hook, Hooks, makeCore, makeLoader, PluginContext, Registries, Registry } from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 
 // Warm microbenchmarks, not end-to-end latency or a comparison with another harness.
@@ -12,6 +12,7 @@ const iterations = Number(process.env.LEMMA_BENCH_ITERATIONS ?? 10_000);
 if (!Number.isInteger(iterations) || iterations < 1) throw new Error("LEMMA_BENCH_ITERATIONS must be a positive integer");
 const point = Hook.make<number, number>("bench/increment");
 const tick = Event.make<number>("bench/tick");
+const entries = Registry.make<number>("bench/entries");
 const terminal = (value: number) => Effect.succeed(value + 1);
 const plugins = (count: number) =>
   Array.from({ length: count }, (_, index) =>
@@ -120,6 +121,46 @@ for (const count of [0, 1, 8]) {
         const core = yield* makeCore(observers(count));
         const events = yield* core.run(Events);
         yield* Effect.promise(() => measure(`Event publish / ${count} observers`, iterations, core.run(repeat(events.publish(tick, 1), iterations))));
+      }),
+    ),
+  );
+}
+
+// Registries: reading the items (what a view does on every render), and adding then removing one while `count` others stay.
+const contributors = (count: number) =>
+  Array.from({ length: count }, (_, index) =>
+    definePlugin({
+      id: `contributor-${String(index).padStart(3, "0")}`,
+      layer: Layer.effectDiscard(Effect.flatMap(PluginContext, (owner) => owner.add(entries, index, { order: index % 7 }))),
+    }),
+  );
+for (const count of [0, 8, 128]) {
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = yield* makeCore(contributors(count));
+        const registries = yield* core.run(Registries);
+        yield* Effect.promise(() => measure(`Registry items / ${count} items`, iterations, core.run(repeat(registries.items(entries), iterations))));
+      }),
+    ),
+  );
+}
+for (const count of [8, 128]) {
+  let add!: (value: number) => Effect.Effect<Effect.Effect<void>, unknown>;
+  const adder = definePlugin({
+    id: "adder",
+    layer: Layer.effectDiscard(
+      Effect.map(PluginContext, (owner) => {
+        add = (value) => owner.add(entries, value);
+      }),
+    ),
+  });
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = yield* makeCore([...contributors(count), adder]);
+        yield* Effect.promise(() => measure(`Registry add + remove / ${count} items`, iterations, repeat(Effect.flatten(add(-1)), iterations)));
+        void core;
       }),
     ),
   );

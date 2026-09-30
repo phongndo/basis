@@ -1,6 +1,7 @@
 import { Context, Effect } from "effect";
-import type { CoreClosed, EventError, HookError } from "./errors.ts";
+import type { CoreClosed, EventError, HookError, RegistryError } from "./errors.ts";
 import type { Event, Observer, ObserveOptions } from "./events.ts";
+import type { ContributeOptions, Registry } from "./registries.ts";
 
 const HookTypeId: unique symbol = Symbol("@lemma/core/Hook");
 
@@ -54,6 +55,12 @@ export class PluginContext extends Context.Tag("@lemma/core/PluginContext")<
   PluginIdentity & {
     /** Captures dependencies now; removes the handler when the plugin's scope closes. */
     readonly on: <I, O, E, R>(hook: Hook<I, O, E>, handler: Handler<I, O, E, R>, options?: HookOptions) => Effect.Effect<void, HookError | CoreClosed, R>;
+    /**
+     * Contribute an item to a registry. It is visible once this plugin is
+     * published and leaves when its scope closes; the returned effect removes it
+     * sooner.
+     */
+    readonly add: <I>(registry: Registry<I>, item: I, options?: ContributeOptions) => Effect.Effect<Effect.Effect<void>, RegistryError | CoreClosed>;
     /** Observe an event. Failures are attributed to this plugin and isolated from everything else. */
     readonly observe: <P, R>(event: Event<P>, observer: Observer<P, R>, options?: ObserveOptions) => Effect.Effect<void, EventError | CoreClosed, R>;
     /**

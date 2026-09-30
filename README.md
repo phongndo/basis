@@ -43,7 +43,7 @@ end-to-end runs without an API key.
 
 ## Core
 
-The core is a domain-neutral TypeScript plugin framework. It provides typed capabilities, plugin-defined hooks and events, scoped resources,
+The core is a domain-neutral TypeScript plugin framework. It provides typed capabilities, plugin-defined hooks, events, and registries, scoped resources,
 failure supervision, and reloads. Applications define their own contracts and choose
 their own plugins. The core has no required server, transport, persistence,
 user interface, or domain model.

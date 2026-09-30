@@ -5,6 +5,8 @@ import type { Events } from "./events.ts";
 import type { Hooks } from "./hooks.ts";
 import type { EventSnapshot } from "./internal/events.ts";
 import type { HookSnapshot } from "./internal/hooks.ts";
+import type { RegistrySnapshot } from "./internal/registries.ts";
+import type { Registries } from "./registries.ts";
 import { makeRuntime } from "./internal/runtime.ts";
 import type { Deadlines, Identifiers, Plugin } from "./plugin.ts";
 
@@ -37,6 +39,8 @@ export interface CoreSnapshot {
   readonly plugins: readonly PluginSnapshot[];
   readonly hooks: readonly HookSnapshot[];
   readonly events: readonly EventSnapshot[];
+  /** Who contributes what, per registry. */
+  readonly registries: readonly RegistrySnapshot[];
 }
 
 export interface CoreOptions {
@@ -59,7 +63,7 @@ export interface Core<Capabilities = never> {
    * Work is interrupted and awaited before plugins are disposed. Caller interruption
    * also interrupts this work. No additional Effect runtime is created.
    */
-  readonly run: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks | Events>>;
+  readonly run: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | CoreClosed, Exclude<R, Capabilities | Hooks | Events | Registries>>;
   readonly inspect: Effect.Effect<CoreSnapshot>;
   /** Ordered live faults; retains 256 entries, dropping oldest without blocking. Sequence gaps reveal loss. */
   readonly faults: Stream.Stream<ReportedFault>;

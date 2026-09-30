@@ -68,6 +68,16 @@ export class HookError extends Data.TaggedError("HookError")<{
   readonly message: string;
 }> {}
 
+export class RegistryError extends Data.TaggedError("RegistryError")<{
+  readonly reason: "PointConflict" | "InvalidOrder" | "OwnerClosed" | "Conflict" | "MissingKey";
+  readonly registry: string;
+  readonly pluginId?: string;
+  /** For a "Conflict": the key, and the plugin that holds it. */
+  readonly key?: string;
+  readonly holder?: string;
+  readonly message: string;
+}> {}
+
 /** Where in a plugin's life a failure was observed. */
 export const FaultPhase = Schema.Literal("config", "activate", "service", "intercept", "observe", "background", "dispose");
 export type FaultPhase = typeof FaultPhase.Type;

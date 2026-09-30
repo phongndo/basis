@@ -3,6 +3,7 @@ import type { Context, Duration, Schedule, Schema } from "effect";
 import type { PluginFault } from "./errors.ts";
 import type { Events } from "./events.ts";
 import type { Hooks, PluginContext } from "./hooks.ts";
+import type { Registries } from "./registries.ts";
 
 // Tags are existential here; their concrete identifiers are retained by definePlugin.
 export type Capability = Context.Tag<any, any>;
@@ -33,7 +34,7 @@ export interface Plugin<Provides extends readonly Capability[] = readonly Capabi
 export type PluginLayer<Provides extends readonly Capability[], Requires extends readonly Capability[], Error> = Layer.Layer<
   NoInfer<Identifiers<Provides>>,
   Error,
-  NoInfer<Identifiers<Requires>> | PluginContext | Hooks | Events
+  NoInfer<Identifiers<Requires>> | PluginContext | Hooks | Events | Registries
 >;
 
 /**

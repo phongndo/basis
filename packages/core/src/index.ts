@@ -11,6 +11,7 @@ export {
   FaultPhase,
   HookError,
   PluginFault,
+  RegistryError,
   ReloadError,
   ShutdownTimeout,
 } from "./errors.ts";
@@ -19,6 +20,9 @@ export type { Observer, ObserveOptions } from "./events.ts";
 export { Hook, Hooks, PluginContext } from "./hooks.ts";
 export type { BackgroundOptions, Handler, HookOptions, Next, PluginIdentity } from "./hooks.ts";
 export { makeLoader } from "./loader.ts";
+export { Registries, Registry } from "./registries.ts";
+export type { ContributeOptions, Contribution, RegistryOptions } from "./registries.ts";
+export type { RegistrySnapshot } from "./internal/registries.ts";
 export type { Composition, Loader, LoaderOptions, PluginEntry, PluginSource, ReloadReport } from "./loader.ts";
 export { definePlugin } from "./plugin.ts";
 export type { Capability, Deadlines, Plugin, PluginLayer } from "./plugin.ts";

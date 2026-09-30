@@ -2,9 +2,10 @@ import { Either, ParseResult, Schema, Scope } from "effect";
 import { CompositionError } from "../errors.ts";
 import { Events } from "../events.ts";
 import { Hooks, PluginContext } from "../hooks.ts";
+import { Registries } from "../registries.ts";
 import type { Plugin } from "../plugin.ts";
 
-const builtins = new Set<string>([Hooks.key, PluginContext.key, Events.key]);
+const builtins = new Set<string>([Hooks.key, PluginContext.key, Events.key, Registries.key]);
 const reserved = new Set([...builtins, Scope.Scope.key]);
 
 export interface Planned {

@@ -2,8 +2,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The kernel stays domain-neutral: `packages/core` may depend on Effect only
-// and may import nothing from the harness packages in this workspace.
+// The kernel stays domain-neutral: `packages/core` may depend on Effect only,
+// may import nothing from the harness packages in this workspace, and names
+// none of the harness's concepts.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const core = join(root, "packages/core");
 const problems: string[] = [];
@@ -28,6 +29,17 @@ for (const file of walk(core).filter((path) => /\.(ts|tsx|mts)$/.test(path))) {
       problems.push(`${relative(root, file)}: imports "${specifier}"`);
     }
   }
+}
+
+// It stays domain-neutral in its words too: the harness's concepts belong to its contracts and plugins.
+const harnessWords = /\b(tools?|agents?|sessions?|llms?|prompts?|transcripts?|chats?|models?|slots?|harness)\b/i;
+for (const file of walk(join(core, "src")).filter((path) => /\.(ts|tsx|mts)$/.test(path))) {
+  readFileSync(file, "utf8")
+    .split("\n")
+    .forEach((line, index) => {
+      const word = harnessWords.exec(line)?.[1];
+      if (word !== undefined) problems.push(`${relative(root, file)}:${index + 1}: names "${word}", a harness concept`);
+    });
 }
 
 if (problems.length) {
