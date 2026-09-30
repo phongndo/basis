@@ -62,4 +62,12 @@ describe("planUi", () => {
     expect(plan.unknown).toEqual(["typo"]);
     expect(enabled(plan)).toEqual(["model", "composer", "shell"]);
   });
+
+  it("keeps on what a pinned plugin needs, however deep, preferring a replacement that is on", () => {
+    const plan = planUi(bundled, [], { composer: { enabled: false }, model: { enabled: false } }, new Set(["shell"]));
+    expect(enabled(plan)).toEqual(["model", "composer", "shell"]);
+    expect(plan.resolved.haltedBy.size).toBe(0);
+    const replaced = planUi(bundled, [{ plugin: mine, source: "user" }], { model: { enabled: false } }, new Set(["shell"]));
+    expect(enabled(replaced)).toEqual(["model", "shell", "my-composer"]);
+  });
 });

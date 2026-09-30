@@ -28,7 +28,7 @@ const keys = (plugin: Plugin) => new Set(plugin.provides.map((tag) => tag.key));
  * what a bundled plugin provides turns that plugin off unless a row decides,
  * so dropping a file into `~/.lemma/ui` is enough to replace a part of the
  * app. `ui` rows then patch by id, as `plugins` rows do for the host. Plugins
- * in `pinned` always run.
+ * in `pinned` always run, and so does a provider of everything they require.
  */
 export function planUi(
   bundled: readonly Plugin[],
@@ -56,8 +56,11 @@ export function planUi(
   const unknown: string[] = [];
   for (const [id, row] of Object.entries(rows)) {
     if (plugins[id] === undefined) unknown.push(id);
-    else plugins[id] = { ...plugins[id], ...row, ...(pinned.has(id) ? { enabled: true } : {}) } as PluginEntry;
+    else plugins[id] = { ...plugins[id], ...row } as PluginEntry;
   }
-  const composition = { plugins };
-  return { known, composition, resolved: resolveComposition(known, composition), unknown };
+  // Pinned plugins and what they need stay on whatever the rows say (see `resolveComposition`); the web app's policy is
+  // to ignore such a row, not to refuse the page, so the composition shows them on and `overridden` names the rows.
+  const resolved = resolveComposition(known, { plugins }, [...pinned]);
+  for (const id of resolved.overridden) plugins[id] = { ...plugins[id], enabled: true } as PluginEntry;
+  return { known, composition: { plugins }, resolved, unknown };
 }

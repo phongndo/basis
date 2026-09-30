@@ -37,15 +37,27 @@ export interface Resolved {
   readonly composition: Composition;
   /** Enabled plugins left out, each with the plugin (off or itself left out) that provides a capability it requires. */
   readonly haltedBy: ReadonlyMap<string, string>;
+  /** Plugins that cannot be turned off: each pinned plugin (mapped to itself) and every plugin it needs, directly or not, mapped to it. */
+  readonly locked: ReadonlyMap<string, string>;
+  /** Locked plugins whose row turned them off; they load regardless, and the app decides whether that is an error. */
+  readonly overridden: readonly string[];
 }
 
 /**
  * Turning a plugin off takes its dependents out of the composition rather than
  * failing the whole change on a missing capability; they return when it does.
+ * A pinned plugin, and a provider of everything it needs, stays on whatever
+ * the rows say (the providers that are on, else the ones that are off).
  * Unknown ids and capabilities nobody provides are left to the planner, which
  * reports them.
  */
-export function resolveComposition(known: readonly KnownPlugin[], composition: Composition): Resolved {
+export function resolveComposition(known: readonly KnownPlugin[], rows: Composition, pinned: readonly string[] = []): Resolved {
+  const locked = lockedBy(known, rows, pinned);
+  const overridden = [...locked.keys()].filter((id) => rows.plugins[id]?.enabled === false);
+  const composition: Composition =
+    overridden.length === 0
+      ? rows
+      : { plugins: { ...rows.plugins, ...Object.fromEntries(overridden.map((id) => [id, { ...rows.plugins[id], enabled: true }])) } };
   const providers = providersOf(known, composition);
   const haltedBy = new Map<string, string>();
   const loaded = (id: string) => isEnabled(composition, id) && !haltedBy.has(id);
@@ -64,7 +76,7 @@ export function resolveComposition(known: readonly KnownPlugin[], composition: C
     }
   }
   const plugins = Object.fromEntries(Object.entries(composition.plugins).filter(([id]) => !haltedBy.has(id)));
-  return { composition: { plugins }, haltedBy };
+  return { composition: { plugins }, haltedBy, locked, overridden };
 }
 
 /**
@@ -87,11 +99,12 @@ export function restartedBy(known: readonly KnownPlugin[], ids: readonly string[
   return found;
 }
 
-/** Every plugin a pinned plugin needs, directly or through other plugins, with the pinned plugin's id. */
-function neededBy(known: readonly KnownPlugin[], composition: Composition, pinned: readonly string[]): Map<string, string> {
+/** Each pinned plugin (to itself) and every plugin it needs, directly or through other plugins, to the pinned plugin's id. */
+function lockedBy(known: readonly KnownPlugin[], composition: Composition, pinned: readonly string[]): Map<string, string> {
   const byId = new Map(known.map((entry) => [entry.plugin.id, entry.plugin]));
   const providers = providersOf(known, composition);
-  const needed = new Map<string, string>();
+  const locked = new Map<string, string>();
+  for (const root of pinned) if (byId.has(root)) locked.set(root, root);
   for (const root of pinned) {
     const stack = [root];
     while (stack.length) {
@@ -99,13 +112,13 @@ function neededBy(known: readonly KnownPlugin[], composition: Composition, pinne
       if (!plugin) continue;
       for (const tag of plugin.requires) {
         const provider = providers.get(tag.key);
-        if (provider === undefined || needed.has(provider) || pinned.includes(provider)) continue;
-        needed.set(provider, root);
+        if (provider === undefined || locked.has(provider)) continue;
+        locked.set(provider, root);
         stack.push(provider);
       }
     }
   }
-  return needed;
+  return locked;
 }
 
 export interface CatalogInput {
@@ -180,10 +193,9 @@ export function catalog({
   pinned,
 }: CatalogInput): PluginInfo[] {
   const running = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
-  const needed = neededBy(known, composition, Object.keys(pinned));
   return known.map(({ plugin, source, shadows }) => {
     const snapshot = running.get(plugin.id);
-    const needs = needed.get(plugin.id);
+    const needs = resolved.locked.get(plugin.id);
     const locked = pinned[plugin.id] ?? (needs === undefined ? undefined : `Needed by ${needs}`);
     const haltedBy = snapshot?.haltedBy ?? resolved.haltedBy.get(plugin.id);
     const scope = enabledIn[plugin.id];

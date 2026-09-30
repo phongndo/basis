@@ -117,33 +117,24 @@ const load = (host: Plugin): Effect.Effect<Loaded, ReloadError> =>
     }
     const known = [...byId.values()];
     const composition = withDefaults([...byId.keys()], loaded.composition);
-    const resolved = resolveComposition(known, composition);
+    const resolved = resolveComposition(known, composition, Object.keys(pinned));
     for (const [id, by] of resolved.haltedBy) {
       const root = rootOf(resolved, id);
       const chain = root === by ? `"${by}"` : `"${by}", which needs "${root}"`;
-      const reason = pinned[id];
       diagnostics.push(
-        reason === undefined
-          ? new Diagnostic({
-              severity: "warning",
-              pluginId: id,
-              message: `"${id}" is not loaded: it needs ${chain}, and "${root}" is turned off`,
-              suggestion: `Turn "${root}" on to load "${id}"`,
-            })
-          : new Diagnostic({
-              severity: "error",
-              pluginId: root,
-              message: `Turning off "${root}" would stop "${id}", which cannot be turned off: ${reason}`,
-              suggestion: `Turn "${root}" back on`,
-            }),
+        new Diagnostic({
+          severity: "warning",
+          pluginId: id,
+          message: `"${id}" is not loaded: it needs ${chain}, and "${root}" is turned off`,
+          suggestion: `Turn "${root}" on to load "${id}"`,
+        }),
       );
     }
-    for (const [id, reason] of Object.entries(pinned)) {
-      if (composition.plugins[id]?.enabled === false) {
-        diagnostics.push(
-          new Diagnostic({ severity: "error", pluginId: id, message: `"${id}" cannot be turned off: ${reason}`, suggestion: `Remove its "enabled" row` }),
-        );
-      }
+    // The host's policy for a row turning off what cannot be turned off: refuse the config rather than ignore the row.
+    for (const id of resolved.overridden) {
+      const root = resolved.locked.get(id)!;
+      const message = id === root ? `"${id}" cannot be turned off: ${pinned[id]}` : `"${id}" cannot be turned off: "${root}" needs it (${pinned[root]})`;
+      diagnostics.push(new Diagnostic({ severity: "error", pluginId: id, message, suggestion: `Remove its "enabled" row` }));
     }
     const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
     if (errors.length) return yield* new ReloadError({ diagnostics: errors });

@@ -145,8 +145,15 @@ export async function boot(options: BootOptions): Promise<void> {
 
   const planFor = async (next: UiComposition) => {
     const loaded = safe ? { plugins: [], problems: [] } : await fileLoader.load(next.files);
-    const planned = planUi(fixed, loaded.plugins, safe ? {} : next.plugins, new Set([APP_ID]));
-    return { plan: planned, problems: [...loaded.problems, ...planned.unknown.map((id) => `ui row "${id}" names no web app plugin`)] };
+    const planned = planUi(fixed, loaded.plugins, safe ? {} : next.plugins, new Set(Object.keys(PINNED)));
+    return {
+      plan: planned,
+      problems: [
+        ...loaded.problems,
+        ...planned.unknown.map((id) => `ui row "${id}" names no web app plugin`),
+        ...planned.resolved.overridden.map((id) => `ui row turning "${id}" off is ignored: ${PINNED[id] ?? `"${planned.resolved.locked.get(id)}" needs it`}`),
+      ],
+    };
   };
   const source: PluginSource = {
     resolve: (id) => {

@@ -67,7 +67,7 @@ describe("catalog", () => {
 
   test("joins definitions, config rows, and core snapshots, locking what a pinned plugin needs", () => {
     const composition = everyone({ "my-llm": { enabled: false }, bash: { enabled: false } });
-    const resolved = resolveComposition(known, composition);
+    const resolved = resolveComposition(known, composition, ["transport"]);
     const entries = catalog({
       known,
       composition,
@@ -87,6 +87,21 @@ describe("catalog", () => {
     expect(entries.find((entry) => entry.id === "bash")).toMatchObject({ source: "project", shadows: true, scope: "project", requires: ["test/Tools"] });
     expect(entries.find((entry) => entry.id === "agent")).toMatchObject({ version: "1", provides: ["test/Agent"], requires: ["test/Llm", "test/Tools"] });
     expect(entries.find((entry) => entry.id === "transport")?.version).toBeUndefined();
+  });
+
+  test("a pinned plugin keeps on what it needs, whatever the rows say, and reports the rows it overrode", () => {
+    const resolved = resolveComposition(known, everyone({ "my-llm": { enabled: false }, tools: { enabled: false }, transport: { enabled: false } }), [
+      "transport",
+    ]);
+    expect([...resolved.overridden].sort()).toEqual(["tools", "transport"]);
+    expect(resolved.haltedBy.size).toBe(0);
+    expect(Object.entries(resolved.composition.plugins).filter(([, row]) => row.enabled === false)).toEqual([["my-llm", { enabled: false }]]);
+    expect([...resolved.locked]).toEqual([
+      ["transport", "transport"],
+      ["agent", "transport"],
+      ["llm", "transport"],
+      ["tools", "transport"],
+    ]);
   });
 
   test("a plugin left out by a disabled provider is enabled, unloaded, and halted by that provider", () => {
