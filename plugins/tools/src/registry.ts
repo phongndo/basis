@@ -1,7 +1,7 @@
-import { Cause, Effect, ParseResult, Schema } from "effect";
+import { Cause, Effect, ParseResult, Runtime, Schema } from "effect";
 import type { Context } from "effect";
 import { Events, Hooks, PluginContext, Registries, Registry } from "@lemma/core";
-import { ToolError, ToolExecuteHook, ToolExecuted, ToolResult } from "@lemma/contracts";
+import { ToolError, ToolExecuteHook, ToolExecuted, ToolOutput, ToolResult } from "@lemma/contracts";
 import type { Guard, Tool, ToolContext, ToolContribution, ToolInvocation, Tools } from "@lemma/contracts";
 import { capResult } from "./content.ts";
 import { toolParameters } from "./schema.ts";
@@ -41,6 +41,31 @@ export const errorResult = (text: string, details?: unknown): ToolResult =>
   new ToolResult({ content: [{ type: "text", text }], isError: true, ...(details === undefined ? {} : { details }) });
 
 const decodeResult = Schema.decodeUnknownEither(ToolResult);
+
+/** How often a running tool's output is published, at most. */
+const OUTPUT_INTERVAL_MS = 50;
+/** Output kept between publishes; a flood keeps its tail, which is what a live view shows. */
+const OUTPUT_MAX_CHARS = 64 * 1024;
+
+/** Batches `ToolContext.update` chunks into one `publish` per interval; `flush` sends the rest. */
+export const outputBatcher = (publish: (chunk: string) => void, interval = OUTPUT_INTERVAL_MS) => {
+  let pending = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    if (pending === "") return;
+    const chunk = pending;
+    pending = "";
+    publish(chunk);
+  };
+  const update = (chunk: string) => {
+    pending += chunk;
+    if (pending.length > OUTPUT_MAX_CHARS) pending = pending.slice(-OUTPUT_MAX_CHARS);
+    timer ??= setTimeout(flush, interval);
+  };
+  return { update, flush };
+};
 
 /**
  * Runs a tool's `execute`, whichever shape it returns. A promise tool gets a
@@ -174,7 +199,16 @@ export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, n
             const decision = yield* candidate.item.guard(call);
             if (decision._tag === "deny") return errorResult(`Tool call denied: ${decision.reason}`, { deniedBy: candidate.pluginId });
           }
-          return yield* runTool(entry.tool, input, { sessionId: call.sessionId, toolCallId: call.toolCallId, cwd: call.cwd }, signal);
+          const runtime = yield* Effect.runtime<never>();
+          const output = outputBatcher((chunk) =>
+            Runtime.runFork(runtime)(events.publish(ToolOutput, { sessionId: call.sessionId, toolCallId: call.toolCallId, chunk })),
+          );
+          return yield* runTool(
+            entry.tool,
+            input,
+            { sessionId: call.sessionId, toolCallId: call.toolCallId, cwd: call.cwd, update: output.update },
+            signal,
+          ).pipe(Effect.ensuring(Effect.sync(output.flush)));
         });
 
     const execute: Service["execute"] = (invocation, signal) =>

@@ -22,7 +22,7 @@ const category = (line: Line): string => {
   if (line.kind === "conn") return "conn";
   const event = line.event;
   if (event.type === "notice") return `notice-${event.notice.level}`;
-  if (event.type === "delta") return "delta";
+  if (event.type === "delta" || event.type === "tool-output") return "delta";
   if (event.type.startsWith("session")) return "session";
   if (event.type.startsWith("turn")) return "turn";
   if (event.type.startsWith("interaction")) return "interaction";
@@ -51,6 +51,8 @@ const describe = (line: Line): string => {
       return `${event.notice.level}${event.notice.source === undefined ? "" : ` ${event.notice.source}:`} ${event.notice.message}`;
     case "delta":
       return `${event.event.type}${event.event.type === "text-delta" ? ` ${JSON.stringify(event.event.delta)}` : ""} · turn ${event.turnId} step ${event.stepId}`;
+    case "tool-output":
+      return `${JSON.stringify(event.chunk.length > 80 ? `${event.chunk.slice(0, 80)}…` : event.chunk)} · call ${event.toolCallId}`;
     case "session-appended":
       return `#${event.event.seq} ${event.event.data.type} ${event.event.id}`;
     case "session-changed":
@@ -99,7 +101,8 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
   const shown = createMemo(() => {
     const words = query().trim().toLowerCase().split(/\s+/).filter(Boolean);
     return source().filter((line) => {
-      if (!deltas() && line.kind === "event" && line.event.type === "delta") return false;
+      // Streamed output (model deltas, tool output) is hidden until asked for.
+      if (!deltas() && line.kind === "event" && (line.event.type === "delta" || line.event.type === "tool-output")) return false;
       if (words.length === 0) return true;
       const text = `${typeOf(line)} ${sessionOf(line) ?? ""} ${describe(line)}`.toLowerCase();
       return words.every((word) => (word.startsWith("-") && word.length > 1 ? !text.includes(word.slice(1)) : text.includes(word)));

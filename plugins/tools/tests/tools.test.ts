@@ -2,9 +2,10 @@ import { Chunk, Effect, Fiber, Layer, Schema, Scope, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
 import type { Plugin } from "@lemma/core";
-import { ToolExecuted, ToolExecuteHook, ToolInvocation, ToolResult, Tools } from "@lemma/contracts";
+import { ToolExecuted, ToolExecuteHook, ToolInvocation, ToolOutput, ToolResult, Tools } from "@lemma/contracts";
 import type { Guard, Tool } from "@lemma/contracts";
 import tools, { toolParameters } from "../src/index.ts";
+import { outputBatcher } from "../src/registry.ts";
 
 const ok = (text: string) => new ToolResult({ content: [{ type: "text", text }] });
 const textOf = (result: ToolResult) => result.content.map((part) => (part.type === "text" ? part.text : "<image>")).join("");
@@ -298,5 +299,43 @@ describe("execute", () => {
         }),
       ),
     );
+  });
+
+  it("publishes a running tool's output as ToolOutput, batched, before its result", async () => {
+    const chatty: Tool<unknown> = {
+      name: "chatty",
+      description: "",
+      input: Schema.Unknown,
+      execute: async (_input, { update }) => {
+        update?.("one\n");
+        update?.("two\n");
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        update?.("three\n");
+        return ok("done");
+      },
+    };
+    await run(
+      [contributor("p", [chatty])],
+      Effect.gen(function* () {
+        const events = yield* Events;
+        const outputs = yield* Effect.fork(Stream.runCollect(Stream.take(events.stream(ToolOutput), 2)));
+        yield* Effect.yieldNow();
+        expect(textOf(yield* call("chatty", {}))).toBe("done");
+        const chunks = Chunk.toArray(yield* Fiber.join(outputs));
+        expect(chunks.map((payload) => payload.chunk)).toEqual(["one\ntwo\n", "three\n"]);
+        expect(chunks[0]).toMatchObject({ sessionId: "s", toolCallId: "c1" });
+      }),
+    );
+  });
+
+  it("keeps the tail of output that floods between publishes", () => {
+    const published: string[] = [];
+    const batcher = outputBatcher((chunk) => published.push(chunk), 1_000);
+    batcher.update("a".repeat(70_000));
+    batcher.update("end");
+    batcher.flush();
+    expect(published).toHaveLength(1);
+    expect(published[0]!.length).toBe(64 * 1024);
+    expect(published[0]!.endsWith("end")).toBe(true);
   });
 });

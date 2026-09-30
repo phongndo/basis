@@ -17,6 +17,11 @@ export interface ToolContext {
   readonly cwd: string;
   /** Aborted when the turn is cancelled. Promise-based tools must honor it; Effect tools are interrupted. */
   readonly signal: AbortSignal;
+  /**
+   * Reports output as it is produced (a command's stdout), for UIs to show
+   * while the tool runs. Chunks append; the model reads only the result.
+   */
+  readonly update?: (chunk: string) => void;
 }
 
 export class ToolError extends Data.TaggedError("ToolError")<{
@@ -67,6 +72,13 @@ export const ToolExecuted = Event.make<{
   readonly result: ToolResult;
   readonly durationMs: number;
 }>("lemma/tool.executed");
+
+/** Live output of a running tool (see `ToolContext.update`), batched; the durable record is its result. Losable. */
+export const ToolOutput = Event.make<{
+  readonly sessionId: string;
+  readonly toolCallId: string;
+  readonly chunk: string;
+}>("lemma/tool.output");
 
 /** A registered tool's model-facing spec and the plugin that registered it. */
 export interface ToolContribution {

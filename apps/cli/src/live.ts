@@ -214,7 +214,15 @@ export const runCommand =
             midLine = !event.event.delta.endsWith("\n");
           } else if (event.type === "delta" && event.event.type === "toolcall-end")
             line(`→ ${event.event.toolCall.name} ${JSON.stringify(event.event.toolCall.arguments)}`);
-          else if (event.type === "delta" && event.event.type === "error") line(`✕ ${event.event.message.errorMessage ?? event.event.message.stopReason}`);
+          else if (event.type === "tool-output") {
+            // Indented under its `→` line, as it arrives; partial lines continue where they stopped.
+            let text = "";
+            for (const piece of event.chunk.split(/(?<=\n)/)) {
+              text += `${midLine ? "" : "  "}${piece}`;
+              midLine = !piece.endsWith("\n");
+            }
+            io.write?.(text);
+          } else if (event.type === "delta" && event.event.type === "error") line(`✕ ${event.event.message.errorMessage ?? event.event.message.stopReason}`);
           else if (event.type === "session-appended" && event.event.data.type === "message" && event.event.data.message.role === "toolResult") {
             const message = event.event.data.message;
             const timing = event.event.data.timing;
@@ -271,6 +279,8 @@ const eventLine = (event: HostEvent): string => {
       return noticeLine(event);
     case "delta":
       return `${event.sessionId} delta ${event.event.type}${event.event.type === "text-delta" ? ` ${JSON.stringify(event.event.delta)}` : ""}`;
+    case "tool-output":
+      return `${event.sessionId} tool output ${event.toolCallId} ${JSON.stringify(event.chunk)}`;
     case "session-appended":
       return `${event.sessionId} appended #${event.event.seq} ${event.event.data.type}`;
     case "session-changed":

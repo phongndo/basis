@@ -107,7 +107,7 @@ export const bashTool: Tool<BashInput> = {
   name: "bash",
   description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
   input: BashInput,
-  execute: async ({ command, timeout }, { cwd, signal }) => {
+  execute: async ({ command, timeout }, { cwd, signal, update }) => {
     if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) throw new Error("Invalid timeout: must be a finite number of seconds");
     if (timeout !== undefined && timeout * 1000 > MAX_TIMEOUT_MS) throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_MS / 1000} seconds`);
     if (signal.aborted) throw new Error("Command aborted");
@@ -121,7 +121,12 @@ export const bashTool: Tool<BashInput> = {
 
     const output = new OutputAccumulator("lemma-bash");
     const child = spawn("bash", ["-c", command], { cwd, detached: true, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-    const onData = (data: Buffer) => output.append(data);
+    // Streaming decode: a character split across chunks is held until its last byte arrives.
+    const live = new TextDecoder();
+    const onData = (data: Buffer) => {
+      output.append(data);
+      update?.(live.decode(data, { stream: true }));
+    };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
     let timedOut = false;

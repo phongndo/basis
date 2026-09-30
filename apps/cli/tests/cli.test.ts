@@ -183,6 +183,8 @@ describe("against a running host", () => {
     const lines = followed.out.split("\n").map((line) => JSON.parse(line));
     expect(lines.some((event) => event.type === "turn-started")).toBe(true);
     expect(lines.some((event) => event.type === "delta" && event.event.type === "toolcall-end")).toBe(true);
+    // The command's output also streams live (order across event kinds is not guaranteed, so only its arrival is checked).
+    expect(lines.some((event) => event.type === "tool-output" && event.chunk.includes("hello from lemma"))).toBe(true);
     expect(lines.at(-1)).toMatchObject({ type: "result", session, reason: "done", steps: 2, toolCalls: 1 });
 
     const tools = JSON.parse((await invoke(["inspect", session, "--filter", "kind:tool", "--json"], home)).out);

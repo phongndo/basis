@@ -1,6 +1,17 @@
 import { Deferred, Effect, Queue, Stream } from "effect";
 import type { Context } from "effect";
-import { AssistantDelta, CommandsChanged, Notice, PluginsChanged, SessionAppended, SessionChanged, TurnEnded, TurnStarted, UiChanged } from "@lemma/contracts";
+import {
+  AssistantDelta,
+  CommandsChanged,
+  Notice,
+  PluginsChanged,
+  SessionAppended,
+  SessionChanged,
+  ToolOutput,
+  TurnEnded,
+  TurnStarted,
+  UiChanged,
+} from "@lemma/contracts";
 import type { HostEvent, InteractionRequest } from "@lemma/contracts";
 import type { CoreClosed, Event, EventError, PluginContext } from "@lemma/core";
 import { toPluginStatus } from "./errors.ts";
@@ -42,6 +53,7 @@ export const makeHub = (owner: Context.Tag.Service<PluginContext>, open: () => I
       owner.observe(event, (payload) => feed(convert(payload)), { buffer, overflow: "dropOldest" });
 
     yield* forward(AssistantDelta, (e) => ({ type: "delta", sessionId: e.sessionId, turnId: e.turnId, stepId: e.stepId, event: e.event }), SUBSCRIBER_BUFFER);
+    yield* forward(ToolOutput, (e) => ({ type: "tool-output", sessionId: e.sessionId, toolCallId: e.toolCallId, chunk: e.chunk }), SUBSCRIBER_BUFFER);
     yield* forward(TurnStarted, (e) => ({ type: "turn-started", sessionId: e.sessionId, turnId: e.turnId }));
     yield* forward(TurnEnded, (e) => ({ type: "turn-ended", sessionId: e.sessionId, turnId: e.turnId, usage: e.usage, reason: e.reason }));
     yield* forward(SessionAppended, (e) => ({ type: "session-appended", sessionId: e.sessionId, event: e.event }), SUBSCRIBER_BUFFER);

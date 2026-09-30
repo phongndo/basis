@@ -61,6 +61,7 @@ export const HostEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literal("session-appended"), sessionId: Schema.String, event: SessionEvent }),
   Schema.Struct({ type: Schema.Literal("session-changed"), info: SessionInfo }),
   Schema.Struct({ type: Schema.Literal("delta"), sessionId: Schema.String, turnId: Schema.String, stepId: Schema.String, event: StreamEvent }),
+  Schema.Struct({ type: Schema.Literal("tool-output"), sessionId: Schema.String, toolCallId: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn-started"), sessionId: Schema.String, turnId: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("turn-ended"),

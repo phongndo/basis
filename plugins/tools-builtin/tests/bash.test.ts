@@ -23,6 +23,17 @@ const alive = (pid: number) => {
 };
 
 describe("bash", () => {
+  it("reports output as it arrives, whole characters only", async () => {
+    const chunks: string[] = [];
+    // A multi-byte character written in two halves, a pause, then more.
+    const command = "printf 'caf\\303'; sleep 0.2; printf '\\251\\n'; sleep 0.2; echo later";
+    const result = await call(bashTool, { command }, { ...context(dir), update: (chunk) => chunks.push(chunk) });
+    expect(textOf(result)).toBe("café\nlater\n");
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe("café\nlater\n");
+    expect(chunks.every((chunk) => !chunk.includes("\uFFFD"))).toBe(true);
+  });
+
   it("runs in cwd and combines stdout and stderr", async () => {
     const result = await call(bashTool, { command: "pwd; echo out; echo err >&2" }, context(dir));
     expect(result.isError).toBeUndefined();
