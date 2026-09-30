@@ -99,8 +99,8 @@ const capability = (key: string) => key.slice(key.lastIndexOf("/") + 1);
 
 /**
  * One plugin as the web app's inspector shows it: its state and why, what it
- * provides and requires and who is on the other end, the hooks it intercepts
- * and events it observes, and its recent faults.
+ * provides and requires and who is on the other end, the hooks it intercepts,
+ * the events it observes, what it contributes, and its recent faults.
  */
 export const formatPlugin = (plugins: readonly PluginStatus[], plugin: PluginStatus): string => {
   const users = (key: string) => plugins.filter((other) => other.requires.includes(key)).map((other) => other.id);
@@ -127,6 +127,12 @@ export const formatPlugin = (plugins: readonly PluginStatus[], plugin: PluginSta
       : ["  none"]),
     "Observes",
     ...(plugin.observes?.length ? plugin.observes.map((event) => `  ${event}`) : ["  none"]),
+    "Contributes",
+    ...(plugin.contributes?.length
+      ? plugin.contributes.map(
+          (registry) => `  ${registry.name}  ${registry.keys?.join(", ") ?? (registry.items === 1 ? "1 item" : `${registry.items} items`)}`,
+        )
+      : ["  nothing"]),
     "Faults",
     ...(plugin.faults?.length
       ? plugin.faults.map(

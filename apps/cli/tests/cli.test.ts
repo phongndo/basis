@@ -288,6 +288,8 @@ describe("against a running host", () => {
     expect(shown.code).toBe(ExitCode.ok);
     expect(shown.out).toContain("Agent  used by transport");
     expect(shown.out).toContain("Llm  from llm");
+    // What a plugin adds to other plugins' registries: bash its tool.
+    expect((await invoke(["plugins", "show", "bash"], home)).out).toContain("Contributes\n  lemma/tools  bash");
     const transport = JSON.parse((await invoke(["plugins", "show", "transport", "--json"], home)).out);
     expect(transport.observes).toEqual(expect.arrayContaining(["lemma/session.appended", "lemma/notice"]));
     expect(transport.hooks).toEqual(expect.arrayContaining([expect.objectContaining({ name: "lemma/interaction.request" })]));
