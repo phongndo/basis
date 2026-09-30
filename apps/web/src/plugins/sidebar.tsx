@@ -10,6 +10,7 @@ import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, PenSquareIcon, PlusIcon, Popover, SearchIcon, SidebarRow, XIcon } from "../ui/parts.tsx";
+import styles from "./sidebar.css?inline";
 
 interface Deps {
   readonly client: ClientService;
@@ -196,6 +197,7 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
 /** Sessions by project, with search, a project filter, and new-chat buttons. Its foot is a slot (settings, connection). */
 export default defineUiPlugin({
   id: "sidebar",
+  styles,
   requires: { client: Client, sessions: Sessions, slots: Slots },
   setup: (use, plugin) => {
     // Relative times refresh once a minute.

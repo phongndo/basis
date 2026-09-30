@@ -20,6 +20,7 @@ import type { ClientService, ComposerActionProps, ModelsService, NotifyService, 
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { ChatIcon, ImageIcon, SendIcon, StopIcon, XIcon } from "../ui/parts.tsx";
+import styles from "./composer.css?inline";
 
 /** The formats every provider accepts; others (SVG, HEIC, TIFF…) would fail every later request in the session. */
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -289,6 +290,7 @@ function AttachImages(props: ComposerActionProps) {
 
 export default defineUiPlugin({
   id: "composer",
+  styles,
   requires: { client: Client, sessions: Sessions, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (use, plugin) => {
     const [focus, setFocus] = createSignal<() => void>();

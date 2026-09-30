@@ -33,6 +33,7 @@ import type { InteractionsService, ModelsService, ProviderRowProps } from "../ui
 import { defineUiPlugin } from "../ui/define.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
 import { CheckIcon, ExternalIcon, FilterIcon, KeyIcon, PlusIcon, Popover, ProviderLogo, ProviderRowView, SearchIcon, Spinner } from "../ui/parts.tsx";
+import styles from "./providers.css?inline";
 
 const SECTION = "providers";
 const GROUPS = ["Results", "Connected", "Popular", "All providers"];
@@ -486,6 +487,7 @@ export const ProvidersConfig = Schema.Struct({
 
 export default defineUiPlugin({
   id: "providers",
+  styles,
   config: ProvidersConfig,
   requires: {
     models: Models,

@@ -1,0 +1,10 @@
+.project-row > .icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.project-row .setting-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

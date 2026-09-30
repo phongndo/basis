@@ -1,0 +1,196 @@
+.log-view {
+  /* Type colours: the kind of thing each line is about. */
+  --log-session: #4b8fe8;
+  --log-turn: var(--ok);
+  --log-interaction: var(--warn);
+  --log-host: #9b7be8;
+  --log-conn: #1fa9bf;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.log-bar,
+.log-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-stream {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.log-meta {
+  color: var(--text-3);
+}
+
+.log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.log-dot-connected {
+  background: var(--ok);
+}
+
+.log-dot-closed {
+  background: var(--err);
+}
+
+.log-prompt {
+  color: var(--text-3);
+}
+
+.log-filter {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+.log-toggle {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--text-3);
+  font: inherit;
+}
+
+.log-toggle:hover,
+.log-toggle.on {
+  color: var(--text);
+}
+
+.log-toggle.on {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.log-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 92px 58px 150px 110px 48px minmax(0, 1fr);
+  gap: 12px;
+  padding: 1px 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.log-line:not(.log-head):hover {
+  background: var(--bg-hover);
+}
+
+.log-line.open {
+  background: var(--bg-active);
+}
+
+.log-line > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+
+.log-time,
+.log-gap,
+.log-size,
+.log-session {
+  color: var(--text-3);
+}
+
+.log-gap,
+.log-size {
+  text-align: right;
+}
+
+.log-message {
+  color: var(--text-2);
+}
+
+.log-line.is-session .log-type {
+  color: var(--log-session);
+}
+
+.log-line.is-turn .log-type {
+  color: var(--log-turn);
+}
+
+.log-line.is-interaction .log-type {
+  color: var(--log-interaction);
+}
+
+.log-line.is-host .log-type {
+  color: var(--log-host);
+}
+
+.log-line.is-conn .log-type,
+.log-line.is-conn .log-message {
+  color: var(--log-conn);
+}
+
+.log-line.is-delta {
+  opacity: 0.6;
+}
+
+.log-line.is-notice-warning .log-type,
+.log-line.is-notice-warning .log-message {
+  color: var(--warn);
+}
+
+.log-line.is-notice-error .log-type,
+.log-line.is-notice-error .log-message {
+  color: var(--err);
+}
+
+.log-json {
+  margin: 0;
+  padding: 6px 12px 8px 174px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font: inherit;
+  white-space: pre;
+}
+
+.log-empty {
+  padding: 8px 12px;
+  color: var(--text-3);
+}
+
+.log-follow {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  border: 0;
+  background: var(--bg-active);
+  color: var(--text);
+  font: inherit;
+  padding: 3px 8px;
+  border-radius: 4px;
+}

@@ -5,6 +5,7 @@ import { Client, ComposerNotices, SidebarFooter, Slots } from "../ui/contracts.t
 import { defineUiPlugin } from "../ui/define.ts";
 import { AlertIcon, CheckIcon, CopyIcon } from "../ui/parts.tsx";
 import { copyText } from "../lib/clipboard.ts";
+import styles from "./connection.css?inline";
 
 function ConnectionBadge(props: { status: ConnectionStatus; now: Accessor<number> }) {
   const now = props.now;
@@ -70,6 +71,7 @@ function ConnectionNotice(props: { status: Accessor<ConnectionStatus>; now: Acce
 /** How the connection to the host is doing: a badge in the sidebar, a notice above the composer while it is down. */
 export default defineUiPlugin({
   id: "connection",
+  styles,
   requires: { client: Client, slots: Slots },
   setup: ({ client, slots }, plugin) => {
     const [now, setNow] = createSignal(Date.now());

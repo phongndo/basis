@@ -18,9 +18,10 @@ renders whatever fills the `root` slot:
 
 1. The bundled plugins, listed in [`plugins/index.ts`](src/plugins/index.ts).
 2. UI files in `~/.lemma/ui/` and, for a trusted project, `<project>/.lemma/ui/`:
-   `.js`/`.mjs` files load as plugins, `.css` files apply after the app's
+   `.js`/`.mjs` files load as plugins, `.css` files apply over the app's
    styles (every color, radius, width, and stacking level is a `--` token in
-   [`styles.css`](src/styles.css)).
+   [`styles.css`](src/styles.css), and the app's own styles sit in cascade
+   layers a file's rules always win over).
 3. The `"ui"` rows of `config.jsonc`, which work like `"plugins"` rows do for
    the host: `{ "ui": { "composer": { "enabled": false }, "chat": { "config": { "expandTools": true } } } }`.
 
@@ -95,7 +96,8 @@ export default ({ defineUiPlugin, contracts: { Slots, ChatThinkingPart }, html }
 ```
 
 [`defineUiPlugin`](src/ui/define.ts) writes one in plain TypeScript. `setup`
-runs in its own Solid root; release what it adds with `plugin.onCleanup`. A
+runs in its own Solid root; release what it adds with `plugin.onCleanup`. Its
+`styles` (a stylesheet as a string) apply while it runs and leave with it. A
 plugin can declare its own slots and parts for others (`defineSlot`,
 `definePart`); a name is one slot across the page, so files that use the same
 name share it.

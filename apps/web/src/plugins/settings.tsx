@@ -8,6 +8,7 @@ import type { SettingsEntry, SettingsSection } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem, SlotsService } from "../ui/slots.ts";
 import { ArrowLeftIcon, GearIcon, SearchIcon, SlidersIcon, XIcon } from "../ui/parts.tsx";
+import styles from "./settings.css?inline";
 
 type Section = SlotItem<SettingsSection>;
 
@@ -211,6 +212,7 @@ function Groups(props: { groups: readonly EntryGroup<SettingsEntry>[] }) {
  */
 export default defineUiPlugin({
   id: "settings",
+  styles,
   requires: { slots: Slots, sessions: Sessions },
   provides: { settings: Settings },
   setup: ({ slots, sessions }, plugin) => {

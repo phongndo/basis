@@ -1,0 +1,151 @@
+.sidebar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sunk);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-head {
+  padding: 10px 8px 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.sidebar-actions .icon-button.active {
+  color: var(--text);
+}
+
+.session-groups {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px 12px;
+}
+
+.sidebar-empty {
+  color: var(--text-3);
+  font-size: 12.5px;
+  padding: 8px 10px;
+}
+
+.session-group + .session-group {
+  margin-top: 10px;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.group-name {
+  color: var(--text-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.group-parent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.group-new {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+}
+
+.group-head:hover .group-new,
+.group-new:focus-visible,
+.group-new.active {
+  opacity: 1;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.session-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+}
+
+.session-row:hover {
+  background: var(--bg-hover);
+}
+
+.session-row.active {
+  background: var(--bg-active);
+}
+
+.session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-title.untitled {
+  color: var(--text-2);
+}
+
+.session-time {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.session-rename {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--bg-raised);
+  outline: none;
+  font-size: 13px;
+}
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px 8px 8px;
+  border-top: 1px solid var(--border);
+}

@@ -22,6 +22,7 @@ import type {
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { ChatIcon, CheckIcon, ChevronIcon, CommandIcon, FolderIcon, GitBranchIcon, KeyIcon, PuzzleIcon, RefreshIcon, Spinner } from "../ui/parts.tsx";
+import styles from "./palette.css?inline";
 
 const DIALOG = "palette";
 
@@ -484,6 +485,7 @@ function Palette(props: { deps: Deps }) {
 /** Search and run everything: plugins' actions, the host's commands, sessions, projects. */
 export default defineUiPlugin({
   id: "palette",
+  styles,
   requires: {
     client: Client,
     sessions: Sessions,

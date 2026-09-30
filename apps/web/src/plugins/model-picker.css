@@ -1,0 +1,277 @@
+.control-separator {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border-strong);
+  flex: none;
+}
+
+.select-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  flex: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 260px;
+  cursor: pointer;
+}
+
+.select-chip:hover,
+.select-chip:focus-within,
+.select-chip[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.select-chip:active {
+  transform: scale(0.97);
+}
+
+.select-chip .icon {
+  color: var(--text-3);
+}
+
+.select-chip > .icon:last-child {
+  width: 13px;
+  height: 13px;
+}
+
+.picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.model-menu {
+  width: 580px;
+  max-width: calc(100vw - 16px);
+  height: 460px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.model-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+}
+
+.model-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.model-search input::placeholder {
+  color: var(--text-3);
+}
+
+.model-search:focus-within {
+  color: var(--text-2);
+}
+
+.model-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 52px 1fr;
+}
+
+/* Providers by logo, named in tooltips, so the models get the width. */
+.model-rail {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+  padding: 0;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.rail-item:hover {
+  color: var(--text-2);
+  background: var(--bg-hover);
+}
+
+.rail-item.active {
+  color: var(--text);
+  background: var(--bg-active);
+}
+
+.rail-item .icon {
+  width: 15px;
+  height: 15px;
+  color: #e8b04b;
+}
+
+.rail-item .provider-mark,
+.rail-item .provider-logo,
+.rail-item .provider-logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+.rail-all {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.rail-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+  flex: none;
+}
+
+.model-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-row.menu-item {
+  min-height: 50px;
+  padding: 6px 8px 6px 12px;
+  gap: 10px;
+  white-space: normal;
+}
+
+.model-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.model-meta > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-meta .dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.meta-icon {
+  display: inline-grid;
+  place-items: center;
+}
+
+.meta-icon .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.model-row[aria-selected="true"] {
+  background: var(--bg-active);
+}
+
+.model-row[aria-selected="true"][data-active="true"] {
+  background: var(--bg-active);
+}
+
+.model-current {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.model-current .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.model-star {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.model-star:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.model-row[data-active="true"] .model-star,
+.model-star.on {
+  opacity: 1;
+}
+
+.model-star.on {
+  color: #e8b04b;
+}
+
+.model-star .icon {
+  width: 14px;
+  height: 14px;
+}

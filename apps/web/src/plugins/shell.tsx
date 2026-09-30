@@ -4,6 +4,7 @@ import { load, save } from "../lib/storage.ts";
 import { Actions, Layers, Layout, MainRegion, Root, SidebarRegion, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { SidebarIcon } from "../ui/parts.tsx";
+import styles from "./shell.css?inline";
 
 const WIDTH_KEY = "lemma.sidebar.width";
 const COLLAPSED_KEY = "lemma.sidebar.collapsed";
@@ -24,6 +25,7 @@ const clampWidth = (width: number) => Math.round(Math.max(MIN_WIDTH, Math.min(wi
  */
 export default defineUiPlugin({
   id: "shell",
+  styles,
   requires: { slots: Slots },
   provides: { layout: Layout },
   setup: ({ slots }, plugin) => {

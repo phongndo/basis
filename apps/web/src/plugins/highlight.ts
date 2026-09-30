@@ -1,5 +1,6 @@
 import { CodeBlocks, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import styles from "./highlight.css?inline";
 
 type Highlighter = typeof import("../lib/highlight.ts");
 
@@ -10,6 +11,7 @@ type Highlighter = typeof import("../lib/highlight.ts");
  */
 export default defineUiPlugin({
   id: "highlight",
+  styles,
   requires: { slots: Slots },
   setup: ({ slots }, plugin) => {
     let loaded: Highlighter | undefined;

@@ -1,0 +1,218 @@
+.with-badge {
+  position: relative;
+}
+
+.count-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--err);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+}
+
+.settings {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-screen);
+  display: flex;
+  background: var(--bg);
+  animation: fade 0.1s ease-out;
+}
+
+.settings-nav {
+  width: 240px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px 8px;
+  background: var(--bg-sunk);
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav .sidebar-search {
+  flex: none;
+  margin-bottom: 6px;
+}
+
+.search-key {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.settings-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.settings-nav-item.active {
+  background: var(--bg-active);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-nav-item.dim {
+  opacity: 0.45;
+}
+
+.settings-nav-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-nav-count {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-nav-count.err {
+  color: var(--err);
+}
+
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px 0 24px;
+  background: var(--bg);
+  font-size: 13.5px;
+}
+
+.settings-crumb-sep {
+  color: var(--text-3);
+}
+
+.settings-content {
+  flex: none;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* A section with its own body (the plugins inspector) takes the whole remaining screen and scrolls inside it. */
+.settings-content.wide {
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 1280px;
+  padding-bottom: 0;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+/* Rows sit on the page, divided by hairlines; no boxes around them. */
+.settings-rows > * + * {
+  border-top: 1px solid var(--border);
+}
+
+.settings-rows .plugin {
+  padding: 10px 0;
+  border-bottom: 0;
+}
+
+.settings-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-result-title {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-result-title:hover {
+  background: var(--bg-hover);
+}
+
+@media (max-width: 820px) {
+  .settings {
+    flex-direction: column;
+  }
+  .settings-nav {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-nav-items {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .settings-nav-items .settings-nav-item {
+    flex: none;
+  }
+  .settings-nav > .spacer,
+  .settings-nav > .settings-nav-item {
+    display: none;
+  }
+  .settings-content {
+    padding: 12px 14px 48px;
+  }
+}

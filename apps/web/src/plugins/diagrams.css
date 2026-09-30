@@ -1,0 +1,10 @@
+.diagram-dialog .dialog-body {
+  overflow: auto;
+}
+
+.diagram-full {
+  max-width: none;
+  height: auto;
+  margin: auto;
+  cursor: zoom-in;
+}

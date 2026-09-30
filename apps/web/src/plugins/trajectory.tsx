@@ -25,6 +25,7 @@ import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { CopyIcon, Markdown, TrajectoryIcon, XIcon } from "../ui/parts.tsx";
 import { copyText } from "../lib/clipboard.ts";
+import styles from "./trajectory.css?inline";
 
 /**
  * The Trajectory view, modeled on Chrome DevTools' Network panel and on
@@ -1494,6 +1495,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 /** The session as the requests and tool runs behind it, like DevTools' Network panel. */
 export default defineUiPlugin({
   id: "trajectory",
+  styles,
   requires: { sessions: Sessions, notify: Notify, slots: Slots },
   setup: ({ sessions, notify, slots }, plugin) => {
     plugin.onCleanup(

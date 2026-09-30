@@ -55,6 +55,7 @@ import {
   XIcon,
 } from "../ui/parts.tsx";
 import { copyText } from "../lib/clipboard.ts";
+import styles from "./chat.css?inline";
 
 export const ChatConfig = Schema.Struct({
   expandTools: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
@@ -890,6 +891,7 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
  */
 export default defineUiPlugin({
   id: "chat",
+  styles,
   config: ChatConfig,
   requires: { client: Client, sessions: Sessions, slots: Slots },
   setup: ({ client, sessions, slots }, plugin) => {

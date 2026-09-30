@@ -4,6 +4,7 @@ import { ActionIds, Actions, Client, Sessions, Settings, SettingsGroups, Setting
 import type { ClientService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { FolderIcon, FolderPlusIcon, XIcon } from "../ui/parts.tsx";
+import styles from "./projects-page.css?inline";
 
 const SECTION = "projects";
 
@@ -42,6 +43,7 @@ function ProjectRow(props: { client: ClientService; sessions: SessionsService; w
 /** The projects chats can start in, as a settings section. */
 export default defineUiPlugin({
   id: "projects-page",
+  styles,
   requires: { client: Client, sessions: Sessions, workspace: Workspace, settings: Settings, slots: Slots },
   setup: ({ client, sessions, workspace, settings, slots }, plugin) => {
     plugin.onCleanup(

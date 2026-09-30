@@ -6,6 +6,7 @@ import { ActionIds, Actions, Client, Dialogs, Layers, Notify, Slots, Workspace }
 import type { ClientService, DialogsService, NotifyService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "../ui/parts.tsx";
+import styles from "./add-project.css?inline";
 
 const DIALOG = "add-project";
 
@@ -358,6 +359,7 @@ function AddProjectDialog(props: { deps: Deps }) {
 /** Pick a folder on the host to start chats in. */
 export default defineUiPlugin({
   id: "add-project",
+  styles,
   requires: { client: Client, workspace: Workspace, notify: Notify, dialogs: Dialogs, slots: Slots },
   setup: (deps, plugin) => {
     const { dialogs, slots } = deps;

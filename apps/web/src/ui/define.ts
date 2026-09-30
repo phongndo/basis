@@ -23,6 +23,12 @@ export interface UiPluginDefinition<Requires extends Capabilities, Provides exte
   readonly id: string;
   readonly version?: string;
   readonly config?: Schema.Schema<Config, any, never>;
+  /**
+   * Its stylesheet: applied while it runs (in the `plugins` cascade layer,
+   * above the foundation and under stylesheets from `~/.lemma/ui`) and removed
+   * when it stops, so a replacement never inherits it.
+   */
+  readonly styles?: string;
   readonly requires?: Requires;
   readonly provides?: Provides;
   /**
@@ -66,6 +72,19 @@ export function defineUiPlugin<const Requires extends Capabilities = {}, const P
             }
           }
         };
+        if (definition.styles !== undefined) {
+          const styles = definition.styles;
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const element = document.createElement("style");
+              element.dataset.plugin = definition.id;
+              element.textContent = `@layer plugins {\n${styles}\n}`;
+              document.head.append(element);
+              return element;
+            }),
+            (element) => Effect.sync(() => element.remove()),
+          );
+        }
         const services = yield* Effect.acquireRelease(
           Effect.sync(() => {
             try {

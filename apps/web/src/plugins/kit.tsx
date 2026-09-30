@@ -21,6 +21,7 @@ import {
 import { defineUiPlugin } from "../ui/define.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
 import type { Part } from "../ui/slots.ts";
+import styles from "./kit.css?inline";
 
 /**
  * The shared parts every view draws with: markdown, dialogs, menus, toggles,
@@ -31,6 +32,7 @@ import type { Part } from "../ui/slots.ts";
  */
 export default defineUiPlugin({
   id: "kit",
+  styles,
   requires: { slots: Slots },
   setup: ({ slots }, plugin) => {
     const add = <P extends Record<string, any>>(part: Part<P>, component: (props: P) => any) =>

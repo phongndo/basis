@@ -1,0 +1,8 @@
+/* Highlighted code carries both themes' colors; the page's theme picks one. */
+.shiki span {
+  color: var(--shiki-light);
+}
+
+:root[data-theme="dark"] .shiki span {
+  color: var(--shiki-dark);
+}

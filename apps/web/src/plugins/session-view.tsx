@@ -9,6 +9,7 @@ import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem } from "../ui/slots.ts";
 import { CopyIcon, PenSquareIcon, SidebarIcon, Spinner, StopIcon } from "../ui/parts.tsx";
 import { copyText } from "../lib/clipboard.ts";
+import styles from "./session-view.css?inline";
 
 /**
  * The main area for one session: a header, the chosen view (chat,
@@ -18,6 +19,7 @@ import { copyText } from "../lib/clipboard.ts";
  */
 export default defineUiPlugin({
   id: "session-view",
+  styles,
   requires: { client: Client, sessions: Sessions, slots: Slots, layout: Layout, notify: Notify },
   setup: ({ client, sessions, slots, layout, notify }, plugin) => {
     const [chosen, setChosen] = createSignal<string>();

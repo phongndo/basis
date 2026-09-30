@@ -4,6 +4,7 @@ import { defineUiPlugin } from "../ui/define.ts";
 import { Dialog } from "../ui/parts.tsx";
 import { currentTheme, onThemeChange } from "../lib/paint.ts";
 import { viewerScale } from "../model/viewer.ts";
+import styles from "./diagrams.css?inline";
 
 const dark = () => currentTheme() === "dark";
 
@@ -51,6 +52,7 @@ function Viewer(props: { viewing: Viewing; onClose: () => void }) {
  */
 export default defineUiPlugin({
   id: "diagrams",
+  styles,
   requires: { slots: Slots },
   setup: ({ slots }, plugin) => {
     /** Each diagram's source, to draw it again in another theme. */

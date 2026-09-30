@@ -2,6 +2,7 @@ import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Layers, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import styles from "./tooltips.css?inline";
 
 const DELAY = 450;
 /** Moving between controls within this window shows the next tooltip at once. */
@@ -105,6 +106,7 @@ function TooltipLayer() {
 /** Shows `data-tip` attributes as tooltips, for every plugin's controls. */
 export default defineUiPlugin({
   id: "tooltips",
+  styles,
   requires: { slots: Slots },
   setup: ({ slots }, plugin) => {
     plugin.onCleanup(slots.add(Layers, { id: "tooltips", order: 200, component: TooltipLayer }));

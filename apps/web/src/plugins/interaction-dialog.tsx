@@ -4,6 +4,7 @@ import { Interactions, Layers, Slots } from "../ui/contracts.ts";
 import type { InteractionsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { Dialog } from "../ui/parts.tsx";
+import styles from "./interaction-dialog.css?inline";
 
 type Of<T extends InteractionRequest["type"]> = Extract<InteractionRequest, { type: T }>;
 
@@ -120,6 +121,7 @@ function InteractionModal(props: { interactions: InteractionsService }) {
 /** The host's questions as a dialog: an API key to enter, a change to confirm, an option to pick. */
 export default defineUiPlugin({
   id: "interaction-dialog",
+  styles,
   requires: { interactions: Interactions, slots: Slots },
   setup: ({ interactions, slots }, plugin) => {
     plugin.onCleanup(slots.add(Layers, { id: "interaction", order: 50, component: () => <InteractionModal interactions={interactions} /> }));

@@ -35,6 +35,7 @@ import type { ClientService, PluginTab, PluginsService, SessionsService, UiPlugi
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchIcon, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
+import styles from "./plugins-page.css?inline";
 
 const SECTION = "plugins";
 const KIND_LABEL: Readonly<Record<PluginKind, string>> = { host: "host", web: "web app" };
@@ -679,6 +680,7 @@ function PluginsInspector(props: { inspector: Inspector; filter: () => string; s
 /** The Plugins section: the inspector over the host's plugins and this web app's. */
 export default defineUiPlugin({
   id: "plugins-page",
+  styles,
   requires: { client: Client, sessions: Sessions, notify: Notify, settings: Settings, slots: Slots, host: HostPlugins, ui: UiPlugins },
   setup: ({ client, sessions, notify, settings, slots, host, ui }, plugin) => {
     // Survive the list refreshing and the section closing, like the trajectory's selection.

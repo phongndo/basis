@@ -4,6 +4,7 @@ import type { Toast } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { AlertIcon, CheckIcon, CopyIcon, ExternalIcon, XIcon } from "../ui/parts.tsx";
 import { copyText } from "../lib/clipboard.ts";
+import styles from "./toasts.css?inline";
 
 function CodeBox(props: { code: string }) {
   const [copied, setCopied] = createSignal(false);
@@ -74,6 +75,7 @@ function ToastView(props: { toast: Toast; onDismiss: () => void }) {
 /** Draws the `Notify` model's messages in a corner of the page; turning it off leaves the messages undrawn, not lost. */
 export default defineUiPlugin({
   id: "toasts",
+  styles,
   requires: { notify: Notify, slots: Slots },
   setup: ({ notify, slots }, plugin) => {
     plugin.onCleanup(

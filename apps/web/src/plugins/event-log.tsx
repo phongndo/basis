@@ -7,6 +7,7 @@ import { ActionIds, Actions, Client, Dialogs, Layers, Slots } from "../ui/contra
 import type { ClientService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { LogIcon, XIcon } from "../ui/parts.tsx";
+import styles from "./event-log.css?inline";
 
 const DIALOG = "events";
 /** Lines kept, newest last; older ones drop off the top. */
@@ -241,6 +242,7 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
 /** Records the host's event stream, and the connection carrying it, from when it starts. */
 export default defineUiPlugin({
   id: "event-log",
+  styles,
   requires: { client: Client, dialogs: Dialogs, slots: Slots },
   setup: ({ client, dialogs, slots }, plugin) => {
     const [lines, setLines] = createSignal<readonly Line[]>([]);

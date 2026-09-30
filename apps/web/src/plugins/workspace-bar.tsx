@@ -31,6 +31,7 @@ import {
   Toggle,
   WorktreeIcon,
 } from "../ui/parts.tsx";
+import styles from "./workspace-bar.css?inline";
 
 const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
 
@@ -407,6 +408,7 @@ function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git
 /** The project and branch strip under the composer, and the worktree setting for new chats. */
 export default defineUiPlugin({
   id: "workspace-bar",
+  styles,
   requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (deps, plugin) => {
     plugin.onCleanup(deps.slots.add(ComposerFooter, { id: "workspace-bar", component: () => <WorkspaceBar deps={deps} /> }));

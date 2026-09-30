@@ -1,0 +1,973 @@
+/* Laid out like Chrome DevTools' Network panel. Lane colors are validated with the dataviz palette checks
+   against --bg-raised in both modes. */
+.trj {
+  --trj-user: #2a78d6;
+  --trj-model: #e87ba4;
+  --trj-tool: #eda100;
+  --trj-error: #d03b3b;
+  --trj-line: var(--border);
+  --trj-grid: color-mix(in srgb, var(--border) 70%, transparent);
+  --trj-row: 21px;
+  --trj-select: #cfe3fb;
+  --trj-select-focus: #1a73e8;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  outline: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: 12px/1.4 var(--font-ui);
+}
+
+[data-theme="dark"] .trj {
+  --trj-user: #3987e5;
+  --trj-model: #d55181;
+  --trj-tool: #c98500;
+  --trj-select: #25354a;
+  --trj-select-focus: #2c5ea8;
+}
+
+.trj button,
+.trj input {
+  font: inherit;
+}
+
+.trj-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.trj-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg-raised);
+}
+
+.trj-empty {
+  color: var(--text-3);
+  text-align: center;
+  padding: 12vh 0;
+  margin: 0;
+}
+
+.trj-accent {
+  color: var(--trj-user) !important;
+}
+
+.trj-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.trj-muted {
+  color: var(--text-3);
+}
+
+.trj-error {
+  color: var(--trj-error) !important;
+}
+
+/* toolbar */
+.trj-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 27px;
+  padding: 0 4px;
+  flex: none;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--trj-line);
+  background: var(--bg);
+}
+
+.trj-filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  width: 300px;
+  max-width: 40%;
+  padding: 0 6px;
+  border-radius: 2px;
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--trj-line);
+  color: var(--text-3);
+}
+
+.trj-filter:focus-within {
+  box-shadow: inset 0 0 0 1px var(--trj-select-focus);
+}
+
+.trj-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.trj-filter input::placeholder {
+  color: var(--text-3);
+}
+
+.trj-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--trj-line);
+}
+
+.trj-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.trj-chip:hover {
+  background: var(--bg-hover);
+}
+
+.trj-chip[aria-pressed="true"] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.trj-chip .icon {
+  width: 10px;
+  height: 10px;
+}
+
+.trj-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.trj-check input {
+  margin: 0;
+  accent-color: var(--trj-select-focus);
+}
+
+/* overview */
+.trj-overview {
+  flex: none;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  height: 58px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--trj-line);
+  user-select: none;
+}
+
+.trj-lane-labels {
+  position: relative;
+  border-right: 1px solid var(--trj-line);
+  color: var(--text-3);
+  font-size: 9.5px;
+  line-height: 1;
+}
+
+.trj-lane-labels span {
+  position: absolute;
+  right: 4px;
+  height: 7px;
+  display: flex;
+  align-items: center;
+}
+
+.trj-lane-labels span:nth-child(1) {
+  top: 18px;
+}
+
+.trj-lane-labels span:nth-child(2) {
+  top: 29px;
+}
+
+.trj-lane-labels span:nth-child(3) {
+  top: 40px;
+}
+
+.trj-track {
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.trj-track[data-panning="true"] {
+  cursor: grabbing;
+}
+
+.trj-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--trj-grid);
+  pointer-events: none;
+}
+
+.trj-tick-label {
+  position: absolute;
+  top: 2px;
+  font-size: 9.5px;
+  color: var(--text-3);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trj-turn-boundary {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-strong);
+  pointer-events: none;
+}
+
+.trj-span {
+  position: absolute;
+  height: 7px;
+  min-width: 2px;
+  border-radius: 1px;
+  cursor: pointer;
+  background: var(--text-3);
+}
+
+.trj-span[data-kind="user"],
+.trj-wf-bar[data-kind="user"],
+.trj-dot[data-kind="user"] {
+  background: var(--trj-user);
+}
+
+.trj-span[data-kind="assistant"],
+.trj-wf-bar[data-kind="assistant"],
+.trj-dot[data-kind="assistant"] {
+  background: var(--trj-model);
+}
+
+.trj-span[data-kind="tool"],
+.trj-wf-bar[data-kind="tool"],
+.trj-dot[data-kind="tool"] {
+  background: var(--trj-tool);
+}
+
+.trj-dot[data-kind="system"],
+.trj-dot[data-kind="request"] {
+  background: var(--text-3);
+}
+
+/* Time to first token is the lighter lead-in of a model bar. */
+.trj-span[data-kind="assistant"].has-ttft,
+.trj-wf-bar[data-kind="assistant"].has-ttft {
+  background: linear-gradient(to right, color-mix(in srgb, var(--trj-model) 42%, var(--bg-raised)) 0 var(--ttft), var(--trj-model) var(--ttft) 100%);
+}
+
+.trj-span[data-error="true"],
+.trj-wf-bar[data-error="true"],
+.trj-dot[data-error="true"] {
+  background: var(--trj-error);
+}
+
+.trj-span[data-running="true"],
+.trj-wf-bar[data-running="true"] {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.trj-span[data-dim="true"] {
+  opacity: 0.15;
+}
+
+.trj-span:hover {
+  z-index: 1;
+  box-shadow:
+    0 0 0 1px var(--bg-raised),
+    0 0 0 2px color-mix(in srgb, var(--trj-select-focus) 80%, transparent);
+}
+
+.trj-span[data-current="true"] {
+  z-index: 1;
+  opacity: 1;
+  box-shadow:
+    0 0 0 1px var(--bg-raised),
+    0 0 0 2px var(--trj-select-focus);
+}
+
+.trj-selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  min-width: 1px;
+  background: color-mix(in srgb, var(--trj-select-focus) 14%, transparent);
+  border-left: 1px solid var(--trj-select-focus);
+  border-right: 1px solid var(--trj-select-focus);
+}
+
+.trj-tip {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  background: var(--bg-raised);
+  box-shadow:
+    var(--shadow),
+    inset 0 0 0 1px var(--border-strong);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.trj-tip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.trj-empty-track {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* table */
+.trj-table {
+  width: 100%;
+  min-width: 640px;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.trj-table.compact {
+  min-width: 0;
+}
+
+.trj-c-name {
+  width: auto;
+}
+
+.trj-c-status {
+  width: 76px;
+}
+
+.trj-c-type {
+  width: 58px;
+}
+
+.trj-c-init {
+  width: 92px;
+}
+
+.trj-c-tok {
+  width: 86px;
+}
+
+.trj-c-time {
+  width: 64px;
+}
+
+.trj-c-wf {
+  width: 26%;
+}
+
+.trj-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 22px;
+  padding: 0 6px;
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--text-2);
+  background: var(--bg);
+  border-bottom: 1px solid var(--trj-line);
+  border-right: 1px solid var(--trj-grid);
+  user-select: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trj-table th[data-sortable="true"] {
+  cursor: pointer;
+}
+
+.trj-table th[data-sortable="true"]:hover {
+  background: var(--bg-hover);
+}
+
+.trj-sort {
+  margin-left: 4px;
+  font-size: 8px;
+  color: var(--text-3);
+  vertical-align: 1px;
+}
+
+.trj-table td {
+  height: var(--trj-row);
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--trj-grid);
+  color: var(--text);
+}
+
+.trj-table tbody tr[data-record]:nth-child(even) {
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+
+.trj-table tbody tr[data-record] {
+  cursor: default;
+}
+
+.trj-table tbody tr[data-record]:hover {
+  background: color-mix(in srgb, var(--trj-select) 55%, transparent);
+}
+
+.trj-table tbody tr[data-error="true"] td {
+  color: var(--trj-error);
+}
+
+.trj-table tbody tr[data-selected="true"],
+.trj-table tbody tr[data-selected="true"]:hover {
+  background: var(--trj-select);
+}
+
+.trj:focus-within .trj-table tbody tr[data-selected="true"] {
+  background: var(--trj-select-focus);
+}
+
+.trj:focus-within .trj-table tbody tr[data-selected="true"] td,
+.trj:focus-within .trj-table tbody tr[data-selected="true"] .trj-call-args,
+.trj:focus-within .trj-table tbody tr[data-selected="true"] .trj-muted {
+  color: #fff !important;
+}
+
+.trj-table tbody tr[data-dim="true"] {
+  opacity: 0.35;
+}
+
+.trj-c-status,
+.trj-c-type {
+  color: var(--text-2) !important;
+}
+
+.trj-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trj-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.trj-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trj-call-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.trj-call-args {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.trj-link-cell {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--trj-user);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.trj-link-cell:hover,
+.trj-link-cell[data-active="true"] {
+  text-decoration: underline;
+}
+
+.trj:focus-within tr[data-selected="true"] .trj-link-cell {
+  color: #fff;
+}
+
+.trj-wf {
+  position: relative;
+  height: 100%;
+}
+
+.trj-wf-bar {
+  position: absolute;
+  top: 6px;
+  height: 9px;
+  border-radius: 1px;
+  min-width: 2px;
+  background: var(--text-3);
+}
+
+.trj-group td {
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid var(--trj-line);
+  border-bottom: 1px solid var(--trj-line);
+  border-right: 0;
+}
+
+.trj-group:hover td {
+  background: var(--bg-hover);
+}
+
+.trj-caret {
+  display: inline-block;
+  width: 12px;
+  font-size: 8px;
+  color: var(--text-3);
+  transition: transform 0.1s;
+}
+
+.trj-caret[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.trj-group-label {
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 8px;
+}
+
+.trj-group-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.trj-group-prompt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.trj-group-meta {
+  flex: none;
+  margin-left: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* context menu */
+.trj-menu {
+  position: fixed;
+  z-index: var(--z-menu);
+  min-width: 200px;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 0 0 1px var(--border-strong);
+  font: 12px var(--font-ui);
+}
+
+.trj-menu-item {
+  display: block;
+  width: 100%;
+  padding: 4px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--text);
+}
+
+.trj-menu-item:hover {
+  background: var(--trj-select-focus);
+  color: #fff;
+}
+
+/* status bar */
+.trj-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 22px;
+  padding: 0 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid var(--trj-line);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.trj-status > span {
+  padding: 0 8px;
+  border-right: 1px solid var(--trj-line);
+}
+
+.trj-status > span:last-child {
+  border-right: 0;
+}
+
+/* details panel */
+.trj-details {
+  width: clamp(340px, 55%, 720px);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--trj-line);
+  background: var(--bg-raised);
+}
+
+.trj-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 27px;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--trj-line);
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.trj-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+}
+
+.trj-close:hover {
+  color: var(--text);
+}
+
+.trj-close .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.trj-tab {
+  position: relative;
+  flex: none;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.trj-tab:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.trj-tab[aria-selected="true"] {
+  color: var(--text);
+}
+
+.trj-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--trj-select-focus);
+}
+
+.trj-details-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--trj-grid);
+  flex: none;
+  min-width: 0;
+}
+
+.trj-details-kind {
+  font-weight: 600;
+}
+
+.trj-details-where {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trj-mono {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.trj-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trj-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 16px;
+  margin: 0;
+}
+
+.trj-facts dt {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.trj-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.trj-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trj-section h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--trj-grid);
+}
+
+.trj-section h4 > span:first-child {
+  font-family: var(--font-mono);
+}
+
+.trj-section-aside {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.trj-source {
+  color: var(--trj-user);
+  font-family: var(--font-mono);
+}
+
+.trj-changed {
+  color: var(--warn);
+}
+
+.trj-desc {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.trj-pre-wrap {
+  position: relative;
+}
+
+.trj-pre {
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  font: 11.5px/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 520px;
+  overflow-y: auto;
+  color: var(--text);
+}
+
+.trj-copy {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.trj-pre-wrap:hover .trj-copy,
+.trj-copy:focus-visible {
+  opacity: 1;
+}
+
+.trj-copy .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.trj-diff span {
+  display: block;
+}
+
+.trj-diff-add {
+  color: var(--add);
+  background: var(--add-bg);
+}
+
+.trj-diff-del {
+  color: var(--del);
+  background: var(--del-bg);
+}
+
+.trj-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--trj-user);
+  font-size: 12px;
+}
+
+.trj-link:hover {
+  text-decoration: underline;
+}
+
+.trj-link .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.trj-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trj-source-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 52px;
+  grid-template-rows: auto auto;
+  gap: 0 8px;
+  align-items: center;
+}
+
+.trj-source-name {
+  color: var(--trj-user);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trj-source-bar {
+  height: 7px;
+}
+
+.trj-source-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--trj-user);
+}
+
+.trj-source-chars {
+  text-align: right;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.trj-source-parts {
+  grid-column: 2 / 4;
+  color: var(--text-3);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trj-thinking summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.trj-quote {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+
+.trj-md {
+  font-size: 13px;
+  line-height: 1.55;
+}

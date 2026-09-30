@@ -1,0 +1,409 @@
+.host-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+  margin: 0 0 12px;
+  font-size: 12.5px;
+}
+
+.host-facts dt {
+  color: var(--text-3);
+}
+
+.host-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-facts .mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.status-pill.ok {
+  color: var(--ok);
+}
+
+.status-pill .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.plugin-id {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+
+.state-dot.state-active {
+  background: var(--ok);
+}
+
+.state-dot.state-failed {
+  background: var(--err);
+}
+
+.state-dot.state-activating,
+.state-dot.state-draining,
+.state-dot.state-pending {
+  background: var(--warn);
+}
+
+.status-pill.state-failed {
+  color: var(--err);
+}
+
+.plugin-fault {
+  margin: 6px 0 0 26px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.plugin-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0 26px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  font-size: 12.5px;
+}
+
+.plugin-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 8px 0 2px 26px;
+  font-size: 12.5px;
+}
+
+.plugin-details dt {
+  color: var(--text-3);
+}
+
+.plugin-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Two panes divided by hairlines, like DevTools: no boxes, no raised surfaces. */
+.inspector {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector > .callout {
+  margin-bottom: 10px;
+}
+
+.inspector-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-filter {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  color: var(--text-3);
+}
+
+.inspector-filter input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+/* Both panes run to the bottom of the screen and scroll on their own, whatever is selected. */
+.inspector-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+}
+
+.inspector-table {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  outline: none;
+}
+
+.inspector-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+
+.inspector-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 130px 128px;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  cursor: default;
+}
+
+.inspector-row:not(.inspector-head):hover {
+  background: var(--bg-hover);
+}
+
+.inspector-row.selected,
+.inspector-table:focus-visible .inspector-row.selected {
+  background: var(--bg-active);
+}
+
+.inspector-row.off .plugin-id {
+  color: var(--text-3);
+}
+
+.inspector-head {
+  min-height: 26px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.inspector-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inspector-name .plugin-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-state {
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.state-text-failed {
+  color: var(--err);
+}
+
+.inspector-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inspector-table .plugin-confirm {
+  margin: 0;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.inspector-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.inspector-detail-head h2 {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+}
+
+.inspector-tabs {
+  display: flex;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-tabs button {
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.inspector-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.inspector-tab-body,
+.inspector-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.inspector-facts {
+  margin: 0;
+}
+
+.inspector-tab-body .plugin-fault,
+.inspector-tab-body .config-form {
+  margin-left: 0;
+}
+
+.inspector-tab-body .plugin-fault {
+  margin-top: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.inspector-tab-body .config-form {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.inspector-tab-body .config-control {
+  width: 170px;
+}
+
+.inspector-wiring section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inspector-wiring section + section {
+  margin-top: 12px;
+}
+
+.inspector-wiring h3 {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.inspector-wiring ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+}
+
+.inspector-wiring p {
+  margin: 0;
+}
+
+.capability {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.inspector-raw summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.inspector-raw pre {
+  margin: 6px 0 0;
+  font-size: 12px;
+  overflow: auto;
+}
+
+.inspector-faults {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspector-fault-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.inspector-result {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  text-align: left;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .inspector-split {
+    grid-template-columns: 1fr;
+  }
+  .inspector-detail {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.problems {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.plugin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

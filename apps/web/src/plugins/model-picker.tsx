@@ -7,6 +7,7 @@ import type { ModelsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, Popover, ProviderLogo, SearchIcon, SettingRow, StarIcon } from "../ui/parts.tsx";
 import type { Placement } from "../ui/contracts.ts";
+import styles from "./model-picker.css?inline";
 
 const LEVEL_LABEL: Record<ThinkingLevel, string> = {
   off: "Off",
@@ -285,6 +286,7 @@ function ModelPicker(props: {
  */
 export default defineUiPlugin({
   id: "model-picker",
+  styles,
   requires: { models: Models, slots: Slots },
   setup: ({ models, slots }, plugin) => {
     const [open, setOpen] = createSignal<() => void>();
