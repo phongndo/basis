@@ -109,7 +109,7 @@ Questions the host asks (logins, tools that confirm)
   questions                      Open questions, with their ids
   answer <question> <value>      Answer one: yes/no, text, or an option (value, label, or number)
   dismiss <question>             Dismiss one
-    While run --follow, login, do, or events --questions … is attached:
+    While run, login, do, or events --questions … is attached:
     --questions ask|ignore|dismiss   ask at the terminal (default when there is one), leave them
                                      to another client such as the web app (default otherwise), or dismiss
     --answer <value>               Answer the next question with this (repeatable, in order)

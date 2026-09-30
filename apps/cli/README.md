@@ -25,8 +25,9 @@ records and accept the same queries.
   assumption.
 - **Two connections, as the transport intends.** Calls use one-shot HTTP
   (`POST /rpc/http`, `makeHostRpcHttp`). Commands that watch the host —
-  `run --follow`, `events`, `login`, `questions`, `answer` — also open the
-  WebSocket the web app uses and subscribe to `Host.Events`.
+  `run` (for its turn's questions; with `--follow`, everything the turn
+  streams), `events`, `login`, `questions`, `answer` — also open the WebSocket
+  the web app uses and subscribe to `Host.Events`.
 - **Questions.** While subscribed, the CLI is offered the host's questions (a
   login's API key, a tool that asks to confirm). `--answer <value>` answers them
   in order; otherwise `--questions ask` prompts at the terminal (the default when

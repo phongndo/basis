@@ -26,8 +26,8 @@ export interface Io {
   /** Output without a line break, for streamed text. */
   readonly write?: (text: string) => void;
   readonly err: (text: string) => void;
-  /** Asks the person at the terminal; absent when stdin is not one. */
-  readonly ask?: (question: string, secret: boolean) => Promise<string>;
+  /** Asks the person at the terminal; absent when stdin is not one. Aborting `signal` withdraws the prompt. */
+  readonly ask?: (question: string, secret: boolean, signal?: AbortSignal) => Promise<string>;
 }
 
 /** What to do with a question the host asks while a command is attached. */

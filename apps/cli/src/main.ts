@@ -9,10 +9,16 @@ process.stdout.on("error", (error: NodeJS.ErrnoException) => {
   else throw error;
 });
 
-/** A question at the terminal, on stderr so stdout stays clean for output; secrets are not echoed. */
-const ask = (question: string, secret: boolean) =>
-  new Promise<string>((resolve) => {
+/** A question at the terminal, on stderr so stdout stays clean for output; secrets are not echoed. Aborting withdraws it. */
+const ask = (question: string, secret: boolean, signal?: AbortSignal) =>
+  new Promise<string>((resolve, reject) => {
     const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+    const withdraw = () => {
+      rl.close();
+      process.stderr.write("\n(answered elsewhere)\n");
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", withdraw, { once: true });
     if (secret) {
       const output = rl as unknown as { _writeToOutput: (text: string) => void; output: NodeJS.WritableStream };
       let prompted = false;
@@ -24,6 +30,7 @@ const ask = (question: string, secret: boolean) =>
       };
     }
     rl.question(question, (answer) => {
+      signal?.removeEventListener("abort", withdraw);
       if (secret) process.stderr.write("\n");
       rl.close();
       resolve(answer);

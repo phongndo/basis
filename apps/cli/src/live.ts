@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
-import { Deferred, Duration, Effect, Fiber, Stream } from "effect";
+import { Deferred, Duration, Effect, Fiber, FiberMap, Stream } from "effect";
 import { branchOf, contentText, ThinkingLevel, trajectory } from "@lemma/contracts";
 import type {
   HostEvent,
@@ -64,45 +64,59 @@ const promptText = (request: InteractionRequest): string => {
 };
 
 /**
- * Handles a question per the policy: the next `--answer`, then the terminal
- * (`ask`), `dismiss`, or `ignore` (leave it to another client, such as an
- * open web app, and say how to answer it from the CLI). Only questions from
- * `origin` are handled, so answers never reach another session's or client's
- * question; `undefined` handles every question (`events --answer`).
+ * Handles the host's questions per the policy: the next `--answer`, then the
+ * terminal (`ask`), `dismiss`, or `ignore` (leave it to another client, such
+ * as an open web app, and say how to answer it from the CLI). Only questions
+ * from `origin` are handled, so answers never reach another session's or
+ * client's question; `undefined` handles every question (`events --answer`).
+ *
+ * The handler takes every subscribed event. Each question is answered in its
+ * own fiber, so events keep flowing while the terminal waits, and its prompt
+ * closes when the question is answered elsewhere or the command ends.
  */
-const questionHandler = (rpc: HostRpcClient, io: Io, options: Options, origin: string | undefined) => {
-  const answers = [...options.answers];
-  const seen = new Set<string>();
-  return (request: InteractionRequest) =>
-    Effect.gen(function* () {
-      if (seen.has(request.id) || (origin !== undefined && request.origin !== origin)) return;
-      seen.add(request.id);
-      const policy = policyOf(io, options);
-      const next = answers.shift();
-      if (next === undefined && policy === "dismiss") {
-        yield* rpc.Interaction.Dismiss({ id: request.id }).pipe(Effect.ignore);
-        io.err(`lemma: dismissed question "${request.title}"`);
-        return;
-      }
-      if (next === undefined && (policy === "ignore" || io.ask === undefined)) {
-        io.err(`lemma: the host asks "${request.title}" (${request.type}); answer with \`lemma answer ${request.id} <value>\` or in the web app`);
-        return;
-      }
-      let raw = next;
-      for (;;) {
-        raw ??= yield* Effect.promise(() => io.ask!(promptText(request), request.type === "ask" && request.secret === true));
-        const answer = toAnswer(request, raw);
-        if (typeof answer !== "string") {
-          // Someone else may have answered first; that is not an error here.
-          yield* rpc.Interaction.Answer({ id: request.id, answer }).pipe(Effect.ignore);
+const questionHandler = (rpc: HostRpcClient, io: Io, options: Options, origin: string | undefined) =>
+  Effect.gen(function* () {
+    const answers = [...options.answers];
+    const seen = new Set<string>();
+    const prompts = yield* FiberMap.make<string>();
+    const handle = (request: InteractionRequest, next: string | undefined) =>
+      Effect.gen(function* () {
+        const policy = policyOf(io, options);
+        if (next === undefined && policy === "dismiss") {
+          yield* rpc.Interaction.Dismiss({ id: request.id }).pipe(Effect.ignore);
+          io.err(`lemma: dismissed question "${request.title}"`);
           return;
         }
-        io.err(`lemma: ${answer}`);
-        if (io.ask === undefined) return;
-        raw = undefined;
-      }
-    });
-};
+        if (next === undefined && (policy === "ignore" || io.ask === undefined)) {
+          const about = "detail" in request && request.detail !== undefined ? `: ${request.detail}` : "";
+          io.err(`lemma: the host asks "${request.title}"${about} (${request.type}); answer with \`lemma answer ${request.id} <value>\` or in the web app`);
+          return;
+        }
+        let raw = next;
+        for (;;) {
+          // Interrupting the fiber (the question closed, or the command ended) closes the prompt.
+          raw ??= yield* Effect.promise((signal) => io.ask!(promptText(request), request.type === "ask" && request.secret === true, signal));
+          const answer = toAnswer(request, raw);
+          if (typeof answer !== "string") {
+            // Someone else may have answered first; that is not an error here.
+            yield* rpc.Interaction.Answer({ id: request.id, answer }).pipe(Effect.ignore);
+            return;
+          }
+          io.err(`lemma: ${answer}`);
+          if (io.ask === undefined) return;
+          raw = undefined;
+        }
+      });
+    return (event: HostEvent): Effect.Effect<void> => {
+      if (event.type === "interaction-closed") return FiberMap.remove(prompts, event.id);
+      if (event.type !== "interaction") return Effect.void;
+      const request = event.request;
+      if (seen.has(request.id) || (origin !== undefined && request.origin !== origin)) return Effect.void;
+      seen.add(request.id);
+      // `--answer` values go to questions in the order they arrive.
+      return Effect.asVoid(FiberMap.run(prompts, request.id, handle(request, answers.shift())));
+    };
+  });
 
 /**
  * Subscribes to host events, then confirms the subscription with a call on
@@ -188,6 +202,13 @@ export const runCommand =
       const payload = { sessionId, content, ...(Object.keys(turn).length ? { options: turn } : {}) };
 
       if (!options.follow) {
+        // The turn's questions (a tool asking for approval, say) are answered here when there is something to answer
+        // with: --answer, --questions, or a terminal. Otherwise the CLI stays unattached, so they go to another client
+        // (an open web app) or, with none, fail as unanswerable, which a tool asking for approval takes as a no.
+        if (options.answers.length > 0 || options.questions !== undefined || io.ask !== undefined) {
+          const rpc = yield* connection.live;
+          yield* subscribe(rpc, yield* questionHandler(rpc, io, options, `session:${sessionId}`));
+        }
         yield* connection.rpc.Agent.Prompt(payload);
         return result(yield* lastTurn(connection.rpc, sessionId), options, false);
       }
@@ -202,10 +223,10 @@ export const runCommand =
         io.out(text);
       };
       const rpc = yield* connection.live;
-      const answer = questionHandler(rpc, io, options, `session:${sessionId}`);
+      const questions = yield* questionHandler(rpc, io, options, `session:${sessionId}`);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
-          if (event.type === "interaction") return yield* answer(event.request);
+          if (event.type === "interaction" || event.type === "interaction-closed") return yield* questions(event);
           if (event.type === "notice") return options.json ? io.out(JSON.stringify(event)) : line(noticeLine(event));
           if (!("sessionId" in event) || event.sessionId !== sessionId) return;
           if (options.json) io.out(JSON.stringify(event));
@@ -259,14 +280,14 @@ export const cancelCommand =
 export const eventsCommand: Command = (connection, io, options) =>
   Effect.gen(function* () {
     const rpc = yield* connection.live;
-    const answer = questionHandler(rpc, io, options, options.session === undefined ? undefined : `session:${options.session}`);
+    const questions = yield* questionHandler(rpc, io, options, options.session === undefined ? undefined : `session:${options.session}`);
     const fiber = yield* subscribe(rpc, (event) =>
       Effect.gen(function* () {
         if (options.session !== undefined && "sessionId" in event && event.sessionId !== options.session) return;
         if (options.json) io.out(JSON.stringify(event));
         else io.out(eventLine(event));
         // Watching never answers unless asked to.
-        if (event.type === "interaction" && options.questions !== undefined) yield* answer(event.request);
+        if (options.questions !== undefined) yield* questions(event);
       }),
     );
     yield* Fiber.join(fiber).pipe(Effect.ignore);
@@ -363,11 +384,11 @@ export const loginCommand =
       if (!info.auth.some((auth) => auth.type === method))
         return yield* usage(`${provider} does not offer ${method}; it offers ${info.auth.map((auth) => auth.type).join(", ")}`);
       const rpc = yield* connection.live;
-      const answer = questionHandler(rpc, io, options, `login:${provider}`);
+      const questions = yield* questionHandler(rpc, io, options, `login:${provider}`);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
           if (event.type === "notice") io.err(noticeLine(event));
-          if (event.type === "interaction") yield* answer(event.request);
+          yield* questions(event);
         }),
       );
       yield* rpc.Llm.Login({ provider, type: method });
@@ -388,11 +409,11 @@ export const doCommand =
     Effect.gen(function* () {
       const rpc = yield* connection.live;
       const origin = `command:${randomUUID()}`;
-      const answer = questionHandler(rpc, io, options, origin);
+      const questions = yield* questionHandler(rpc, io, options, origin);
       yield* subscribe(rpc, (event) =>
         Effect.gen(function* () {
           if (event.type === "notice") io.err(noticeLine(event));
-          if (event.type === "interaction") yield* answer(event.request);
+          yield* questions(event);
         }),
       );
       const cwd = resolve(io.cwd, options.cwd ?? ".");
