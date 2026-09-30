@@ -16,6 +16,7 @@ export type { ReadDetails } from "./read.ts";
 export { writeTool, WriteInput } from "./write.ts";
 export { unifiedPatch } from "./diff.ts";
 export { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead, truncateTail } from "./truncate.ts";
+export { resolveToCwd } from "./files.ts";
 
 /**
  * One plugin per tool, with the tool's name as its id, so a composition can

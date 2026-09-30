@@ -4,13 +4,14 @@ A coding-agent harness in which every part, including the agent loop, is a
 plugin that can be replaced by id. Plugins are composed by the core in
 [`packages/core`](#core).
 
-| Path                                                    | Responsibility                                                                           |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC |
-| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                     |
-| [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                |
-| [`apps/web`](apps/web/README.md)                        | The web client: plugins on the same kernel, each replaceable; served by `transport`      |
-| [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents    |
+| Path                                                    | Responsibility                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC      |
+| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                          |
+| [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                     |
+| [`apps/web`](apps/web/README.md)                        | The web client: plugins on the same kernel, each replaceable; served by `transport`           |
+| [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents         |
+| [`examples/*`](examples)                                | Plugin files written as a user writes them, such as [approvals](examples/approvals/README.md) |
 
 ```sh
 nix develop -c pnpm start          # build the web app, start the host, print its URL

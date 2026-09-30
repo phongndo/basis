@@ -1,0 +1,24 @@
+{
+  "name": "@lemma/example-approvals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@lemma/contracts": "workspace:*",
+    "@lemma/core": "workspace:*",
+    "@lemma/plugin-tools-builtin": "workspace:*",
+    "effect": "3.22.2"
+  },
+  "devDependencies": {
+    "@lemma/cli": "workspace:*",
+    "@lemma/host": "workspace:*",
+    "@lemma/plugin-tools": "workspace:*",
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}
