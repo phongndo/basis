@@ -487,10 +487,11 @@ export const formatQuestions = (questions: readonly InteractionRequest[]): strin
         .map((question) =>
           [
             `${question.id}  ${question.type}  ${question.title}`,
+            // What it is about (the command to approve, say) before the choices.
+            ...((question.type === "confirm" || question.type === "select") && question.detail !== undefined ? [indent(question.detail)] : []),
             ...(question.type === "select"
               ? question.options.map((option, i) => `    ${i + 1}. ${option.value}${option.label === option.value ? "" : ` (${option.label})`}`)
               : []),
-            ...(question.type === "confirm" && question.detail !== undefined ? [`    ${question.detail}`] : []),
           ].join("\n"),
         )
         .join("\n");

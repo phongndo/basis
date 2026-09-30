@@ -41,7 +41,7 @@ type Item = Omit<PaletteItem, "run"> & Searchable & { readonly run?: PaletteItem
 
 /** What the palette asks: a host question, or one of its own (renaming a session). */
 type Question =
-  | { readonly type: "select"; readonly title: string; readonly options: readonly Item[] }
+  | { readonly type: "select"; readonly title: string; readonly detail?: string | undefined; readonly options: readonly Item[] }
   | { readonly type: "ask"; readonly title: string; readonly placeholder?: string | undefined; readonly secret?: boolean | undefined }
   | { readonly type: "confirm"; readonly title: string; readonly detail?: string | undefined };
 
@@ -86,6 +86,7 @@ const fromInteraction = (request: InteractionRequest): Question => {
       return {
         type: "select",
         title: request.title,
+        detail: request.detail,
         options: request.options.map((option) => ({
           key: option.value,
           title: option.label,
@@ -350,9 +351,10 @@ function Palette(props: { deps: Deps }) {
     const question = asking()?.question;
     return question?.type === "ask" && question.secret === true;
   };
-  const confirmDetail = () => {
+  /** What a question is about (the command a tool asks to run, say), shown under the field. */
+  const questionDetail = () => {
     const question = asking()?.question;
-    return question?.type === "confirm" ? question.detail : undefined;
+    return question?.type === "confirm" || question?.type === "select" ? question.detail : undefined;
   };
   // Unique per instance: the page could show two lists.
   const listId = `palette-list-${createUniqueId()}`;
@@ -392,7 +394,7 @@ function Palette(props: { deps: Deps }) {
               onInput={(event) => setValue(event.currentTarget.value)}
             />
           </div>
-          <Show when={confirmDetail()}>{(detail) => <p class="palette-question-detail">{detail()}</p>}</Show>
+          <Show when={questionDetail()}>{(detail) => <p class="palette-question-detail">{detail()}</p>}</Show>
           <Show when={rows().length > 0}>
             <div ref={list} id={listId} class="palette-list" role="listbox" aria-label="Results">
               <For each={rows()}>

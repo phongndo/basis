@@ -86,6 +86,9 @@ function Select(props: { interactions: InteractionsService; request: Of<"select"
   };
   return (
     <Dialog title={props.request.title} onClose={() => props.interactions.dismiss(props.request.id)}>
+      <Show when={props.request.detail}>
+        <p class="dialog-detail">{props.request.detail}</p>
+      </Show>
       <div class="choices" role="listbox" onKeyDown={onKey}>
         <For each={props.request.options}>
           {(option, index) => (

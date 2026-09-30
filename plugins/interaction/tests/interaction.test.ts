@@ -46,10 +46,14 @@ describe("interaction", () => {
         expect(yield* ask.confirm("Delete?", "Everything")).toBe(true);
         expect(yield* ask.ask("Key", { secret: true })).toBe("sk-secret");
         expect(yield* ask.ask("Name", { placeholder: "you" })).toBe("plain");
-        const picked: "a" | "b" = yield* ask.select("Model", [
-          { value: "a", label: "A" },
-          { value: "b", label: "B" },
-        ]);
+        const picked: "a" | "b" = yield* ask.select(
+          "Model",
+          [
+            { value: "a", label: "A" },
+            { value: "b", label: "B" },
+          ],
+          "For this session",
+        );
         expect(picked).toBe("b");
       }),
     );
@@ -58,6 +62,7 @@ describe("interaction", () => {
     expect(ui.seen[0]).toEqual({ type: "confirm", id: ui.seen[0]!.id, title: "Delete?", detail: "Everything" });
     expect(ui.seen[1]).toMatchObject({ title: "Key", secret: true });
     expect(ui.seen[2]).toEqual({ type: "ask", id: ui.seen[2]!.id, title: "Name", placeholder: "you" });
+    expect(ui.seen[3]).toMatchObject({ title: "Model", detail: "For this session" });
   });
 
   test("marks each question with the asking fiber's origin", async () => {

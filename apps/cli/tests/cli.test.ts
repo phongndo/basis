@@ -12,7 +12,7 @@ import { ledger, promptDiff, trajectory } from "@lemma/contracts";
 import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 import { ExitCode, parseOffset, run } from "../src/cli.ts";
 import { toAnswer } from "../src/live.ts";
-import { formatDiff, formatRecords, formatSession, formatStep, formatSystem, formatTrajectory } from "../src/format.ts";
+import { formatDiff, formatQuestions, formatRecords, formatSession, formatStep, formatSystem, formatTrajectory } from "../src/format.ts";
 
 const hostMain = fileURLToPath(new URL("../../../packages/host/src/main.ts", import.meta.url));
 
@@ -578,5 +578,19 @@ describe("argument parsing", () => {
     expect(toAnswer({ type: "confirm", id: "c", title: "Go?" }, "Yes")).toEqual({ type: "confirm", value: true });
     expect(toAnswer({ type: "confirm", id: "c", title: "Go?" }, "maybe")).toContain("yes or no");
     expect(toAnswer({ type: "ask", id: "a", title: "Key" }, " sk ")).toEqual({ type: "ask", value: " sk " });
+  });
+
+  test("open questions show what they are about before their choices", () => {
+    const approval = {
+      type: "select" as const,
+      id: "q1",
+      title: "Run this command?",
+      detail: "rm -rf build\nls",
+      options: [
+        { value: "once", label: "Allow once" },
+        { value: "deny", label: "Deny" },
+      ],
+    };
+    expect(formatQuestions([approval])).toBe("q1  select  Run this command?\n    rm -rf build\n    ls\n    1. once (Allow once)\n    2. deny (Deny)");
   });
 });

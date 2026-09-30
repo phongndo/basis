@@ -36,6 +36,8 @@ export const InteractionRequest = Schema.Union(
     id: Schema.String,
     origin: Schema.optional(Schema.String),
     title: Schema.String,
+    /** What the choice is about, shown with the title (a command to approve, say). */
+    detail: Schema.optional(Schema.String),
     options: Schema.Array(Schema.Struct({ value: Schema.String, label: Schema.String, description: Schema.optional(Schema.String) })),
   }),
 );
@@ -63,6 +65,7 @@ export class Interaction extends Context.Tag("lemma/Interaction")<
     readonly select: <V extends string>(
       title: string,
       options: readonly { readonly value: V; readonly label: string; readonly description?: string }[],
+      detail?: string,
     ) => Effect.Effect<V, InteractionError>;
   }
 >() {}

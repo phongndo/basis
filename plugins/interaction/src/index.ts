@@ -51,8 +51,12 @@ export default definePlugin({
             ...(options?.placeholder === undefined ? {} : { placeholder: options.placeholder }),
             ...(options?.secret === undefined ? {} : { secret: options.secret }),
           }),
-        select: <V extends string>(title: string, options: readonly { readonly value: V; readonly label: string; readonly description?: string }[]) =>
-          request({ type: "select", id: randomUUID(), title, options }).pipe(
+        select: <V extends string>(
+          title: string,
+          options: readonly { readonly value: V; readonly label: string; readonly description?: string }[],
+          detail?: string,
+        ) =>
+          request({ type: "select", id: randomUUID(), title, ...(detail === undefined ? {} : { detail }), options }).pipe(
             Effect.filterOrFail(
               (value): value is V => options.some((option) => option.value === value),
               (value) => new InteractionError({ reason: "Unavailable", message: `Selected "${value}" is not one of the options offered for "${title}"` }),

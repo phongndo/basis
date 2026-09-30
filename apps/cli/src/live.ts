@@ -59,7 +59,7 @@ const promptText = (request: InteractionRequest): string => {
     case "ask":
       return `${request.title}${request.placeholder === undefined ? "" : ` (${request.placeholder})`}: `;
     case "select":
-      return `${request.title}\n${request.options.map((option, i) => `  ${i + 1}. ${option.label}${option.description === undefined ? "" : ` — ${option.description}`}`).join("\n")}\n> `;
+      return `${request.title}${request.detail === undefined ? "" : `\n${request.detail}`}\n${request.options.map((option, i) => `  ${i + 1}. ${option.label}${option.description === undefined ? "" : ` — ${option.description}`}`).join("\n")}\n> `;
   }
 };
 
