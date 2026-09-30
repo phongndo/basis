@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "check": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "ui:check": "node scripts/check-ui.ts"
   },
   "dependencies": {
     "@lemma/client": "workspace:*",
