@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import type { Composition, Plugin, PluginEntry } from "@lemma/core";
 import agent from "@lemma/plugin-agent";
 import commands from "@lemma/plugin-commands";
+import compaction from "@lemma/plugin-compaction";
 import * as builtinCommands from "@lemma/plugin-commands-builtin";
 import credentials from "@lemma/plugin-credentials";
 import interaction from "@lemma/plugin-interaction";
@@ -36,6 +37,7 @@ export function bundled(host: Plugin): readonly Plugin[] {
     bash,
     sessions,
     agent,
+    compaction,
     projectContext,
     workspace,
     commands,

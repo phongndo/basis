@@ -20,27 +20,35 @@ export function branchOf(events: readonly SessionEvent[], leaf: string | undefin
 }
 
 /**
- * Model history for a branch. The latest `compaction` replaces everything
- * before its `firstKeptId` with a summary message.
+ * Where the model's view of a branch starts: the latest `compaction` (its
+ * index on the branch) replaces everything before the event it keeps first,
+ * `start`. Events from `start` on are seen as they are, including kept ones
+ * logged before the compaction itself.
  */
-export function deriveMessages(branch: readonly SessionEvent[]): Message[] {
-  let start = 0;
-  let summary: { text: string; at: number } | undefined;
+export function modelView(branch: readonly SessionEvent[]): { readonly start: number; readonly compaction?: number } {
   for (let i = branch.length - 1; i >= 0; i--) {
     const data = branch[i]!.data;
     if (data.type !== "compaction") continue;
     const kept = branch.findIndex((event) => event.id === data.firstKeptId);
-    start = kept === -1 ? i + 1 : kept;
-    summary = { text: data.summary, at: branch[i]!.at };
-    break;
+    return { start: kept === -1 ? i + 1 : kept, compaction: i };
   }
+  return { start: 0 };
+}
+
+/**
+ * Model history for a branch. The latest `compaction` replaces everything
+ * before its `firstKeptId` with a summary message.
+ */
+export function deriveMessages(branch: readonly SessionEvent[]): Message[] {
+  const { start, compaction } = modelView(branch);
+  const summary = compaction === undefined ? undefined : branch[compaction]!;
   const messages: Message[] =
-    summary === undefined
+    summary?.data.type !== "compaction"
       ? []
       : [
           {
             role: "user",
-            content: [{ type: "text", text: `<summary>\nThe conversation so far, summarized:\n\n${summary.text}\n</summary>` }],
+            content: [{ type: "text", text: `<summary>\nThe conversation so far, summarized:\n\n${summary.data.summary}\n</summary>` }],
             timestamp: summary.at,
           },
         ];

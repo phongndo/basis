@@ -285,6 +285,7 @@ export const createMockHost = (): Host => {
     bundled("bash", { requires: ["lemma/Tools"] }),
     bundled("sessions", { provides: ["lemma/Sessions"], requires: ["lemma/Paths"], locked: needed }),
     bundled("agent", { provides: ["lemma/Agent"], requires: ["lemma/Sessions", "lemma/Llm", "lemma/Tools", "lemma/HostControl"], locked: needed }),
+    bundled("compaction", { requires: ["lemma/Sessions", "lemma/Llm"] }),
     bundled("project-context", { requires: ["lemma/Paths"] }),
     bundled("workspace", { provides: ["lemma/Workspace"], requires: ["lemma/Paths"], locked: needed }),
     bundled("commands", { provides: ["lemma/Commands"], locked: needed }),
@@ -298,6 +299,7 @@ export const createMockHost = (): Host => {
   ];
   // Wiring as the kernel reports it, so the inspector has hooks and observers to show.
   const wiring: Record<string, Partial<PluginStatus>> = {
+    compaction: { hooks: [{ name: "lemma/agent.request", order: 0 }] },
     "project-context": { hooks: [{ name: "lemma/agent.request", order: 10 }] },
     bash: { hooks: [{ name: "lemma/tool.execute", order: 0 }] },
     agent: { hooks: [{ name: "lemma/agent.request", order: 0 }] },

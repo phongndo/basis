@@ -17,6 +17,7 @@
     "@lemma/plugin-agent": "workspace:*",
     "@lemma/plugin-commands": "workspace:*",
     "@lemma/plugin-commands-builtin": "workspace:*",
+    "@lemma/plugin-compaction": "workspace:*",
     "@lemma/plugin-credentials": "workspace:*",
     "@lemma/plugin-host": "workspace:*",
     "@lemma/plugin-interaction": "workspace:*",
