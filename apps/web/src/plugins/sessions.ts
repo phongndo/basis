@@ -9,6 +9,16 @@ import { Client, Notify, Sessions } from "../ui/contracts.ts";
 import type { LogState } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 
+/** The session id in the page's address (`#<id>`), if any; a malformed one reads as none. */
+const hashSession = (): string | undefined => {
+  try {
+    const id = decodeURIComponent(window.location.hash.replace(/^#\/?/, ""));
+    return id === "" ? undefined : id;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Sessions and the active one's log: the list, which is open, its events and
  * streaming drafts, which sessions are running, and sending prompts. The URL
@@ -99,11 +109,21 @@ export default defineUiPlugin({
           if (failed !== undefined) notify.report((failed as PromiseRejectedResult).reason, "Sync failed");
           if (restored) return;
           restored = true;
-          const fromHash = decodeURIComponent(window.location.hash.replace(/^#\/?/, ""));
-          if (fromHash !== "" && list().some((session) => session.id === fromHash)) void select(fromHash);
+          const fromHash = hashSession();
+          if (fromHash !== undefined && list().some((session) => session.id === fromHash)) void select(fromHash);
         });
       }),
     );
+
+    // The address names the open session (`select` keeps it current): a link, or an address edited by hand, opens the
+    // session it names, and an address without one a new chat. An id no session has is left alone.
+    const followHash = () => {
+      const fromHash = hashSession();
+      if (fromHash === undefined) void select(undefined);
+      else if (list().some((session) => session.id === fromHash)) void select(fromHash);
+    };
+    window.addEventListener("hashchange", followHash);
+    plugin.onCleanup(() => window.removeEventListener("hashchange", followHash));
 
     // Deltas and tool output arrive many times a frame; they are applied together, once per frame, in order. A hidden
     // tab gets no frames, so a long queue is applied at once instead.
