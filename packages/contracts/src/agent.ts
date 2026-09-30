@@ -3,6 +3,7 @@ import type { Effect } from "effect";
 import { Event, Hook } from "@lemma/core";
 import { AssistantMessage, ImageContent, Message, ModelRef, StreamEvent, TextContent, ThinkingLevel, Usage } from "./llm.ts";
 import type { ToolResultMessage } from "./llm.ts";
+import type { EventData, SessionEvent } from "./sessions.ts";
 import type { ToolContribution } from "./tools.ts";
 
 export class AgentError extends Data.TaggedError("AgentError")<{
@@ -32,8 +33,9 @@ export interface SystemSection {
 /**
  * The model-facing request before it is logged and sent. Handlers of
  * `AgentRequestHook` add or edit sections and tools and may change the model
- * or thinking level. `history` is read-only: the terminal ignores it, because
- * changing what the model sees means appending session events.
+ * or thinking level. `branch` and `history` are read-only, as they stood when
+ * the hook began: the terminal ignores them, because changing what the model
+ * sees means appending session events, with `append`.
  */
 export interface RequestDraft {
   readonly sessionId: string;
@@ -43,10 +45,20 @@ export interface RequestDraft {
   readonly thinking?: ThinkingLevel;
   readonly sections: readonly SystemSection[];
   readonly tools: readonly ToolContribution[];
+  /** The turn's branch, root to its last event: what the request continues. */
+  readonly branch: readonly SessionEvent[];
+  /** `deriveMessages(branch)`. */
   readonly history: readonly Message[];
+  /**
+   * Appends an event after the turn's last one (a `compaction`, say); the
+   * request, and the rest of the turn, continue from it. It stays on the
+   * turn's branch even if a later handler fails or the turn is cancelled, and
+   * a checkout meanwhile cannot move it.
+   */
+  readonly append: (data: EventData) => Effect.Effect<SessionEvent, AgentError>;
 }
 
-export type RequestPlan = Omit<RequestDraft, "history" | "sessionId" | "turnId" | "cwd">;
+export type RequestPlan = Omit<RequestDraft, "history" | "branch" | "append" | "sessionId" | "turnId" | "cwd">;
 
 /** Runs before every model call. Skills, project context, and prompt plugins contribute here. */
 export const AgentRequestHook = Hook.make<RequestDraft, RequestPlan, AgentError>("lemma/agent.request");

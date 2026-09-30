@@ -3,7 +3,7 @@ import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
 import type { Plugin } from "@lemma/core";
-import { Agent, AgentContinueHook, AgentRequestHook, branchOf, rebuildRequest, Sessions, ToolResult } from "@lemma/contracts";
+import { Agent, AgentContinueHook, AgentError, AgentRequestHook, branchOf, emptyUsage, rebuildRequest, Sessions, ToolResult } from "@lemma/contracts";
 import type { EventData, LlmRequest, SessionEvent, Tool } from "@lemma/contracts";
 import sessions from "../../sessions/src/index.ts";
 import tools from "../../tools/src/index.ts";
@@ -187,6 +187,67 @@ describe("agent", () => {
           expect(requests.every((request) => request.tools?.length === 1)).toBe(true);
           expectLogInvariant(events, id, requests);
         }),
+    );
+  });
+
+  /** A plugin that, before the second turn's request, summarizes everything before its prompt; `after` runs next. */
+  const compactor = (after: Effect.Effect<void, AgentError> = Effect.void) =>
+    definePlugin({
+      id: "compactor",
+      layer: Layer.effectDiscard(
+        Effect.gen(function* () {
+          const owner = yield* PluginContext;
+          yield* owner.on(AgentRequestHook, (draft, next) =>
+            Effect.gen(function* () {
+              if (draft.history.length !== 3) return yield* next(draft);
+              const prompt = [...draft.branch].reverse().find((event) => event.data.type === "message" && event.data.message.role === "user")!;
+              yield* draft.append({
+                type: "compaction",
+                summary: "They said first.",
+                firstKeptId: prompt.id,
+                tokensBefore: 10,
+                source: owner.id,
+                turnId: draft.turnId,
+                usage: { ...emptyUsage, input: 7, output: 3, totalTokens: 10 },
+              });
+              yield* after;
+              return yield* next(draft);
+            }),
+          );
+        }),
+      ),
+    });
+
+  it("continues from events a request handler appends, so a compaction changes what the model sees", async () => {
+    await withAgent({ plugins: [compactor()], scripts: [reply("a"), reply("b")] }, ({ requests, rec }) =>
+      Effect.gen(function* () {
+        const { id } = yield* newSession;
+        const a = yield* Agent;
+        yield* a.prompt(id, text("first"));
+        yield* a.prompt(id, text("second"));
+        expect(requests[1]!.messages.map((message) => message.role)).toEqual(["user", "user"]);
+        expect(JSON.stringify(requests[1]!.messages[0])).toContain("They said first.");
+        const events = yield* log(id);
+        expect(types(events).slice(-6)).toEqual(["step-start", "compaction", "request", "message", "step-end", "turn-end"]);
+        expectLogInvariant(events, id, requests);
+        // Writing the summary is part of what the turn cost.
+        expect(rec.ended.at(-1)!.usage.input).toBe(10 + 7);
+      }),
+    );
+  });
+
+  it("keeps an appended event on the turn's branch when a later handler fails", async () => {
+    const failing = Effect.fail(new AgentError({ sessionId: "", reason: "Hook", message: "project context unreadable" }));
+    await withAgent({ plugins: [compactor(failing)], scripts: [reply("a")] }, () =>
+      Effect.gen(function* () {
+        const { id } = yield* newSession;
+        const a = yield* Agent;
+        yield* a.prompt(id, text("first"));
+        yield* Effect.flip(a.prompt(id, text("second")));
+        const store = yield* Sessions;
+        const branch = yield* store.branch(id);
+        expect(types(branch).slice(-4)).toEqual(["step-start", "compaction", "step-end", "turn-end"]);
+      }),
     );
   });
 

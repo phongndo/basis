@@ -233,6 +233,12 @@ export function trajectory(branch: readonly SessionEvent[]): TrajectoryTurn[] {
         };
         return;
       }
+      case "compaction": {
+        // Writing the summary is part of what the turn cost.
+        const turn = data.turnId === undefined ? undefined : turnById.get(data.turnId);
+        if (turn !== undefined && data.usage !== undefined) turn.usage = addUsage(turn.usage, data.usage);
+        return;
+      }
       case "attempt": {
         const turn = turnById.get(data.turnId);
         const step = stepFor(data.turnId, data.stepId, event.at);

@@ -293,8 +293,11 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
         turn.steps--; // A retried call is not a step of its own.
         break;
       }
-      case "compaction":
-        ensure(event).items.push(
+      case "compaction": {
+        const turn = ensure(event);
+        // Writing the summary is part of what the turn cost.
+        if (data.usage !== undefined) turn.usage = addUsage(turn.usage, data.usage);
+        turn.items.push(
           cache.get(event.id, "", (): CompactionItem => ({
             kind: "compaction",
             id: event.id,
@@ -304,6 +307,7 @@ const project = (branch: readonly SessionEvent[], cache: Cache): Transcript => {
           })),
         );
         break;
+      }
       case "title":
         title = data.title;
         break;

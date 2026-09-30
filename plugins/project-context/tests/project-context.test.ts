@@ -67,7 +67,9 @@ describe("project context", () => {
       cwd: path.join(dir, "repo"),
       model: "p/m",
       tools: [],
+      branch: [],
       history: [],
+      append: () => Effect.die("not used"),
       sections: [
         { id: "base", source: "agent", text: "Base." },
         { id: "environment", source: "agent", text: "Env." },

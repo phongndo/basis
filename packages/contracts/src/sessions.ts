@@ -1,7 +1,7 @@
 import { Context, Data, Schema } from "effect";
 import type { Effect } from "effect";
 import { Event } from "@lemma/core";
-import { AssistantMessage, Message, ThinkingLevel, ToolSpec } from "./llm.ts";
+import { AssistantMessage, Message, ThinkingLevel, ToolSpec, Usage } from "./llm.ts";
 
 /**
  * A session is an append-only log of events. Each event names its parent, so
@@ -88,6 +88,10 @@ export const EventData = Schema.Union(
     firstKeptId: Schema.String,
     tokensBefore: Schema.Number,
     source: Schema.String,
+    /** The turn it happened in, whose usage includes writing the summary. */
+    turnId: Schema.optional(Schema.String),
+    /** What writing the summary cost. */
+    usage: Schema.optional(Usage),
   }),
   Schema.Struct({ type: Schema.Literal("title"), title: Schema.String }),
   /** Plugin-owned data; `kind` is namespaced by the plugin id. Not model-visible. */

@@ -27,8 +27,10 @@ yield * agent.cancel(sessionId);
    session has none.
 3. Each step: `step-start`; a `RequestDraft` with the base section and an
    environment section (cwd, date, platform, session id, and the `cli` command
-   when configured; source `agent`), `Tools.list`, and
-   `deriveMessages(branch)`; `AgentRequestHook`; the `request` event with
+   when configured; source `agent`), `Tools.list`, the turn's branch and
+   `deriveMessages(branch)`, and `append`; `AgentRequestHook`, whose handlers
+   change what the model sees by appending events with `append` (a
+   `compaction`, whose `usage` the turn's then includes); the `request` event with
    per-section and per-tool `contributions`, the `HostControl.composition` id, and
    `system`/`tools` only when they differ from `requestState(branch)`. The request
    actually sent is `rebuildRequest` over the branch ending at that event, so the
@@ -52,7 +54,9 @@ with an error result (so the next request stays valid), then `step-end` and
 
 - **Explicit parents.** After `turn-start`, every append names the previous event
   as its parent, so a `checkout` during a turn cannot splice the turn into another
-  branch.
+  branch. Request handlers append through the turn too (`RequestDraft.append`),
+  so their events chain the same way, and one appended before a later handler
+  fails or the turn is cancelled stays on the turn's branch.
 - **Plugin-owned turns.** Turns are forked into the plugin's scope. `prompt` awaits
   the turn, but interrupting the caller does not cancel it; only `cancel` does
   (abort the signal, then interrupt), and it returns after `turn-end` is logged.

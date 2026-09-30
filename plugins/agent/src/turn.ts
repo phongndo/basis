@@ -197,7 +197,19 @@ export function runTurn(services: TurnServices, settings: TurnSettings, input: T
           environmentSection(source, { cwd, sessionId, ...(settings.cli === undefined ? {} : { cli: settings.cli }) }),
         ],
         tools: listed,
+        branch,
         history: deriveMessages(branch),
+        // Through the turn's own append, so the event chains after the turn's last one and the turn continues from it.
+        append: (data) =>
+          Effect.uninterruptible(
+            append(data).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  if (data.type === "compaction" && data.usage !== undefined) state.usage = addUsage(state.usage, data.usage);
+                }),
+              ),
+            ),
+          ),
       };
       const plan = yield* hooks
         .invoke(AgentRequestHook, draft, (final): Effect.Effect<RequestPlan> =>
