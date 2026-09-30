@@ -1,5 +1,5 @@
 import { batch, createMemo, createSignal } from "solid-js";
-import type { AuthType, ModelInfo, ProviderInfo, ThinkingLevel } from "@lemma/contracts";
+import type { AuthType, CustomProviderSpec, ModelInfo, ProviderInfo, ThinkingLevel } from "@lemma/contracts";
 import { load, loadJson, save } from "../lib/storage.ts";
 import { DEFAULT_THINKING, clampThinking, resolveModel } from "../model/prefs.ts";
 import { Client, Models, Notify } from "../ui/contracts.ts";
@@ -53,6 +53,19 @@ export default defineUiPlugin({
       }),
     );
 
+    /**
+     * Waits until the host lists a provider as `listed` wants, after a change
+     * saved to the llm plugin's config (its reload may finish after the reply).
+     */
+    const settle = async (id: string, listed: (provider: ProviderInfo | undefined) => boolean) => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await refresh();
+        const found = providers().find((provider) => provider.id === id);
+        if (listed(found)) return found;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      return undefined;
+    };
     return {
       models: {
         providers,
@@ -121,6 +134,20 @@ export default defineUiPlugin({
           } catch (error) {
             notify.report(error, "Logout failed");
           }
+        },
+        addCustom: async (spec: CustomProviderSpec) => {
+          const id = await host.llm.addCustom(spec);
+          const provider = await settle(id, (found) => found !== undefined);
+          if (provider === undefined) throw new Error(`The host did not list ${spec.name} after saving it`);
+          return provider;
+        },
+        removeCustom: async (provider: ProviderInfo) => {
+          await host.llm.removeCustom(provider.id);
+          await settle(provider.id, (found) => found === undefined);
+        },
+        setLogo: async (provider: ProviderInfo, svg: string | undefined) => {
+          await host.llm.setLogo(provider.id, svg);
+          await settle(provider.id, (found) => found?.logo === svg);
         },
         refresh,
       },

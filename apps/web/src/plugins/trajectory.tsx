@@ -1,5 +1,6 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import {
   RECORD_KIND_LABEL,
   contentText,
@@ -18,11 +19,12 @@ import {
 } from "@lemma/contracts";
 import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest } from "@lemma/contracts";
 import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
-import { CopyIcon, TrajectoryIcon, XIcon } from "../components/icons.tsx";
-import { Markdown } from "../components/markdown.tsx";
-import { Notify, Sessions, Slots, Views } from "../ui/contracts.ts";
+import { Notify, Sessions, Slots, ToolViews, TrajectoryActions, TrajectoryTabs, Views } from "../ui/contracts.ts";
 import type { NotifyService, SessionsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import type { SlotsService } from "../ui/slots.ts";
+import { CopyIcon, Markdown, TrajectoryIcon, XIcon } from "../ui/parts.tsx";
+import { copyText } from "../lib/clipboard.ts";
 
 /**
  * The Trajectory view, modeled on Chrome DevTools' Network panel and on
@@ -35,10 +37,13 @@ import { defineUiPlugin } from "../ui/define.ts";
 interface TrajectoryDeps {
   readonly sessions: SessionsService;
   readonly notify: NotifyService;
+  readonly slots: SlotsService;
 }
 
 /** The view and its state (selection, filters, zoom), one per plugin instance. */
 function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
+  /** The table's rows by record id, for bringing one into view from the overview. */
+  const rowElements = new Map<string, HTMLTableRowElement>();
   // ------------------------------------------------------------------ state
 
   type Selection = { readonly type: "record"; readonly id: string } | { readonly type: "request"; readonly eventId: string };
@@ -85,11 +90,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
   const callsOf = (record: AssistantRecord) => record.message.content.flatMap((part) => (part.type === "toolCall" ? [part.name] : []));
 
   const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      deps.notify.report(error, "Could not copy");
-    }
+    if (!(await copyText(text))) deps.notify.report(new Error("The clipboard refused the text"), "Could not copy");
   };
 
   /** Current time while a turn runs, so running bars grow. */
@@ -395,7 +396,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
                   }}
                   onClick={() => {
                     select({ type: "record", id: span.record.id });
-                    document.getElementById(`trj-row-${span.record.id}`)?.scrollIntoView({ block: "nearest" });
+                    rowElements.get(span.record.id)?.scrollIntoView({ block: "nearest" });
                   }}
                 />
               );
@@ -643,7 +644,11 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
                     const usage = assistant?.message.usage;
                     return (
                       <tr
-                        id={`trj-row-${r.id}`}
+                        ref={(element) => {
+                          rowElements.set(r.id, element);
+                          onCleanup(() => rowElements.get(r.id) === element && rowElements.delete(r.id));
+                        }}
+                        data-record={r.id}
                         tabindex="-1"
                         data-kind={r.kind}
                         data-error={recordFailed(r)}
@@ -752,6 +757,10 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
       // Records of model calls and tool runs are log events; the next prompt can continue from one of them.
       if (record.kind === "assistant" || record.kind === "tool") {
         out.push({ label: "Branch from here", run: () => void deps.sessions.checkout(record.id) });
+      }
+      // Then what plugins add.
+      for (const action of deps.slots.list(TrajectoryActions)) {
+        if (action.when?.(record) ?? true) out.push({ label: action.label, run: () => action.run(record) });
       }
       return out;
     };
@@ -1067,13 +1076,15 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
               <Sources request={request} />
             </Section>
             <button
-              class="trj-link"
+              class="icon-button"
+              aria-label="Copy exact request"
+              data-tip="Copy exact request"
               onClick={() => {
                 const rebuilt = rebuildRequest(deps.sessions.branch(), request.eventId);
                 if (rebuilt !== undefined) void copy(json(rebuilt));
               }}
             >
-              <CopyIcon /> Copy exact request
+              <CopyIcon />
             </button>
           </>
         ),
@@ -1258,6 +1269,45 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     }
   }
 
+  /** A tool's own view (its `ToolViews` body), then the tabs plugins add for the record. */
+  function addedTabs(record: LedgerRecord): Tab[] {
+    const view = record.kind === "tool" ? deps.slots.get(ToolViews, record.run.call.name)?.body : undefined;
+    const tool: Tab[] =
+      view === undefined || record.kind !== "tool"
+        ? []
+        : [
+            {
+              id: "view",
+              label: "View",
+              render: () => {
+                const run = record.run;
+                const result = run.result;
+                return (
+                  <Dynamic
+                    component={view}
+                    id={run.call.id}
+                    name={run.call.name}
+                    args={run.call.arguments}
+                    result={
+                      result === undefined
+                        ? undefined
+                        : { eventId: run.eventId ?? record.id, content: result.content, isError: result.isError, details: run.details }
+                    }
+                    state={result === undefined ? "interrupted" : result.isError ? "error" : "ok"}
+                  />
+                );
+              },
+            },
+          ];
+    return [
+      ...tool,
+      ...deps.slots
+        .list(TrajectoryTabs)
+        .filter((tab) => tab.when(record))
+        .map((tab): Tab => ({ id: `added:${tab.id}`, label: tab.label, render: () => <Dynamic component={tab.component} record={record} /> })),
+    ];
+  }
+
   function Tabs(props: { tabs: readonly Tab[]; lead?: JSX.Element; title?: JSX.Element }) {
     const active = () => props.tabs.find((candidate) => candidate.id === tab()) ?? props.tabs[0];
     return (
@@ -1316,7 +1366,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
           kind: record.kind as LedgerRecord["kind"] | "request",
           name: record.kind === "tool" ? record.run.call.name : "",
           where,
-          tabs: recordTabs(record, previousOf(recordRequest(record)?.eventId)),
+          tabs: [...recordTabs(record, previousOf(recordRequest(record)?.eventId)), ...addedTabs(record)],
         };
       }
       const assistant = props.records.find(
@@ -1395,19 +1445,23 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
         return;
       }
       if (event.key === "Escape") {
+        // Handled here when it closes something; otherwise it is the app's (stopping a turn, say).
         if (menu() !== undefined) setMenu(undefined);
         else if (typing && query() !== "") setQuery("");
-        else select(undefined);
+        else if (selection() !== undefined) select(undefined);
+        else return;
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (typing || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
       event.preventDefault();
-      const rows = [...root.querySelectorAll<HTMLTableRowElement>("tbody tr[id^='trj-row-']")];
+      const rows = [...root.querySelectorAll<HTMLTableRowElement>("tbody tr[data-record]")];
       const s = selection();
-      const current = rows.findIndex((row) => s?.type === "record" && row.id === `trj-row-${s.id}`);
+      const current = rows.findIndex((row) => s?.type === "record" && row.dataset.record === s.id);
       const next = rows[Math.min(rows.length - 1, Math.max(0, current + (event.key === "ArrowDown" ? 1 : -1)))];
       if (next === undefined) return;
-      select({ type: "record", id: next.id.slice("trj-row-".length) }, tab());
+      select({ type: "record", id: next.dataset.record! }, tab());
       next.scrollIntoView({ block: "nearest" });
     };
 
@@ -1442,6 +1496,8 @@ export default defineUiPlugin({
   id: "trajectory",
   requires: { sessions: Sessions, notify: Notify, slots: Slots },
   setup: ({ sessions, notify, slots }, plugin) => {
-    plugin.onCleanup(slots.add(Views, { id: "trajectory", title: "Trajectory", icon: TrajectoryIcon, component: createTrajectory({ sessions, notify }) }));
+    plugin.onCleanup(
+      slots.add(Views, { id: "trajectory", title: "Trajectory", icon: TrajectoryIcon, component: createTrajectory({ sessions, notify, slots }) }),
+    );
   },
 });

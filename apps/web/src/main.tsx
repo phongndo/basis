@@ -1,13 +1,14 @@
 import { connect, describeError } from "@lemma/client";
 import type { Host } from "@lemma/client";
+import { preloadPaint } from "./lib/paint.ts";
 import { takeToken } from "./lib/token.ts";
-import { preloadAppearance } from "./plugins/appearance.tsx";
 import { bundled } from "./plugins/index.ts";
 import { boot } from "./ui/boot.tsx";
 import "./styles.css";
 
 const start = async () => {
-  preloadAppearance();
+  // The last look any plugin painted, so a dark theme does not flash light while the plugins start.
+  preloadPaint();
   const token = takeToken();
   const params = new URLSearchParams(location.search);
   let host: Host;

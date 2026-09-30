@@ -4,16 +4,19 @@ import html from "solid-js/html";
 import * as store from "solid-js/store";
 import * as web from "solid-js/web";
 import { definePlugin, Event, Hook } from "@lemma/core";
-import { ConfigForm } from "../components/config-form.tsx";
-import { Dialog } from "../components/dialog.tsx";
-import * as icons from "../components/icons.tsx";
-import { Markdown } from "../components/markdown.tsx";
-import { Popover } from "../components/popover.tsx";
-import { Segmented, SettingRow } from "../components/setting-row.tsx";
-import { Toggle } from "../components/toggle.tsx";
+import { ConfigForm as DefaultConfigForm } from "../components/config-form.tsx";
+import { Dialog as DefaultDialog } from "../components/dialog.tsx";
+import { DefaultIcon, icons as defaultIcons } from "../components/icons.tsx";
+import { Markdown as DefaultMarkdown } from "../components/markdown.tsx";
+import { Popover as DefaultPopover } from "../components/popover.tsx";
+import { ProviderLogo as DefaultProviderLogo } from "../components/provider-logo.tsx";
+import { Segmented as DefaultSegmented, SettingRow as DefaultSettingRow } from "../components/setting-row.tsx";
+import { Toggle as DefaultToggle } from "../components/toggle.tsx";
+import { copyText } from "../lib/clipboard.ts";
 import * as contracts from "./contracts.ts";
 import { defineUiPlugin } from "./define.ts";
-import { defineSlot } from "./slots.ts";
+import * as parts from "./parts.tsx";
+import { DEFAULT_PART_ORDER, definePart, defineSlot } from "./slots.ts";
 
 /**
  * What a UI file's default export receives when it is a function: the page's
@@ -27,13 +30,44 @@ import { defineSlot } from "./slots.ts";
 export const api = {
   defineUiPlugin,
   defineSlot,
+  /** A new part, for a plugin's own replaceable pieces; `parts.partView` draws one. */
+  definePart,
+  /** The order bundled parts are added at: add with a lower one to replace a part. */
+  DEFAULT_PART_ORDER,
   contracts,
   solid,
   web,
   store,
   html,
-  components: { ConfigForm, Dialog, Markdown, Popover, Segmented, SettingRow, Toggle },
-  icons,
+  /** The shared parts, as the bundled plugins draw them: each follows whatever replaces it. */
+  components: {
+    ConfigForm: parts.ConfigForm,
+    Dialog: parts.Dialog,
+    Markdown: parts.Markdown,
+    Popover: parts.Popover,
+    ProviderLogo: parts.ProviderLogo,
+    Segmented: parts.Segmented,
+    SettingRow: parts.SettingRow,
+    Toggle: parts.Toggle,
+  },
+  /** Every part's proxy (icons by name included), and `partView` for a plugin's own parts. */
+  parts,
+  /** Icons by their names, each the `icon` part. */
+  icons: parts,
+  /** The bundled implementations of the shared parts, to wrap or fall back to from a replacement. */
+  defaults: {
+    ConfigForm: DefaultConfigForm,
+    Dialog: DefaultDialog,
+    Icon: DefaultIcon,
+    icons: defaultIcons,
+    Markdown: DefaultMarkdown,
+    Popover: DefaultPopover,
+    ProviderLogo: DefaultProviderLogo,
+    Segmented: DefaultSegmented,
+    SettingRow: DefaultSettingRow,
+    Toggle: DefaultToggle,
+  },
+  copyText,
   /** For plugins written against the kernel directly. */
   core: { definePlugin, Event, Hook },
   /**

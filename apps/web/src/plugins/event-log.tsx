@@ -3,10 +3,10 @@ import type { Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { ConnectionStatus } from "@lemma/client";
 import type { HostEvent } from "@lemma/contracts";
-import { LogIcon, XIcon } from "../components/icons.tsx";
-import { Actions, Client, Dialogs, Layers, Slots } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Dialogs, Layers, Slots } from "../ui/contracts.ts";
 import type { ClientService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { LogIcon, XIcon } from "../ui/parts.tsx";
 
 const DIALOG = "events";
 /** Lines kept, newest last; older ones drop off the top. */
@@ -127,6 +127,8 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
     }),
   );
   const onScroll = () => setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24);
+  // Escape inside the log: clear the filter, then close. Handled on the log itself, which holds focus: a click on a line,
+  // which is not focusable itself, focuses the log.
   const onKey = (event: KeyboardEvent) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
     event.preventDefault();
@@ -135,18 +137,12 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
     else props.close();
   };
   const previous = document.activeElement as HTMLElement | null;
-  onMount(() => {
-    document.addEventListener("keydown", onKey, true);
-    queueMicrotask(() => input.focus());
-  });
-  onCleanup(() => {
-    document.removeEventListener("keydown", onKey, true);
-    previous?.focus?.();
-  });
+  onMount(() => queueMicrotask(() => input.focus()));
+  onCleanup(() => previous?.focus?.());
 
   return (
     <Portal>
-      <div class="log-view" role="dialog" aria-modal="true" aria-label="Event log">
+      <div class="log-view" role="dialog" aria-modal="true" aria-label="Event log" tabindex="-1" onKeyDown={onKey}>
         <header class="log-bar">
           <span class={`log-dot log-dot-${props.client.status().state}`} />
           <span class="log-stream">Host.Events</span>
@@ -273,7 +269,7 @@ export default defineUiPlugin({
     );
     plugin.onCleanup(
       slots.add(Actions, {
-        id: "event-log.open",
+        id: ActionIds.eventLog,
         order: 10,
         title: "Show event log",
         category: "Host",

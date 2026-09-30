@@ -1,8 +1,8 @@
 import { batch, createMemo, createSignal } from "solid-js";
 import { SessionLog, startPrompt } from "@lemma/client";
 import { branchOf } from "@lemma/contracts";
-import type { PromptContent, SessionEvent, SessionInfo, TurnOptions } from "@lemma/contracts";
-import { applyDelta, emptyLive, endTurn, reconcileLive, settleStep } from "../model/live.ts";
+import type { HostEvent, PromptContent, SessionEvent, SessionInfo, TurnOptions } from "@lemma/contracts";
+import { appendOutput, applyDelta, dropOutput, emptyLive, endTurn, reconcileLive, settleStep } from "../model/live.ts";
 import type { LiveState } from "../model/live.ts";
 import { resolveLeaf, trackTurn, upsertSession } from "../model/sessions.ts";
 import { Client, Notify, Sessions } from "../ui/contracts.ts";
@@ -105,13 +105,59 @@ export default defineUiPlugin({
       }),
     );
 
+    // Deltas and tool output arrive many times a frame; they are applied together, once per frame, in order. A hidden
+    // tab gets no frames, so a long queue is applied at once instead.
+    const QUEUE_LIMIT = 256;
+    type Streamed = Extract<HostEvent, { type: "delta" | "tool-output" }>;
+    let deltas: Streamed[] = [];
+    let frame: number | undefined;
+    const flushDeltas = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = undefined;
+      if (deltas.length === 0) return;
+      const pending = deltas;
+      deltas = [];
+      const bySession = new Map<string, typeof pending>();
+      for (const event of pending) {
+        const list = bySession.get(event.sessionId);
+        if (list === undefined) bySession.set(event.sessionId, [event]);
+        else list.push(event);
+      }
+      batch(() => {
+        for (const [sessionId, events] of bySession)
+          updateLive(sessionId, (state) =>
+            events.reduce(
+              (next, event) =>
+                event.type === "delta" ? applyDelta(next, event.turnId, event.stepId, event.event) : appendOutput(next, event.toolCallId, event.chunk),
+              state,
+            ),
+          );
+      });
+    };
+    plugin.onCleanup(() => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    });
+
     plugin.onCleanup(
       client.onEvent((event) => {
+        if (event.type === "delta" || event.type === "tool-output") {
+          deltas.push(event);
+          if (deltas.length >= QUEUE_LIMIT) flushDeltas();
+          else frame ??= requestAnimationFrame(flushDeltas);
+          return;
+        }
+        // Everything else sees the deltas that came before it.
+        flushDeltas();
         switch (event.type) {
           case "session-appended": {
-            if (sessionLog?.sessionId === event.sessionId) sessionLog.apply(event.event);
             const data = event.event.data;
-            if ((data.type === "message" && data.message.role === "assistant" && data.stepId !== undefined) || data.type === "attempt") {
+            // The open session's log settles drafts itself once the event is in its gap-free prefix (`reconcileLive`); settling
+            // here as well would drop a draft whose message is held back behind a gap.
+            if (sessionLog?.sessionId === event.sessionId) sessionLog.apply(event.event);
+            else if (data.type === "message" && data.message.role === "toolResult") {
+              const toolCallId = data.message.toolCallId;
+              updateLive(event.sessionId, (state) => dropOutput(state, toolCallId));
+            } else if ((data.type === "message" && data.message.role === "assistant" && data.stepId !== undefined) || data.type === "attempt") {
               updateLive(event.sessionId, (state) => settleStep(state, data.stepId!));
             }
             return;
@@ -119,9 +165,6 @@ export default defineUiPlugin({
           case "session-changed":
             upsert(event.info);
             if (sessionLog?.sessionId === event.info.id) sessionLog.noteLastSeq(event.info.lastSeq);
-            return;
-          case "delta":
-            updateLive(event.sessionId, (state) => applyDelta(state, event.turnId, event.stepId, event.event));
             return;
           case "turn-started":
             setRunning(trackTurn({ running: running(), ended: endedTurns }, event).running);

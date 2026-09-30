@@ -1,10 +1,10 @@
 import { Show, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { ConnectionStatus } from "@lemma/client";
-import { AlertIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
-import { copyText } from "../components/markdown.tsx";
 import { Client, ComposerNotices, SidebarFooter, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { AlertIcon, CheckIcon, CopyIcon } from "../ui/parts.tsx";
+import { copyText } from "../lib/clipboard.ts";
 
 function ConnectionBadge(props: { status: ConnectionStatus; now: Accessor<number> }) {
   const now = props.now;

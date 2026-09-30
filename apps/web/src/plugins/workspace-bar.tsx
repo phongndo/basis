@@ -1,13 +1,36 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
+import type { JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { GitBranch, WorkspaceStatus } from "@lemma/contracts";
-import { CheckIcon, ChevronDownIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, LaptopIcon, PlusIcon, WorktreeIcon } from "../components/icons.tsx";
-import { Popover } from "../components/popover.tsx";
-import { SettingRow } from "../components/setting-row.tsx";
-import { Toggle } from "../components/toggle.tsx";
-import { Actions, Client, ComposerFooter, Notify, Sessions, SettingsGroups, Slots, Workspace } from "../ui/contracts.ts";
+import {
+  ActionIds,
+  Actions,
+  Client,
+  ComposerFooter,
+  Notify,
+  SectionIds,
+  Sessions,
+  SettingsGroups,
+  Slots,
+  Workspace,
+  WorkspaceBarItems,
+} from "../ui/contracts.ts";
 import type { ClientService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  LaptopIcon,
+  PlusIcon,
+  Popover,
+  SettingRow,
+  Toggle,
+  WorktreeIcon,
+} from "../ui/parts.tsx";
 
 const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
 
@@ -25,25 +48,14 @@ interface Deps {
  * project is only choosable for a new chat.
  */
 function WorkspaceBar(props: { deps: Deps }) {
-  const { workspace } = props.deps;
-  const status = workspace.status;
+  const { workspace, slots } = props.deps;
+  const side = (which: "start" | "end") => slots.list(WorkspaceBarItems).filter((item) => item.side === which);
   return (
     <Show when={workspace.workingDir() !== undefined}>
       <div class="workspace-bar">
-        <ProjectPicker deps={props.deps} />
-        <Show when={status()?.git}>
-          {(git) => (
-            <>
-              <span class="strip-sep" aria-hidden="true" />
-              <ModePicker deps={props.deps} git={git()} />
-            </>
-          )}
-        </Show>
-        <Show when={status()?.exists === false}>
-          <span class="workspace-warning">Folder not found on the host</span>
-        </Show>
+        <For each={side("start")}>{(item) => <Dynamic component={item.component} />}</For>
         <span class="spacer" />
-        <Show when={status()?.git}>{(git) => <BranchPicker deps={props.deps} git={git()} onChanged={workspace.setStatus} />}</Show>
+        <For each={side("end")}>{(item) => <Dynamic component={item.component} />}</For>
       </div>
     </Show>
   );
@@ -138,7 +150,7 @@ function ProjectPicker(props: { deps: Deps }) {
   const isNew = () => sessions.activeId() === undefined;
   const projects = workspace.projects;
   const current = () => workspace.workingDir() ?? "";
-  const addProject = () => slots.get(Actions, "add-project.open");
+  const addProject = () => slots.get(Actions, ActionIds.addProject);
   const label = () => (
     <>
       <FolderIcon />
@@ -398,10 +410,33 @@ export default defineUiPlugin({
   requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (deps, plugin) => {
     plugin.onCleanup(deps.slots.add(ComposerFooter, { id: "workspace-bar", component: () => <WorkspaceBar deps={deps} /> }));
+    // Its own pickers go through the slot other plugins add theirs to.
+    const status = deps.workspace.status;
+    const item = (id: string, order: number, side: "start" | "end", component: () => JSX.Element) =>
+      plugin.onCleanup(deps.slots.add(WorkspaceBarItems, { id, order, side, component }));
+    item("workspace.project", 0, "start", () => <ProjectPicker deps={deps} />);
+    item("workspace.mode", 10, "start", () => (
+      <Show when={status()?.git}>
+        {(git) => (
+          <>
+            <span class="strip-sep" aria-hidden="true" />
+            <ModePicker deps={deps} git={git()} />
+          </>
+        )}
+      </Show>
+    ));
+    item("workspace.missing", 20, "start", () => (
+      <Show when={status()?.exists === false}>
+        <span class="workspace-warning">Folder not found on the host</span>
+      </Show>
+    ));
+    item("workspace.branch", 0, "end", () => (
+      <Show when={status()?.git}>{(git) => <BranchPicker deps={deps} git={git()} onChanged={deps.workspace.setStatus} />}</Show>
+    ));
     plugin.onCleanup(
       deps.slots.add(SettingsGroups, {
         id: "workspace-bar",
-        section: "general",
+        section: SectionIds.general,
         title: "New chats",
         order: 10,
         entries: () => [

@@ -19,7 +19,7 @@ renders whatever fills the `root` slot:
 1. The bundled plugins, listed in [`plugins/index.ts`](src/plugins/index.ts).
 2. UI files in `~/.lemma/ui/` and, for a trusted project, `<project>/.lemma/ui/`:
    `.js`/`.mjs` files load as plugins, `.css` files apply after the app's
-   styles (every color, radius, and width is a `--` token in
+   styles (every color, radius, width, and stacking level is a `--` token in
    [`styles.css`](src/styles.css)).
 3. The `"ui"` rows of `config.jsonc`, which work like `"plugins"` rows do for
    the host: `{ "ui": { "composer": { "enabled": false }, "chat": { "config": { "expandTools": true } } } }`.
@@ -35,8 +35,9 @@ that plugin off unless a row says otherwise.
 Change the rows from the Plugins settings page, an inspector over the host's
 plugins and the web app's: a table to filter (`is:failed kind:web -is:off`)
 and, for the selected plugin, why it is in its state, its wiring (what it
-provides and requires and who is on the other end, the hooks, events, and
-slots it takes part in), its settings form (from its config Schema), and its
+provides and requires and who is on the other end, the hooks and events it
+takes part in, and what it contributes: tools, commands, slot items), its
+settings form (from its config Schema), and its
 recent faults. Or from a shell:
 
 ```sh
@@ -62,16 +63,47 @@ plugins use nothing else.
   new one.
 - **Slots** are places any number of plugins add to: regions of the screen
   (`Root`, `SidebarRegion`, `MainRegion`, `ComposerRegion`, `Layers`, …), where
-  the first item by `order` shows, and lists (`Actions` for the palette and
-  shortcuts, `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews`, …).
-  Take over a region by adding with a lower `order`, or turn its plugin off.
+  the first item by `order` shows, and lists: `Actions` (the palette and
+  shortcuts), `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews` (a
+  tool's summary and body, in the chat and the trajectory), `CodeBlocks` (how
+  fenced code renders: `highlight` and `diagrams` fill it), `PaletteSources`
+  (what the palette searches), `SessionHeader`, `SidebarActions`,
+  `ComposerActions`, `WorkspaceBarItems`, `PluginTabs` (the Plugins page
+  inspector), `TrajectoryTabs` and `TrajectoryActions`. The bundled plugins add
+  their own buttons, tabs, and sources through these same slots. Take over a
+  region by adding with a lower `order`, or turn its plugin off. An item leaves
+  when the plugin that added it stops.
+- **Parts** are the pieces plugins draw with, each a region-like slot: the
+  shared ones (`markdown`, `dialog`, `popover`, `toggle`, `setting-row`,
+  `segmented`, `config-form`, `provider-logo`, and `icon` for every icon, all
+  from the `kit` plugin) and a view's own (`chat.user`, `chat.thinking`,
+  `chat.tool`, `chat.work`, `chat.working`, `chat.turn-footer`,
+  `sidebar.row`, `providers.row`). Replace one
+  everywhere by adding an item with an `order` below `DEFAULT_PART_ORDER`;
+  `api.defaults` holds the bundled implementations to wrap or fall back to.
+
+```js
+// ~/.lemma/ui/quiet-thoughts.js: thoughts as a single muted line, never expanded
+export default ({ defineUiPlugin, contracts: { Slots, ChatThinkingPart }, html }) =>
+  defineUiPlugin({
+    id: "quiet-thoughts",
+    requires: { slots: Slots },
+    setup: ({ slots }, plugin) => {
+      plugin.onCleanup(slots.add(ChatThinkingPart, { id: "quiet", order: 0, component: (props) => html`<p class="muted small">thought for a moment</p>` }));
+    },
+  });
+```
 
 [`defineUiPlugin`](src/ui/define.ts) writes one in plain TypeScript. `setup`
-runs in its own Solid root; release what it adds with `plugin.onCleanup`.
+runs in its own Solid root; release what it adds with `plugin.onCleanup`. A
+plugin can declare its own slots and parts for others (`defineSlot`,
+`definePart`); a name is one slot across the page, so files that use the same
+name share it.
 
 A file needs no build step: its default export may be a function that receives
 [the api](src/ui/api.ts) — the page's Solid, the contracts, `defineUiPlugin`,
-the app's components and icons, and `html`, Solid's JSX without a compiler.
+the parts (`components`, `icons`, `parts`) and their `defaults`, and `html`,
+Solid's JSX without a compiler.
 
 ```js
 // ~/.lemma/ui/tool-count.js

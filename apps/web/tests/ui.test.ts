@@ -5,39 +5,106 @@ import { makeLoader } from "@lemma/core";
 import type { Loader, Plugin } from "@lemma/core";
 import { Slots } from "../src/ui/contracts.ts";
 import { defineUiPlugin } from "../src/ui/define.ts";
-import { createSlots, defineSlot } from "../src/ui/slots.ts";
+import slotsPlugin from "../src/plugins/slots.ts";
+import { defineSlot } from "../src/ui/slots.ts";
+import type { SlotsService } from "../src/ui/slots.ts";
+
+/** Resolves once `ready` holds; slot changes from a plugin starting or stopping arrive asynchronously. */
+const waitFor = async (ready: () => boolean) => {
+  for (let tries = 0; tries < 200 && !ready(); tries++) await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(ready()).toBe(true);
+};
 
 const Items = defineSlot<{ readonly label: string }>("test.items");
 
-describe("slots", () => {
-  it("orders items by order, then by when they were added, and removes them", () => {
-    const slots = createSlots();
-    const removeB = slots.add(Items, { id: "b", label: "B" });
-    slots.add(Items, { id: "a", label: "A", order: -1 });
-    slots.add(Items, { id: "c", label: "C" });
-    expect(slots.list(Items).map((item) => item.id)).toEqual(["a", "b", "c"]);
-    expect(slots.first(Items)?.id).toBe("a");
-    expect(slots.get(Items, "c")?.label).toBe("C");
-    removeB();
-    expect(slots.list(Items).map((item) => item.id)).toEqual(["a", "c"]);
-    expect(slots.list(defineSlot<unknown>("test.empty"))).toEqual([]);
+/** A plugin that adds `items` to `Items` (a UI plugin, as a bundled one would be). */
+const adding = (id: string, items: readonly { readonly id: string; readonly label: string; readonly order?: number }[]) =>
+  defineUiPlugin({
+    id,
+    requires: { slots: Slots },
+    setup: ({ slots }) => {
+      for (const item of items) slots.add(Items, item);
+    },
   });
 
-  it("records who added what, through each plugin's own view", () => {
-    const slots = createSlots();
-    const remove = slots.as("sidebar").add(Items, { id: "a", label: "A" });
-    slots.as("palette").add(Items, { id: "b", label: "B" });
-    slots.add(Items, { id: "c", label: "C" });
-    // One registry: every view lists every item.
-    expect(
-      slots
-        .as("sidebar")
-        .list(Items)
-        .map((item) => item.id),
-    ).toEqual(["a", "b", "c"]);
-    expect(slots.contributions("sidebar")).toEqual([{ slot: "test.items", id: "a" }]);
-    remove();
-    expect(slots.contributions("sidebar")).toEqual([]);
+describe("slots", () => {
+  it("orders items by order, then plugin id, then when they were added; a removal applies at once", async () => {
+    let remove: (() => void) | undefined;
+    const late = defineUiPlugin({
+      id: "late",
+      requires: { slots: Slots },
+      setup: ({ slots }) => {
+        remove = slots.add(Items, { id: "late", label: "L" });
+      },
+    });
+    await run(
+      [
+        slotsPlugin,
+        adding("b", [
+          { id: "b1", label: "B" },
+          { id: "b2", label: "B" },
+        ]),
+        adding("a", [{ id: "first", label: "F", order: -1 }]),
+        late,
+      ],
+      async (loader) => {
+        const slots = await Effect.runPromise(loader.core.run(Slots));
+        expect(slots.list(Items).map((item) => item.id)).toEqual(["first", "b1", "b2", "late"]);
+        expect(slots.first(Items)?.id).toBe("first");
+        expect(slots.get(Items, "b2")?.label).toBe("B");
+        remove!();
+        expect(slots.list(Items).map((item) => item.id)).toEqual(["first", "b1", "b2"]);
+        expect(slots.list(defineSlot<unknown>("test.empty"))).toEqual([]);
+      },
+    );
+  });
+
+  it("attributes each item to its plugin and drops them when it stops, cleanup or not", async () => {
+    await run([slotsPlugin, adding("sidebar", [{ id: "a", label: "A" }]), adding("palette", [{ id: "b", label: "B" }])], async (loader) => {
+      const slots = await Effect.runPromise(loader.core.run(Slots));
+      const snapshot = await Effect.runPromise(loader.core.inspect);
+      expect(snapshot.registries.find((registry) => registry.name === "test.items")?.items).toEqual([
+        { pluginId: "palette", order: 0, key: "b" },
+        { pluginId: "sidebar", order: 0, key: "a" },
+      ]);
+      // `adding` registers no cleanup: the core removes the items with the plugin.
+      await Effect.runPromise(loader.apply({ plugins: { slots: {}, palette: {}, sidebar: { enabled: false } } }));
+      await waitFor(() => slots.list(Items).length === 1);
+      expect(slots.list(Items).map((item) => item.id)).toEqual(["b"]);
+    });
+  });
+
+  it("gives every definition of a name the same slot, as a UI file loaded again defines it again", async () => {
+    const own = (id: string) =>
+      defineUiPlugin({
+        id,
+        requires: { slots: Slots },
+        setup: ({ slots }) => {
+          slots.add(defineSlot<{ readonly label: string }>("test.shared"), { id, label: id });
+        },
+      });
+    await run([slotsPlugin, own("x"), own("y")], async (loader) => {
+      const slots = await Effect.runPromise(loader.core.run(Slots));
+      expect(slots.list(defineSlot("test.shared")).map((item) => item.id)).toEqual(["x", "y"]);
+    });
+  });
+
+  it("ignores an add from a plugin that has stopped", async () => {
+    let captured: SlotsService | undefined;
+    const keeper = defineUiPlugin({
+      id: "keeper",
+      requires: { slots: Slots },
+      setup: ({ slots }) => {
+        captured = slots;
+      },
+    });
+    await run([slotsPlugin, keeper], async (loader) => {
+      const slots = await Effect.runPromise(loader.core.run(Slots));
+      await Effect.runPromise(loader.apply({ plugins: { slots: {}, keeper: { enabled: false } } }));
+      const remove = captured!.add(Items, { id: "late", label: "L" });
+      remove();
+      expect(slots.list(Items)).toEqual([]);
+    });
   });
 });
 
@@ -51,8 +118,6 @@ const counter = defineUiPlugin({
     return { counter: { count, add: () => setCount(count() + 1) } };
   },
 });
-
-const slotsPlugin = defineUiPlugin({ id: "slots", provides: { slots: Slots }, setup: () => ({ slots: createSlots() }) });
 
 /** Runs `plugins` on the kernel the way the boot does, starting with those in `running`, and closes it. */
 const run = async (plugins: readonly Plugin[], body: (loader: Loader) => Promise<void>, running = plugins.map((plugin) => plugin.id)) => {
@@ -90,10 +155,11 @@ describe("defineUiPlugin", () => {
       const slots = await Effect.runPromise(loader.core.run(Slots));
       expect(slots.list(Items).map((item) => item.label)).toEqual(["1"]);
       // What it added is attributed to it, for the plugins inspector.
-      expect(slots.contributions("reader")).toEqual([{ slot: "test.items", id: "reader" }]);
+      const snapshot = await Effect.runPromise(loader.core.inspect);
+      expect(snapshot.registries.find((registry) => registry.name === "test.items")?.items.map((item) => item.pluginId)).toEqual(["reader"]);
       // Turning it off runs its cleanups: its item leaves the slot.
       await Effect.runPromise(loader.apply({ plugins: { counter: {}, slots: {}, reader: { enabled: false } } }));
-      expect(slots.list(Items)).toEqual([]);
+      await waitFor(() => slots.list(Items).length === 0);
     });
   });
 

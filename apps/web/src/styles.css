@@ -31,6 +31,13 @@
   --radius: 8px;
   --radius-sm: 6px;
   --sidebar: 264px;
+  /* Stacking of what covers the page, lowest first. A layer from a UI file slots in between by picking a value. */
+  --z-drawer: 40;
+  --z-screen: 45;
+  --z-dialog: 50;
+  --z-menu: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
   --content: 780px;
   color-scheme: light;
 }
@@ -162,6 +169,30 @@ kbd {
 }
 @media (prefers-reduced-motion: reduce) {
   .spinner,
+  .output-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .output-more[aria-expanded="true"] .icon {
+    transform: rotate(180deg);
+  }
+  /* A running tool's latest output, under its line until the result arrives. */
+  .tool-live {
+    margin: 4px 0 2px 22px;
+    padding: 4px 0 4px 10px;
+    border-left: 2px solid var(--border);
+    font: 11.5px/1.45 var(--font-mono);
+    color: var(--text-3);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .working-time {
+    font-variant-numeric: tabular-nums;
+  }
+  .working-time::before {
+    content: "· ";
+  }
   .pulse {
     animation-duration: 2.4s;
   }
@@ -396,9 +427,16 @@ textarea:focus-visible {
 .resizing .sidebar-rail::after {
   background: var(--border-strong);
 }
-.sidebar-collapsed .sidebar,
+.sidebar-collapsed .sidebar-slot,
 .sidebar-collapsed .sidebar-rail {
   display: none;
+}
+/* The shell's box for the sidebar region: sized, collapsed, and (narrow) a drawer, whatever plugin fills it. */
+.sidebar-slot {
+  width: var(--sidebar);
+  flex: none;
+  display: flex;
+  min-height: 0;
 }
 .main-col {
   flex: 1;
@@ -412,8 +450,8 @@ textarea:focus-visible {
 
 /* ---------------------------------------------------------------- sidebar */
 .sidebar {
-  width: var(--sidebar);
-  flex: none;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-sunk);
@@ -919,23 +957,98 @@ textarea:focus-visible {
   border-top: 1px solid var(--border);
   margin: 1em 0;
 }
-.copy-code {
+/* A fenced code block: the code (or what a renderer made of it) with its tools on hover. */
+.code-block {
+  position: relative;
+  margin: 0.7em 0;
+}
+.md .code-block pre {
+  margin: 0;
+}
+.code-tools {
   position: absolute;
   top: 6px;
   right: 6px;
-  height: 22px;
-  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.code-block:hover .code-tools,
+.code-tools:focus-within {
+  opacity: 1;
+}
+.copy-code,
+.code-toggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: 5px;
   border: 1px solid var(--border);
   background: var(--bg-raised);
   color: var(--text-2);
-  font: 11px var(--font-ui);
-  opacity: 0;
-  transition: opacity 0.1s;
 }
-.md pre:hover .copy-code,
-.copy-code:focus-visible {
-  opacity: 1;
+.copy-code:hover,
+.code-toggle:hover {
+  color: var(--text);
+}
+.copy-code .icon,
+.code-toggle .icon {
+  width: 14px;
+  height: 14px;
+}
+.code-lang {
+  margin-right: 2px;
+  padding: 0 4px;
+  color: var(--text-3);
+  font: 11px var(--font-mono);
+}
+.code-error {
+  padding: 0 4px;
+  color: var(--err);
+  font: 11px var(--font-ui);
+}
+.code-preview {
+  padding: 16px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  overflow-x: auto;
+  text-align: center;
+}
+.code-preview img {
+  max-width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+/* The diagram viewer: the dialog part, grown to the diagram (see `viewerScale`); a larger diagram scrolls inside it. */
+.backdrop:has(.diagram-dialog) {
+  place-items: center;
+  padding: 16px;
+}
+.dialog.diagram-dialog {
+  width: auto;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+}
+.diagram-dialog .dialog-body {
+  overflow: auto;
+}
+.diagram-full {
+  max-width: none;
+  height: auto;
+  margin: auto;
+  cursor: zoom-in;
+}
+/* Highlighted code carries both themes' colors; the page's theme picks one. */
+.shiki span {
+  color: var(--shiki-light);
+}
+:root[data-theme="dark"] .shiki span {
+  color: var(--shiki-dark);
 }
 .streaming > :last-child::after {
   content: "";
@@ -1238,6 +1351,51 @@ textarea:focus-visible {
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
   cursor: default;
+}
+.turn-copy {
+  width: 22px;
+  height: 22px;
+  margin: 0 -6px 0 -4px;
+  color: var(--text-3);
+}
+.turn-copy .icon {
+  width: 14px;
+  height: 14px;
+}
+/* A finished turn's work, folded to one quiet line above the answer. */
+.work {
+  font-size: 13px;
+}
+.work-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 6px 2px 2px;
+  margin-left: -2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  text-align: left;
+}
+.work-head:hover {
+  color: var(--text-2);
+  background: var(--bg-hover);
+}
+.work-label {
+  font-weight: 500;
+}
+.work-failed {
+  color: var(--err);
+}
+.work-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0 4px 14px;
+  margin: 2px 0 6px 5px;
+  border-left: 2px solid var(--border);
 }
 .working {
   display: flex;
@@ -1665,13 +1823,13 @@ textarea:focus-visible {
   border-right: 1px solid var(--trj-grid);
   color: var(--text);
 }
-.trj-table tbody tr[id]:nth-child(even) {
+.trj-table tbody tr[data-record]:nth-child(even) {
   background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
 }
-.trj-table tbody tr[id] {
+.trj-table tbody tr[data-record] {
   cursor: default;
 }
-.trj-table tbody tr[id]:hover {
+.trj-table tbody tr[data-record]:hover {
   background: color-mix(in srgb, var(--trj-select) 55%, transparent);
 }
 .trj-table tbody tr[data-error="true"] td {
@@ -1805,7 +1963,7 @@ textarea:focus-visible {
 /* context menu */
 .trj-menu {
   position: fixed;
-  z-index: 50;
+  z-index: var(--z-menu);
   min-width: 200px;
   padding: 4px 0;
   border-radius: 6px;
@@ -2409,7 +2567,7 @@ button.strip-chip:hover:not(:disabled),
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-dialog);
   display: grid;
   place-items: start center;
   padding: 12vh 16px 16px;
@@ -2503,7 +2661,7 @@ button.strip-chip:hover:not(:disabled),
   --log-conn: #1fa9bf;
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-dialog);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -3127,7 +3285,7 @@ button.strip-chip:hover:not(:disabled),
   position: fixed;
   top: 56px;
   right: 16px;
-  z-index: 60;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3213,18 +3371,18 @@ button.strip-chip:hover:not(:disabled),
   .narrow-only {
     display: inline-grid;
   }
-  .sidebar {
+  .sidebar-slot {
     position: fixed;
     inset: 0 auto 0 0;
-    z-index: 40;
+    z-index: var(--z-drawer);
     transform: translateX(-100%);
     transition: transform 0.16s ease-out;
     box-shadow: var(--shadow-lg);
   }
-  .drawer-open .sidebar {
+  .drawer-open .sidebar-slot {
     transform: none;
   }
-  .sidebar-collapsed .sidebar {
+  .sidebar-collapsed .sidebar-slot {
     display: flex;
   }
   .sidebar-rail {
@@ -3233,7 +3391,7 @@ button.strip-chip:hover:not(:disabled),
   .scrim {
     position: fixed;
     inset: 0;
-    z-index: 39;
+    z-index: calc(var(--z-drawer) - 1);
     background: rgba(0, 0, 0, 0.3);
   }
   .content {
@@ -3256,7 +3414,7 @@ button.strip-chip:hover:not(:disabled),
 /* ---------------------------------------------------------------- menus */
 .popover {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-menu);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   background: var(--bg-raised);
@@ -3429,7 +3587,7 @@ button.strip-chip:hover:not(:disabled),
 /* ---------------------------------------------------------------- tooltip */
 .tooltip {
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-tooltip);
   max-width: 320px;
   padding: 5px 8px;
   border-radius: 7px;
@@ -4191,7 +4349,7 @@ button {
 .settings {
   position: fixed;
   inset: 0;
-  z-index: 45;
+  z-index: var(--z-screen);
   display: flex;
   background: var(--bg);
   animation: fade 0.1s ease-out;

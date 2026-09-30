@@ -1,9 +1,9 @@
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, createUniqueId } from "solid-js";
+import { paint, unpaint } from "../lib/paint.ts";
 import { load, save } from "../lib/storage.ts";
-import { PaletteIcon } from "../components/icons.tsx";
-import { Segmented, SettingRow } from "../components/setting-row.tsx";
 import { SettingsGroups, SettingsSections, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { PaletteIcon, Segmented, SettingRow } from "../ui/parts.tsx";
 
 type Theme = "system" | "light" | "dark";
 /** How wide the conversation runs. */
@@ -23,29 +23,20 @@ const WIDTHS: readonly { value: ContentWidth; label: string }[] = [
 ];
 const CONTENT_WIDTHS: Record<ContentWidth, string | undefined> = { default: undefined, wide: "1040px", full: "none" };
 
-const storedTheme = () => (load(THEME_KEY) as Theme | undefined) ?? "system";
-const storedWidth = () => (load(WIDTH_KEY) as ContentWidth | undefined) ?? "default";
+/** A remembered choice, or the default when absent or not one of `choices` (an old or hand-edited value). */
+const stored = <T extends string>(key: string, choices: readonly { readonly value: T }[], fallback: T): T => {
+  const value = load(key);
+  return choices.find((choice) => choice.value === value)?.value ?? fallback;
+};
+const storedTheme = () => stored<Theme>(THEME_KEY, THEMES, "system");
+const storedWidth = () => stored<ContentWidth>(WIDTH_KEY, WIDTHS, "default");
 const darkQuery = () => window.matchMedia("(prefers-color-scheme: dark)");
 
-const applyTheme = (theme: Theme, prefersDark: boolean) => {
-  document.documentElement.dataset.theme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
-};
-const applyWidth = (width: ContentWidth) => {
-  const value = CONTENT_WIDTHS[width];
-  if (value === undefined) document.documentElement.style.removeProperty("--content");
-  else document.documentElement.style.setProperty("--content", value);
-};
-
-/** Applies the remembered appearance before the plugins start, so a dark theme does not flash light while the page boots. */
-export const preloadAppearance = (): void => {
-  applyTheme(storedTheme(), darkQuery().matches);
-  applyWidth(storedWidth());
-};
-
 /**
- * Theme and conversation width, remembered in this browser and applied to
- * the document as `data-theme` and `--content`. Stylesheets in `~/.lemma/ui`
- * override any other `--` token.
+ * Theme and conversation width, remembered in this browser and painted on the
+ * page (`lib/paint.ts`), which the next load shows before plugins start.
+ * Turned off, the page returns to the system theme. Stylesheets in
+ * `~/.lemma/ui` override any other `--` token.
  */
 export default defineUiPlugin({
   id: "appearance",
@@ -58,9 +49,16 @@ export default defineUiPlugin({
     const onScheme = () => setPrefersDark(dark.matches);
     dark.addEventListener("change", onScheme);
     plugin.onCleanup(() => dark.removeEventListener("change", onScheme));
-    createEffect(() => applyTheme(theme(), prefersDark()));
-    // Left applied when the plugin stops: a replacement starts before the old instance stops, and has already applied its own.
-    createEffect(() => applyWidth(width()));
+    const owner = `appearance-${createUniqueId()}`;
+    createEffect(() => {
+      const content = CONTENT_WIDTHS[width()];
+      paint(
+        { theme: theme() === "system" ? (prefersDark() ? "dark" : "light") : (theme() as "light" | "dark"), ...(content === undefined ? {} : { content }) },
+        owner,
+      );
+    });
+    // A replacement paints before this instance stops; `unpaint` leaves its look alone.
+    plugin.onCleanup(() => unpaint(owner));
 
     plugin.onCleanup(slots.add(SettingsSections, { id: "appearance", order: 10, title: "Appearance", icon: PaletteIcon }));
     plugin.onCleanup(

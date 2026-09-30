@@ -140,14 +140,14 @@ export const highlight = (text: string, matches: readonly number[]): { text: str
   return parts;
 };
 
-export type PaletteMode = "all" | "commands" | "sessions" | "projects";
-
-/** A leading prefix narrows the search, as in editors: `>` commands, `@` sessions, `#` projects. */
-export const PREFIXES: Readonly<Record<string, Exclude<PaletteMode, "all">>> = { ">": "commands", "@": "sessions", "#": "projects" };
-
-export const parseQuery = (raw: string): { readonly mode: PaletteMode; readonly text: string } => {
-  const mode = PREFIXES[raw.charAt(0)];
-  return mode === undefined ? { mode: "all", text: raw } : { mode, text: raw.slice(1) };
+/**
+ * A leading prefix narrows the search to one source, as in editors (`>`
+ * commands, `@` sessions, `#` projects): the longest of `prefixes` the query
+ * starts with, and the text after it.
+ */
+export const parseQuery = (raw: string, prefixes: readonly string[]): { readonly prefix?: string; readonly text: string } => {
+  const prefix = prefixes.filter((candidate) => candidate !== "" && raw.startsWith(candidate)).sort((a, b) => b.length - a.length)[0];
+  return prefix === undefined ? { text: raw } : { prefix, text: raw.slice(prefix.length) };
 };
 
 /** Most recent first, without duplicates, at most `limit`. */

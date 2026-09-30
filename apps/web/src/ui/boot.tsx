@@ -8,10 +8,11 @@ import type { PluginInfo, PluginStatus, ReloadResult, UiComposition, UiFile } fr
 import { Diagnostic, makeLoader, ReloadError } from "@lemma/core";
 import type { Loader, Plugin, PluginSource, ReloadReport } from "@lemma/core";
 import { catalog, faultHistory, faultMessage, withReplacements } from "@lemma/plugin-host/catalog";
-import { createClientPlugin } from "../plugins/client.ts";
+import { createClientPlugin } from "./client.ts";
 import { Notify, Root, Slots, UiPlugins } from "./contracts.ts";
 import type { UiPluginsService } from "./contracts.ts";
 import { defineUiPlugin } from "./define.ts";
+import { SlotsContext } from "./parts.tsx";
 import { createFileLoader } from "./files.ts";
 import { planUi } from "./plan.ts";
 import type { UiPlan } from "./plan.ts";
@@ -99,6 +100,7 @@ export async function boot(options: BootOptions): Promise<void> {
       snapshots: snapshot.plugins,
       hooks: snapshot.hooks,
       events: snapshot.events,
+      registries: snapshot.registries,
       faults: faults.get(),
       enabledIn: safe ? {} : ui.enabledIn,
       configIn: safe ? {} : ui.configIn,
@@ -219,12 +221,17 @@ export async function boot(options: BootOptions): Promise<void> {
   setFiles(ui.files);
   await refresh();
 
+  // Development builds: the running composition for DevTools and the UI check (`scripts/check-ui.ts`).
+  if (import.meta.env.DEV) Object.assign(window, { lemma: { slots, plugins: service, faults, service: serviceOf } });
   render(() => {
     const root = () => slots()?.first(Root);
+    // Parts anywhere on the page find their providers through this.
     return (
-      <Show when={root()} keyed>
-        {(entry) => <Dynamic component={entry.component} />}
-      </Show>
+      <SlotsContext.Provider value={slots}>
+        <Show when={root()} keyed>
+          {(entry) => <Dynamic component={entry.component} />}
+        </Show>
+      </SlotsContext.Provider>
     );
   }, options.element);
   await report(bootProblems);

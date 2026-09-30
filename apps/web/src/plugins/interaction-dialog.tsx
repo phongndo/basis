@@ -1,9 +1,9 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import type { InteractionRequest } from "@lemma/contracts";
-import { Dialog } from "../components/dialog.tsx";
 import { Interactions, Layers, Slots } from "../ui/contracts.ts";
 import type { InteractionsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { Dialog } from "../ui/parts.tsx";
 
 type Of<T extends InteractionRequest["type"]> = Extract<InteractionRequest, { type: T }>;
 

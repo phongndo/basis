@@ -1,0 +1,131 @@
+import type { AssistantItem, Item, TurnView } from "./transcript.ts";
+
+/**
+ * A finished turn as the reader wants it back: the prompt, the work behind
+ * the answer (thinking, tool calls, the text between them, failed attempts)
+ * folded into one entry, and the answer. Pure; items keep their identity
+ * except the last assistant message, which is split into its work and its
+ * answer (the text after its last tool call or thought).
+ */
+
+export type TurnEntry =
+  | { readonly kind: "item"; readonly item: Item; /** Show the item's stop note (the answer's, never a split-off part's). */ readonly note: boolean }
+  | {
+      readonly kind: "work";
+      readonly key: string;
+      readonly items: readonly Item[];
+      readonly tools: number;
+      readonly failed: number;
+      readonly duration?: number;
+      /** The turn is still running: these are its earlier steps, not all of its work. */
+      readonly live?: boolean;
+    };
+
+/**
+ * An entry's key, the same while the turn runs and after it ends: a fold makes
+ * new entry objects each time, so a view keys what it shows by this.
+ */
+export const entryKey = (entry: TurnEntry): string => (entry.kind === "work" ? entry.key : entry.item.id);
+
+/**
+ * The turn's answer as markdown source: the text its last assistant message
+ * ends with, after its last tool call or thought (what a folded turn shows
+ * below the fold). Empty when that message ends in a tool call.
+ */
+export const answerText = (turn: TurnView): string => {
+  let last = turn.items.length - 1;
+  while (last >= 0 && turn.items[last]!.kind !== "assistant") last--;
+  if (last === -1) return "";
+  const blocks = (turn.items[last] as AssistantItem).blocks;
+  let split = blocks.length;
+  while (split > 0 && blocks[split - 1]!.kind === "text") split--;
+  return blocks
+    .slice(split)
+    .map((block) => (block.kind === "text" ? block.text.trim() : ""))
+    .filter(Boolean)
+    .join("\n\n");
+};
+
+const tally = (items: readonly Item[]) => {
+  let tools = 0;
+  let failed = 0;
+  for (const item of items) {
+    if (item.kind === "orphan-result") {
+      tools++;
+      if (item.message.isError) failed++;
+    } else if (item.kind === "assistant" || item.kind === "attempt") {
+      for (const block of item.blocks) {
+        if (block.kind !== "tool") continue;
+        tools++;
+        if (block.result?.isError) failed++;
+      }
+    }
+  }
+  return { tools, failed };
+};
+
+/**
+ * A running turn with its earlier steps folded, keeping the last `keep`
+ * steps in view; undefined when it has no more than that, or has ended. The
+ * fold has the finished turn's key, so opening it survives the turn ending.
+ */
+export const foldRunning = (turn: TurnView, keep = 2): readonly TurnEntry[] | undefined => {
+  if (turn.end !== undefined) return undefined;
+  const steps = turn.items.filter((item) => item.kind !== "user" && item.kind !== "compaction");
+  if (steps.length <= keep) return undefined;
+  const earlier = new Set<Item>(steps.slice(0, -keep));
+  const entries: TurnEntry[] = [];
+  for (const item of turn.items) {
+    if (!earlier.has(item)) entries.push({ kind: "item", item, note: true });
+    else if (item === steps[0]) entries.push({ kind: "work", key: `${turn.key}:work`, items: [...earlier], ...tally([...earlier]), live: true });
+  }
+  return entries;
+};
+
+/** The folded entries of `turn`, or undefined to show it as it is: still running, or no tool calls or failed attempts to fold. */
+export const foldTurn = (turn: TurnView): readonly TurnEntry[] | undefined => {
+  if (turn.end === undefined) return undefined;
+  let last = turn.items.length - 1;
+  while (last >= 0 && turn.items[last]!.kind !== "assistant") last--;
+  const final = last === -1 ? undefined : (turn.items[last] as AssistantItem);
+  let split = final?.blocks.length ?? 0;
+  while (split > 0 && final!.blocks[split - 1]!.kind === "text") split--;
+  const work: Item[] = [];
+  let tools = 0;
+  let failed = 0;
+  let foldable = false;
+  const entries: TurnEntry[] = [];
+  let workAt = -1;
+  turn.items.forEach((item, index) => {
+    if (item.kind === "user" || item.kind === "compaction") return void entries.push({ kind: "item", item, note: true });
+    if (workAt === -1) workAt = entries.length;
+    if (item.kind !== "assistant") {
+      foldable = true;
+      if (item.kind === "orphan-result") {
+        tools++;
+        if (item.message.isError) failed++;
+      }
+      return void work.push(item);
+    }
+    const blocks = index === last ? item.blocks.slice(0, split) : item.blocks;
+    for (const block of blocks)
+      if (block.kind === "tool") {
+        foldable = true;
+        tools++;
+        if (block.result?.isError) failed++;
+      }
+    if (index !== last) work.push(item);
+    else if (blocks.length > 0) work.push({ ...item, blocks });
+  });
+  if (!foldable) return undefined;
+  entries.splice(workAt, 0, {
+    kind: "work",
+    key: `${turn.key}:work`,
+    items: work,
+    tools,
+    failed,
+    ...(turn.endedAt === undefined ? {} : { duration: turn.endedAt - turn.startedAt }),
+  });
+  if (final !== undefined) entries.push({ kind: "item", item: split === 0 ? final : { ...final, blocks: final.blocks.slice(split) }, note: true });
+  return entries;
+};

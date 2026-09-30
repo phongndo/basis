@@ -1,4 +1,7 @@
-import type { JSX } from "solid-js";
+import type { Component, JSX } from "solid-js";
+import { splitProps } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import type { IconName, IconProps } from "../ui/contracts.ts";
 
 /** Small stroke icons (16px grid), inheriting `currentColor`. */
 const Icon = (props: { children: JSX.Element; size?: number; class?: string }) => (
@@ -68,6 +71,11 @@ export const CopyIcon = () => (
   <Icon>
     <rect x="5.5" y="5.5" width="7" height="7" rx="1.5" />
     <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" />
+  </Icon>
+);
+export const CodeIcon = () => (
+  <Icon>
+    <path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />
   </Icon>
 );
 export const ImageIcon = () => (
@@ -233,3 +241,50 @@ export const ArrowLeftIcon = () => (
     <path d="M13 8H3.5M7.5 4L3.5 8l4 4" />
   </Icon>
 );
+
+/** The default icons by name. */
+export const icons: Readonly<Record<IconName, Component<{ class?: string; filled?: boolean }>>> = {
+  plus: PlusIcon,
+  stop: StopIcon,
+  send: SendIcon,
+  chevron: ChevronIcon,
+  "chevron-down": ChevronDownIcon,
+  check: CheckIcon,
+  x: XIcon,
+  key: KeyIcon,
+  puzzle: PuzzleIcon,
+  copy: CopyIcon,
+  code: CodeIcon,
+  image: ImageIcon,
+  alert: AlertIcon,
+  sidebar: SidebarIcon,
+  menu: MenuIcon,
+  log: LogIcon,
+  refresh: RefreshIcon,
+  external: ExternalIcon,
+  folder: FolderIcon,
+  filter: FilterIcon,
+  search: SearchIcon,
+  "folder-plus": FolderPlusIcon,
+  "pen-square": PenSquareIcon,
+  gear: GearIcon,
+  "git-branch": GitBranchIcon,
+  worktree: WorktreeIcon,
+  laptop: LaptopIcon,
+  star: StarIcon,
+  more: MoreIcon,
+  brain: BrainIcon,
+  chat: ChatIcon,
+  trajectory: TrajectoryIcon,
+  command: CommandIcon,
+  sliders: SlidersIcon,
+  palette: PaletteIcon,
+  "arrow-left": ArrowLeftIcon,
+  spinner: Spinner,
+};
+
+/** The default `icon` part. */
+export const DefaultIcon = (props: IconProps) => {
+  const [, rest] = splitProps(props, ["name"]);
+  return <Dynamic component={icons[props.name]} {...rest} />;
+};

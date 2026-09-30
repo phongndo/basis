@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import type { Schema } from "effect";
 import { createRoot } from "solid-js";
-import { definePlugin } from "@lemma/core";
+import { definePlugin, PluginContext } from "@lemma/core";
 import type { Capability, Plugin } from "@lemma/core";
 import { Slots } from "./contracts.ts";
 import type { SlotsService } from "./slots.ts";
@@ -50,11 +50,11 @@ export function defineUiPlugin<const Requires extends Capabilities = {}, const P
     Layer.scopedContext(
       Effect.gen(function* () {
         const use: Record<string, unknown> = {};
+        const owner = yield* PluginContext;
         for (const [name, tag] of requires) {
           const service: unknown = yield* tag;
-          // Its own view of the registry, so what it adds is attributed to it.
-          use[name] =
-            tag.key === Slots.key && typeof (service as Partial<SlotsService>).as === "function" ? (service as SlotsService).as(definition.id) : service;
+          // Its own view of the slots, so what it adds is its own: attributed to it, and gone when it stops.
+          use[name] = tag.key === Slots.key && typeof (service as Partial<SlotsService>).as === "function" ? (service as SlotsService).as(owner) : service;
         }
         const cleanups: (() => void)[] = [];
         const stop = () => {

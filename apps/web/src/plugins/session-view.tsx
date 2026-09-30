@@ -1,12 +1,14 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import type { JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { tildePath } from "../model/format.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import { CopyIcon, PenSquareIcon, SidebarIcon, Spinner, StopIcon } from "../components/icons.tsx";
-import { Actions, Client, ComposerRegion, Layout, MainRegion, Notify, Sessions, Slots, Views } from "../ui/contracts.ts";
+import { Actions, Client, ComposerRegion, Layout, MainRegion, Notify, SessionHeader, Sessions, Slots, Views } from "../ui/contracts.ts";
 import type { Action } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem } from "../ui/slots.ts";
+import { CopyIcon, PenSquareIcon, SidebarIcon, Spinner, StopIcon } from "../ui/parts.tsx";
+import { copyText } from "../lib/clipboard.ts";
 
 /**
  * The main area for one session: a header, the chosen view (chat,
@@ -84,9 +86,8 @@ export default defineUiPlugin({
         run: () => {
           const id = sessions.activeId();
           if (id === undefined) return;
-          void navigator.clipboard.writeText(id).then(
-            () => notify.toast({ level: "info", message: `Copied ${id}` }),
-            () => notify.toast({ level: "error", message: "Could not copy to the clipboard" }),
+          void copyText(id).then((ok) =>
+            ok ? notify.toast({ level: "info", message: `Copied ${id}` }) : notify.toast({ level: "error", message: "Could not copy to the clipboard" }),
           );
         },
       },
@@ -108,48 +109,64 @@ export default defineUiPlugin({
       }
     });
 
-    function Main() {
+    // Its header's items go through the slot other plugins add theirs to.
+    const header = (id: string, order: number, side: "start" | "end", component: () => JSX.Element) =>
+      plugin.onCleanup(slots.add(SessionHeader, { id, order, side, component }));
+    header("session.sidebar-toggle", 0, "start", () => (
+      <button class="icon-button sidebar-toggle" aria-label="Toggle sidebar" data-tip="Toggle sidebar" onClick={() => layout.toggleSidebar()}>
+        <SidebarIcon />
+      </button>
+    ));
+    header("session.title", 10, "start", () => {
       const cwd = () => sessions.active()?.cwd ?? sessions.pendingCwd() ?? client.info()?.cwd;
+      return (
+        <div class="main-title">
+          <h1>{sessions.activeId() === undefined ? "New chat" : sessionTitle(sessions.active())}</h1>
+          <Show when={cwd()}>
+            {(dir) => (
+              <span class="main-cwd" data-tip={dir()}>
+                {tildePath(dir(), client.info()?.home)}
+              </span>
+            )}
+          </Show>
+        </div>
+      );
+    });
+    header("session.running", 0, "end", () => (
+      <Show when={sessions.busy()}>
+        <span class="busy-chip">
+          <Spinner /> Running
+        </span>
+      </Show>
+    ));
+    header("session.views", 10, "end", () => (
+      <Show when={sessions.activeId() !== undefined && views().length > 1}>
+        <div class="view-tabs" role="tablist" aria-label="Session view">
+          <For each={views()}>
+            {(item) => (
+              <button
+                role="tab"
+                class="view-tab"
+                aria-label={item.title}
+                data-tip={item.title}
+                aria-selected={view()?.id === item.id}
+                onClick={() => setChosen(item.id)}
+              >
+                <Dynamic component={item.icon} />
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+    ));
+
+    function Main() {
       return (
         <main class="main">
           <header class="main-head">
-            <button class="icon-button sidebar-toggle" aria-label="Toggle sidebar" data-tip="Toggle sidebar" onClick={() => layout.toggleSidebar()}>
-              <SidebarIcon />
-            </button>
-            <div class="main-title">
-              <h1>{sessions.activeId() === undefined ? "New chat" : sessionTitle(sessions.active())}</h1>
-              <Show when={cwd()}>
-                {(dir) => (
-                  <span class="main-cwd" data-tip={dir()}>
-                    {tildePath(dir(), client.info()?.home)}
-                  </span>
-                )}
-              </Show>
-            </div>
+            <For each={slots.list(SessionHeader).filter((item) => item.side === "start")}>{(item) => <Dynamic component={item.component} />}</For>
             <span class="spacer" />
-            <Show when={sessions.busy()}>
-              <span class="busy-chip">
-                <Spinner /> Running
-              </span>
-            </Show>
-            <Show when={sessions.activeId() !== undefined && views().length > 1}>
-              <div class="view-tabs" role="tablist" aria-label="Session view">
-                <For each={views()}>
-                  {(item) => (
-                    <button
-                      role="tab"
-                      class="view-tab"
-                      aria-label={item.title}
-                      data-tip={item.title}
-                      aria-selected={view()?.id === item.id}
-                      onClick={() => setChosen(item.id)}
-                    >
-                      <Dynamic component={item.icon} />
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
+            <For each={slots.list(SessionHeader).filter((item) => item.side === "end")}>{(item) => <Dynamic component={item.component} />}</For>
           </header>
           <Show when={view()} keyed fallback={<div class="scroller" />}>
             {(item) => <Dynamic component={item.component} />}

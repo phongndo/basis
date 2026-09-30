@@ -1,7 +1,7 @@
 import { Show, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import { XIcon } from "./icons.tsx";
+import { XIcon } from "../ui/parts.tsx";
 
 /**
  * Modal shell: backdrop, Esc to close, focus moved in on open and restored on

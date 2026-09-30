@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyDelta, emptyLive, endTurn, parseDraftArgs, settleStep, reconcileLive } from "../src/model/live.ts";
+import { OUTPUT_TAIL_CHARS, appendOutput, applyDelta, dropOutput, emptyLive, endTurn, parseDraftArgs, settleStep, reconcileLive } from "../src/model/live.ts";
 import type { LiveState } from "../src/model/live.ts";
 import type { StreamEvent } from "@lemma/contracts";
-import { assistant } from "./fixtures.ts";
+import { assistant, branch, toolResult } from "./fixtures.ts";
 
 const feed = (events: StreamEvent[], state: LiveState = emptyLive, stepId = "s1") => events.reduce((s, event) => applyDelta(s, "t1", stepId, event), state);
 
@@ -70,5 +70,30 @@ describe("reconcileLive", () => {
     expect(ended.drafts).toEqual([]);
     // Nothing to do leaves the state untouched.
     expect(reconcileLive(ended, events as never)).toBe(ended);
+  });
+
+  it("keeps a running tool's output tail until its result is logged or the turn ends", () => {
+    let s = appendOutput(appendOutput(emptyLive, "c1", "a\n"), "c1", "b\n");
+    expect(s.output.get("c1")).toBe("a\nb\n");
+    expect(appendOutput(s, "c1", "x".repeat(OUTPUT_TAIL_CHARS)).output.get("c1")).toHaveLength(OUTPUT_TAIL_CHARS);
+    expect(dropOutput(s, "c1").output.has("c1")).toBe(false);
+    expect(reconcileLive(s, branch(toolResult("c1", "a\nb"))).output.has("c1")).toBe(false);
+    s = appendOutput(s, "c2", "y");
+    expect(endTurn(s, "t1").output.size).toBe(0);
+  });
+
+  it("drops only the ended turn's tool output when the log is replayed", () => {
+    const running = appendOutput(emptyLive, "now", "building\n");
+    const call = (id: string) => ({ type: "toolCall", id, name: "bash", arguments: {} });
+    const log = [
+      { seq: 1, id: "a", parent: null, at: 1, data: { type: "message", message: assistant([call("old")] as never), turnId: "t0", stepId: "s0" } },
+      { seq: 2, id: "b", parent: "a", at: 2, data: { type: "turn-end", turnId: "t0", reason: "cancelled" } },
+      { seq: 3, id: "c", parent: "b", at: 3, data: { type: "message", message: assistant([call("now")] as never), turnId: "t1", stepId: "s1" } },
+    ];
+    // An earlier turn's end leaves the running tool's output alone...
+    expect(reconcileLive(appendOutput(running, "old", "stale"), log as never).output).toEqual(new Map([["now", "building\n"]]));
+    // ...and the running turn's own end drops it.
+    const ended = [...log, { seq: 4, id: "d", parent: "c", at: 4, data: { type: "turn-end", turnId: "t1", reason: "cancelled" } }];
+    expect(reconcileLive(running, ended as never).output.size).toBe(0);
   });
 });

@@ -2,14 +2,11 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import type { ModelInfo, ThinkingLevel } from "@lemma/contracts";
 import { contextSize } from "../model/format.ts";
 import { DEFAULT_THINKING, filterModels, thinkingLevels } from "../model/prefs.ts";
-import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, SearchIcon, StarIcon } from "../components/icons.tsx";
-import { ProviderLogo } from "../components/provider-logo.tsx";
-import { Popover } from "../components/popover.tsx";
-import type { Placement } from "../components/popover.tsx";
-import { SettingRow } from "../components/setting-row.tsx";
-import { Actions, ComposerControls, Models, SettingsGroups, Slots } from "../ui/contracts.ts";
+import { ActionIds, Actions, ComposerControls, Models, SectionIds, SettingsGroups, Slots } from "../ui/contracts.ts";
 import type { ModelsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { BrainIcon, CheckIcon, ChevronDownIcon, ImageIcon, Popover, ProviderLogo, SearchIcon, SettingRow, StarIcon } from "../ui/parts.tsx";
+import type { Placement } from "../ui/contracts.ts";
 
 const LEVEL_LABEL: Record<ThinkingLevel, string> = {
   off: "Off",
@@ -190,7 +187,11 @@ function ModelPicker(props: {
                       setRail(provider);
                     }}
                   >
-                    <ProviderLogo id={provider} name={providerName(provider)} />
+                    <ProviderLogo
+                      id={provider}
+                      name={providerName(provider)}
+                      custom={props.models.providers().find((candidate) => candidate.id === provider)?.logo}
+                    />
                   </button>
                 )}
               </For>
@@ -289,7 +290,7 @@ export default defineUiPlugin({
     const [open, setOpen] = createSignal<() => void>();
     /** Other plugins' actions, run when they exist: focus the prompt, open the providers settings. */
     const runAction = (id: string) => slots.get(Actions, id)?.run();
-    const providers = () => (slots.get(Actions, "providers.open") === undefined ? undefined : () => runAction("providers.open"));
+    const providers = () => (slots.get(Actions, ActionIds.providers) === undefined ? undefined : () => runAction(ActionIds.providers));
     const add = plugin.onCleanup;
     add(
       slots.add(ComposerControls, {
@@ -297,7 +298,7 @@ export default defineUiPlugin({
         component: () => (
           <ModelPicker
             models={models}
-            afterPick={() => runAction("composer.focus")}
+            afterPick={() => runAction(ActionIds.focusComposer)}
             onProviders={providers()}
             controller={(handle) => setOpen(() => handle.open)}
           />
@@ -308,7 +309,7 @@ export default defineUiPlugin({
       slots.add(ComposerControls, {
         id: "thinking",
         order: 10,
-        component: () => <ThinkingPicker models={models} afterPick={() => runAction("composer.focus")} />,
+        component: () => <ThinkingPicker models={models} afterPick={() => runAction(ActionIds.focusComposer)} />,
       }),
     );
     add(
@@ -326,7 +327,7 @@ export default defineUiPlugin({
     add(
       slots.add(SettingsGroups, {
         id: "model-picker",
-        section: "general",
+        section: SectionIds.general,
         title: "New chats",
         entries: () => [
           {

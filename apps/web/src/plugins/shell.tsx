@@ -3,7 +3,7 @@ import { Dynamic } from "solid-js/web";
 import { load, save } from "../lib/storage.ts";
 import { Actions, Layers, Layout, MainRegion, Root, SidebarRegion, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
-import { SidebarIcon } from "../components/icons.tsx";
+import { SidebarIcon } from "../ui/parts.tsx";
 
 const WIDTH_KEY = "lemma.sidebar.width";
 const COLLAPSED_KEY = "lemma.sidebar.collapsed";
@@ -108,7 +108,10 @@ export default defineUiPlugin({
           <Show when={sidebar()} keyed>
             {(region) => (
               <>
-                <Dynamic component={region.component} onPick={closeDrawer} />
+                {/* The shell owns the sidebar's box (width, collapse, drawer); whatever fills the region only fills it. */}
+                <div class="sidebar-slot">
+                  <Dynamic component={region.component} onPick={closeDrawer} />
+                </div>
                 <div
                   class="sidebar-rail"
                   role="separator"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderInfo } from "@lemma/contracts";
-import { customProviderEntry, customProviderProblem, logoProblem, logoSource, providerGroups } from "../src/model/providers.ts";
+import { customProviderProblem, customProviderSpec, logoProblem, logoSource, providerGroups } from "../src/model/providers.ts";
 
 const key = { type: "api_key", name: "API key", interactive: true } as const;
 const oauth = { type: "oauth", name: "Sign in", interactive: true } as const;
@@ -39,7 +39,7 @@ describe("providerGroups", () => {
   });
 });
 
-describe("customProviderEntry", () => {
+describe("customProviderSpec", () => {
   const draft = {
     name: "Ollama (local)",
     baseUrl: "http://localhost:11434/v1/",
@@ -48,18 +48,14 @@ describe("customProviderEntry", () => {
     hasKey: false,
   } as const;
 
-  it("makes a config item with a free id and each model once", () => {
-    expect(customProviderEntry(draft, ["ollama-local"])).toEqual({
-      id: "ollama-local-2",
+  it("asks the host for the draft's provider, with each model once; the host picks its id and key variable", () => {
+    expect(customProviderSpec(draft)).toEqual({
       name: "Ollama (local)",
       api: "openai-completions",
-      baseUrl: "http://localhost:11434/v1",
-      models: [{ id: "qwen3:8b" }, { id: "llama3.2" }],
+      baseUrl: "http://localhost:11434/v1/",
+      models: ["qwen3:8b", "llama3.2"],
+      key: false,
     });
-  });
-
-  it("reads a key from an environment variable named after it, never from config", () => {
-    expect(customProviderEntry({ ...draft, name: "Work gateway", hasKey: true }, []).apiKey).toEqual({ env: "WORK_GATEWAY_API_KEY" });
   });
 
   it("says what a draft is missing", () => {

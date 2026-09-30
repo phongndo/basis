@@ -1,5 +1,6 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 import type { JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { PluginStatus, ReloadResult } from "@lemma/contracts";
 import { tildePath } from "../model/format.ts";
 import {
@@ -16,18 +17,30 @@ import {
   waitingOn,
 } from "../model/plugins.ts";
 import type { KindedPlugin, PluginKind } from "../model/plugins.ts";
-import { ConfigForm } from "../components/config-form.tsx";
-import { LogIcon, PuzzleIcon, RefreshIcon, SearchIcon, Spinner, XIcon } from "../components/icons.tsx";
-import { Toggle } from "../components/toggle.tsx";
-import { Actions, Client, HostPlugins, Notify, Sessions, Settings, SettingsGroups, SettingsSections, Slots, UiPlugins } from "../ui/contracts.ts";
-import type { ClientService, PluginsService, SessionsService, UiPluginsService } from "../ui/contracts.ts";
+import {
+  ActionIds,
+  Actions,
+  Client,
+  HostPlugins,
+  Notify,
+  PluginTabs,
+  Sessions,
+  Settings,
+  SettingsGroups,
+  SettingsSections,
+  Slots,
+  UiPlugins,
+} from "../ui/contracts.ts";
+import type { ClientService, PluginTab, PluginsService, SessionsService, UiPluginsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
+import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchIcon, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
 
 const SECTION = "plugins";
 const KIND_LABEL: Readonly<Record<PluginKind, string>> = { host: "host", web: "web app" };
 
-type Tab = "overview" | "wiring" | "settings" | "faults";
+/** A tab's id in the `plugins.tabs` slot. */
+type Tab = string;
 
 interface Selection {
   readonly kind: PluginKind;
@@ -320,12 +333,7 @@ function Wiring(props: { inspector: Inspector; kind: PluginKind; plugin: PluginS
     const index = orders.findIndex((entry) => entry.id === plugin().id && entry.order === order);
     return orders.length > 1 ? `${index + 1} of ${orders.length}` : "only handler";
   };
-  const contributions = createMemo(() => {
-    if (props.kind !== "web") return [];
-    const bySlot = new Map<string, string[]>();
-    for (const { slot, id } of inspector.slots.contributions(plugin().id)) bySlot.set(slot, [...(bySlot.get(slot) ?? []), id]);
-    return [...bySlot];
-  });
+  const contributions = () => plugin().contributes ?? [];
   return (
     <div class="inspector-wiring">
       <section>
@@ -392,23 +400,21 @@ function Wiring(props: { inspector: Inspector; kind: PluginKind; plugin: PluginS
           </ul>
         </Show>
       </section>
-      <Show when={props.kind === "web"}>
-        <section>
-          <h3>Slots</h3>
-          <Show when={contributions().length > 0} fallback={<p class="muted small">It adds nothing to slots.</p>}>
-            <ul>
-              <For each={contributions()}>
-                {([slot, ids]) => (
-                  <li>
-                    <span class="capability">{slot}</span>
-                    <span class="muted"> {ids.join(", ")}</span>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </Show>
-        </section>
-      </Show>
+      <section>
+        <h3>Contributes</h3>
+        <Show when={contributions().length > 0} fallback={<p class="muted small">It contributes to no registry.</p>}>
+          <ul>
+            <For each={contributions()}>
+              {(registry) => (
+                <li>
+                  <span class="capability">{registry.name}</span>
+                  <span class="muted"> {registry.keys?.join(", ") ?? `${registry.items} ${registry.items === 1 ? "item" : "items"}`}</span>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </section>
     </div>
   );
 }
@@ -527,12 +533,15 @@ function Detail(props: { inspector: Inspector; entry: KindedPlugin }) {
   const { inspector } = props;
   const plugin = () => props.entry.plugin;
   const kind = () => props.entry.kind;
-  const tabs = (): readonly { id: Tab; label: string }[] => [
-    { id: "overview", label: "Overview" },
-    { id: "wiring", label: "Wiring" },
-    { id: "settings", label: plugin().configFields?.length ? `Settings ${plugin().configFields!.length}` : "Settings" },
-    { id: "faults", label: plugin().faults?.length ? `Faults ${plugin().faults!.length}` : "Faults" },
-  ];
+  const tabs = () =>
+    inspector.slots.list(PluginTabs).flatMap((tab) => {
+      const label = tab.label(plugin(), kind());
+      return label === undefined ? [] : [{ id: tab.id, label, component: tab.component }];
+    });
+  /** The chosen tab, or the first when it has none for this plugin. */
+  const current = () => tabs().find((tab) => tab.id === inspector.tab()) ?? tabs()[0];
+  // The same tab stays mounted, with its open disclosures and unsaved edits, while the plugin's status refreshes.
+  const component = createMemo(() => current()?.component);
   return (
     <>
       <header class="inspector-detail-head">
@@ -553,8 +562,8 @@ function Detail(props: { inspector: Inspector; entry: KindedPlugin }) {
           {(tab) => (
             <button
               role="tab"
-              aria-selected={inspector.tab() === tab.id}
-              classList={{ active: inspector.tab() === tab.id }}
+              aria-selected={current()?.id === tab.id}
+              classList={{ active: current()?.id === tab.id }}
               onClick={() => inspector.setTab(tab.id)}
             >
               {tab.label}
@@ -563,20 +572,7 @@ function Detail(props: { inspector: Inspector; entry: KindedPlugin }) {
         </For>
       </nav>
       <div class="inspector-tab-body">
-        <Switch>
-          <Match when={inspector.tab() === "overview"}>
-            <Overview inspector={inspector} kind={kind()} plugin={plugin()} />
-          </Match>
-          <Match when={inspector.tab() === "wiring"}>
-            <Wiring inspector={inspector} kind={kind()} plugin={plugin()} />
-          </Match>
-          <Match when={inspector.tab() === "settings"}>
-            <SettingsTab inspector={inspector} kind={kind()} plugin={plugin()} />
-          </Match>
-          <Match when={inspector.tab() === "faults"}>
-            <Faults plugin={plugin()} />
-          </Match>
-        </Switch>
+        <Dynamic component={component()} plugin={plugin()} kind={kind()} />
       </div>
     </>
   );
@@ -600,6 +596,10 @@ function PluginsInspector(props: { inspector: Inspector; filter: () => string; s
     const selection = inspector.selected();
     return selection === undefined ? undefined : entries().find((entry) => entry.kind === selection.kind && entry.plugin.id === selection.id);
   };
+  const selected = createMemo(() => {
+    const entry = current();
+    return entry === undefined ? undefined : `${entry.kind}:${entry.plugin.id}`;
+  });
   let table!: HTMLDivElement;
   // Keep the selected row in view as the selection moves by keys or links.
   createEffect(
@@ -666,8 +666,9 @@ function PluginsInspector(props: { inspector: Inspector; filter: () => string; s
           </For>
         </div>
         <aside class="inspector-detail" aria-label="Plugin details">
-          <Show when={current()} keyed fallback={<Summary inspector={inspector} entries={entries()} />}>
-            {(entry) => <Detail inspector={inspector} entry={entry} />}
+          {/* A new selection starts fresh; a refresh of the selected plugin's status does not. */}
+          <Show when={selected()} keyed fallback={<Summary inspector={inspector} entries={entries()} />}>
+            <Show when={current()}>{(entry) => <Detail inspector={inspector} entry={entry()} />}</Show>
           </Show>
         </aside>
       </div>
@@ -682,7 +683,7 @@ export default defineUiPlugin({
   setup: ({ client, sessions, notify, settings, slots, host, ui }, plugin) => {
     // Survive the list refreshing and the section closing, like the trajectory's selection.
     const [selected, setSelected] = createSignal<Selection>();
-    const [tab, setTab] = createSignal<Tab>("overview");
+    const [tab, setTab] = createSignal<Tab>("plugins.overview");
     const [filter, setFilter] = createSignal("");
     const [confirming, setConfirming] = createSignal<Confirmation>();
     const [busy, setBusy] = createSignal<string>();
@@ -761,6 +762,33 @@ export default defineUiPlugin({
           }
         }),
     };
+    // Its own tabs go through the slot other plugins add theirs to.
+    const addTab = (id: string, order: number, label: PluginTab["label"], component: PluginTab["component"]) =>
+      plugin.onCleanup(slots.add(PluginTabs, { id, order, label, component }));
+    addTab(
+      "plugins.overview",
+      0,
+      () => "Overview",
+      (props) => <Overview inspector={inspector} kind={props.kind} plugin={props.plugin} />,
+    );
+    addTab(
+      "plugins.wiring",
+      10,
+      () => "Wiring",
+      (props) => <Wiring inspector={inspector} kind={props.kind} plugin={props.plugin} />,
+    );
+    addTab(
+      "plugins.settings",
+      20,
+      (target) => (target.configFields?.length ? `Settings ${target.configFields.length}` : "Settings"),
+      (props) => <SettingsTab inspector={inspector} kind={props.kind} plugin={props.plugin} />,
+    );
+    addTab(
+      "plugins.faults",
+      30,
+      (target) => (target.faults?.length ? `Faults ${target.faults.length}` : "Faults"),
+      (props) => <Faults plugin={props.plugin} />,
+    );
     const reload = () =>
       run("reload", async () => {
         try {
@@ -783,7 +811,7 @@ export default defineUiPlugin({
         body: () => <PluginsInspector inspector={inspector} filter={filter} setFilter={setFilter} />,
         actions: () => (
           <>
-            <Show when={slots.get(Actions, "event-log.open")}>
+            <Show when={slots.get(Actions, ActionIds.eventLog)}>
               {(action) => (
                 <button
                   class="icon-button"

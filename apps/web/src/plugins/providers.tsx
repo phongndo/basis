@@ -2,14 +2,11 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, o
 import type { JSX } from "solid-js";
 import { Schema } from "effect";
 import type { AuthType, InteractionRequest, ProviderInfo } from "@lemma/contracts";
-import { CheckIcon, ExternalIcon, FilterIcon, KeyIcon, PlusIcon, SearchIcon, Spinner } from "../components/icons.tsx";
-import { Popover } from "../components/popover.tsx";
-import { ProviderLogo } from "../components/provider-logo.tsx";
 import {
   CUSTOM_APIS,
   logoProblem,
   logoSource,
-  customProviderEntry,
+  customProviderSpec,
   customProviderProblem,
   describeProvider,
   fromEnv,
@@ -19,20 +16,23 @@ import {
 } from "../model/providers.ts";
 import type { AuthFilter, CustomProviderDraft } from "../model/providers.ts";
 import {
+  ActionIds,
   Actions,
   ComposerNotices,
-  HostPlugins,
   Interactions,
   Models,
   Notify,
+  ProviderRowPart,
   Settings,
   SettingsGroups,
   SettingsSections,
   Slots,
   UiPlugins,
 } from "../ui/contracts.ts";
-import type { InteractionsService, ModelsService } from "../ui/contracts.ts";
+import type { InteractionsService, ModelsService, ProviderRowProps } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
+import { CheckIcon, ExternalIcon, FilterIcon, KeyIcon, PlusIcon, Popover, ProviderLogo, ProviderRowView, SearchIcon, Spinner } from "../ui/parts.tsx";
 
 const SECTION = "providers";
 const GROUPS = ["Results", "Connected", "Popular", "All providers"];
@@ -160,7 +160,6 @@ const pickSvg = (use: (svg: string) => void) => {
 
 /** What a custom provider's menus offer besides connecting. */
 interface CustomActions {
-  readonly logos: Readonly<Record<string, string>>;
   readonly changeLogo: (provider: ProviderInfo) => void;
   readonly removeLogo: (provider: ProviderInfo) => void;
   readonly remove: (provider: ProviderInfo) => void;
@@ -184,7 +183,7 @@ function CustomItems(props: { provider: ProviderInfo; custom: CustomActions; clo
     <>
       <div class="menu-sep" />
       {item("Change logo…", () => props.custom.changeLogo(props.provider))}
-      <Show when={props.custom.logos[props.provider.id] !== undefined}>{item("Remove logo", () => props.custom.removeLogo(props.provider))}</Show>
+      <Show when={props.provider.logo !== undefined}>{item("Remove logo", () => props.custom.removeLogo(props.provider))}</Show>
       {item("Remove provider", () => props.custom.remove(props.provider), true)}
     </>
   );
@@ -204,7 +203,7 @@ function ProviderRow(props: { models: ModelsService; interactions: InteractionsS
   const ways = () => [...methods()].sort((a, b) => (a.type === b.type ? 0 : a.type === "oauth" ? -1 : 1));
   return (
     <div class="provider" classList={{ configured: props.provider.configured, asking: question() !== undefined }}>
-      <ProviderLogo id={props.provider.id} name={props.provider.name} custom={props.provider.custom ? props.custom.logos[props.provider.id] : undefined} />
+      <ProviderLogo id={props.provider.id} name={props.provider.name} custom={props.provider.logo} />
       <span class="provider-info">
         <span class="provider-name">{props.provider.name}</span>
         <span class="provider-desc">
@@ -479,9 +478,9 @@ function CustomProviderRow(props: { add: (draft: CustomProviderDraft, key: strin
  * and closes once a provider is connected.
  */
 export const ProvidersConfig = Schema.Struct({
-  logos: Schema.optionalWith(Schema.Record({ key: Schema.String, value: Schema.String }), { default: () => ({}) }).annotations({
-    title: "Custom provider logos",
-    description: "SVG files by provider id, set from the Providers page.",
+  logos: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    title: "Custom provider logos to move",
+    description: "Logos an earlier version kept here, by provider id. They move to their providers (the llm plugin's config) on start.",
   }),
 });
 
@@ -493,11 +492,25 @@ export default defineUiPlugin({
     settings: Settings,
     slots: Slots,
     interactions: Interactions,
-    hostPlugins: HostPlugins,
-    uiPlugins: UiPlugins,
     notify: Notify,
+    uiPlugins: UiPlugins,
   },
-  setup: ({ models, settings, slots, interactions, hostPlugins, uiPlugins, notify }, plugin) => {
+  setup: ({ models, settings, slots, interactions, notify, uiPlugins }, plugin) => {
+    const moving = Object.entries(plugin.config.logos ?? {});
+    let moved = moving.length === 0;
+    createEffect(() => {
+      if (moved || !models.providersLoaded()) return;
+      moved = true;
+      void (async () => {
+        for (const [id, svg] of moving) {
+          const provider = models.providers().find((candidate) => candidate.id === id && candidate.custom);
+          if (provider !== undefined && provider.logo === undefined) await models.setLogo(provider, svg);
+        }
+        // Clearing this plugin's own config restarts it, so it comes last.
+        const self = uiPlugins.list().find((candidate) => candidate.id === plugin.id);
+        if (self !== undefined) await uiPlugins.setConfig(self, { logos: null });
+      })().catch((error) => notify.report(error, "Could not move custom provider logos"));
+    });
     const [welcome, setWelcome] = createSignal(false);
     const [query, setQuery] = createSignal("");
     const [filter, setFilter] = createSignal<AuthFilter>("all");
@@ -528,8 +541,6 @@ export default defineUiPlugin({
     };
     const open = () => settings.open(SECTION);
 
-    // Custom providers are items of the llm plugin's `providers` config.
-    const llmPlugin = () => hostPlugins.list().find((candidate) => candidate.id === "llm");
     /** Keys typed with a new custom provider, answered for it when its login asks. */
     const pendingKeys = new Map<string, string>();
     createEffect(() => {
@@ -541,79 +552,52 @@ export default defineUiPlugin({
         interactions.answer(request.id, { type: "ask", value: key });
       }
     });
-    /** Waits for the host to list (or stop listing) a provider after a config change, which may apply after the reply. */
-    const settle = async (id: string, present: boolean) => {
-      for (let attempt = 0; attempt < 20; attempt++) {
-        await models.refresh();
-        const found = models.providers().find((provider) => provider.id === id);
-        if ((found !== undefined) === present) return found;
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-      return undefined;
-    };
-    /**
-     * Custom logos are this plugin's own config, so changing one restarts the
-     * page's plugin: after the rest of a change is done, never before.
-     */
-    const logos = plugin.config.logos;
-    const setLogo = async (id: string, svg: string | undefined) => {
-      const self = uiPlugins.list().find((candidate) => candidate.id === plugin.id);
-      if (self === undefined) return;
-      const { [id]: _old, ...rest } = logos;
-      const next = svg === undefined ? rest : { ...rest, [id]: svg };
-      await uiPlugins.setConfig(self, { logos: Object.keys(next).length === 0 ? null : next });
-    };
+    const setLogo = (provider: ProviderInfo, svg: string | undefined) => models.setLogo(provider, svg);
     const custom: CustomActions = {
-      logos,
       changeLogo: (provider) =>
         pickSvg((svg) => {
           const problem = logoProblem(svg);
           if (problem !== undefined) notify.toast({ level: "error", message: problem });
-          else setLogo(provider.id, svg).catch((error) => notify.report(error, "Could not save the logo"));
+          else setLogo(provider, svg).catch((error) => notify.report(error, "Could not save the logo"));
         }),
-      removeLogo: (provider) => void setLogo(provider.id, undefined).catch((error) => notify.report(error, "Could not remove the logo")),
+      removeLogo: (provider) => void setLogo(provider, undefined).catch((error) => notify.report(error, "Could not remove the logo")),
       remove: (provider) => void removeCustom(provider),
     };
     const addCustom = async (draft: CustomProviderDraft, key: string, logo: string | undefined): Promise<boolean> => {
-      const llm = llmPlugin();
-      if (llm === undefined) return false;
-      const entry = customProviderEntry(
-        draft,
-        models.providers().map((provider) => provider.id),
-      );
       try {
-        await hostPlugins.edit(llm, { add: { providers: [entry] } });
-        const provider = await settle(entry.id, true);
-        if (provider === undefined) throw new Error(`The host did not list ${entry.name} after saving it`);
+        const provider = await models.addCustom(customProviderSpec(draft));
         if (key !== "") {
-          pendingKeys.set(entry.id, key);
+          pendingKeys.set(provider.id, key);
           await login(provider, "api_key");
         }
-        if (logo !== undefined) await setLogo(entry.id, logo);
+        if (logo !== undefined) await setLogo(provider, logo);
         return true;
       } catch (error) {
-        pendingKeys.delete(entry.id);
-        notify.report(error, `Could not add ${entry.name}`);
+        notify.report(error, `Could not add ${draft.name.trim()}`);
         return false;
       }
     };
     const removeCustom = async (provider: ProviderInfo) => {
-      const llm = llmPlugin();
-      if (llm === undefined) return;
       try {
         // A key it stored goes with it.
         if (provider.configured && !fromEnv(provider.source) && provider.source !== "no key required") await models.logout(provider);
-        await hostPlugins.edit(llm, { remove: { providers: [provider.id] } });
-        await settle(provider.id, false);
-        if (logos[provider.id] !== undefined) await setLogo(provider.id, undefined);
+        await models.removeCustom(provider);
       } catch (error) {
         notify.report(error, `Could not remove ${provider.name}`);
       }
     };
     const groups = createMemo(() => providerGroups(models.providers(), query(), filter()));
-    const row = (provider: ProviderInfo) => () => (
-      <ProviderRow models={models} interactions={interactions} provider={provider} login={(target, type) => void login(target, type)} custom={custom} />
+    // Its rows are a part: its own is the default, and a plugin replaces it everywhere by adding a lower order.
+    plugin.onCleanup(
+      slots.add(ProviderRowPart, {
+        id: "providers.row",
+        order: DEFAULT_PART_ORDER,
+        component: (props: ProviderRowProps) => (
+          <ProviderRow models={models} interactions={interactions} provider={props.provider} login={(_, type) => props.login(type)} custom={custom} />
+        ),
+      }),
     );
+    const row = (provider: ProviderInfo) => () => <ProviderRowView provider={provider} login={(type) => void login(provider, type)} />;
 
     function Search() {
       let input!: HTMLInputElement;
@@ -740,7 +724,7 @@ export default defineUiPlugin({
         // Titled, so it is not merged into the untitled search results.
         title: "Custom",
         entries: () =>
-          llmPlugin() !== undefined && query().trim() === "" && filter() !== "oauth"
+          models.providersLoaded() && query().trim() === "" && filter() !== "oauth"
             ? [{ text: "provider add custom openai compatible ollama gateway", view: () => <CustomProviderRow add={addCustom} /> }]
             : [],
       }),
@@ -764,7 +748,7 @@ export default defineUiPlugin({
     );
     add(
       slots.add(Actions, {
-        id: "providers.open",
+        id: ActionIds.providers,
         order: 5,
         title: "Log in to a provider…",
         category: "Providers",

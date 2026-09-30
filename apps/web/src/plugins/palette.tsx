@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js";
 import type { Component } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import type { CommandInfo, InteractionRequest } from "@lemma/contracts";
@@ -6,13 +6,22 @@ import { formatKeys, shortcut } from "../lib/keys.ts";
 import { load, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { highlight, parseQuery, rank, remember } from "../model/palette.ts";
-import type { PaletteMode, Searchable } from "../model/palette.ts";
+import type { Searchable } from "../model/palette.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import { ChatIcon, CheckIcon, ChevronIcon, CommandIcon, FolderIcon, GitBranchIcon, KeyIcon, PuzzleIcon, RefreshIcon, Spinner } from "../components/icons.tsx";
-import { Actions, Client, Commands, Dialogs, Interactions, Layers, Sessions, Slots, Workspace } from "../ui/contracts.ts";
-import type { Action, ClientService, CommandsService, DialogsService, InteractionsService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Commands, Dialogs, Interactions, Layers, PaletteSources, Sessions, Slots, Workspace } from "../ui/contracts.ts";
+import type {
+  ClientService,
+  CommandsService,
+  DialogsService,
+  InteractionsService,
+  PaletteItem,
+  PaletteSource,
+  SessionsService,
+  WorkspaceService,
+} from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
-import type { SlotItem, SlotsService } from "../ui/slots.ts";
+import type { SlotsService } from "../ui/slots.ts";
+import { ChatIcon, CheckIcon, ChevronIcon, CommandIcon, FolderIcon, GitBranchIcon, KeyIcon, PuzzleIcon, RefreshIcon, Spinner } from "../ui/parts.tsx";
 
 const DIALOG = "palette";
 
@@ -26,23 +35,8 @@ interface Deps {
   readonly slots: SlotsService;
 }
 
-type Kind = "command" | "session" | "project" | "option";
-
-interface Item extends Searchable {
-  readonly kind: Kind;
-  /** Shown before the title, as in `Git: Switch branch…`. */
-  readonly category?: string | undefined;
-  readonly detail?: string | undefined;
-  readonly shortcut?: string | undefined;
-  readonly current?: boolean | undefined;
-  readonly icon?: Component | undefined;
-  /** A plugin's command: runs on the host while the palette shows its questions. */
-  readonly command?: CommandInfo | undefined;
-  /** Asks for more in the palette first (a new session title). */
-  readonly ask?: (() => Asking | undefined) | undefined;
-  /** Anything else: runs after the palette closes. */
-  readonly run?: (() => void) | undefined;
-}
+/** A row: a source's item, or an option of a question (which has nothing to run). */
+type Item = Omit<PaletteItem, "run"> & Searchable & { readonly run?: PaletteItem["run"] };
 
 /** What the palette asks: a host question, or one of its own (renaming a session). */
 type Question =
@@ -93,7 +87,6 @@ const fromInteraction = (request: InteractionRequest): Question => {
         title: request.title,
         options: request.options.map((option) => ({
           key: option.value,
-          kind: "option",
           title: option.label,
           detail: option.description,
           keywords: [option.value, ...(option.description === undefined ? [] : [option.description])],
@@ -107,8 +100,8 @@ const fromInteraction = (request: InteractionRequest): Question => {
 };
 
 const CONFIRM: readonly Item[] = [
-  { key: "yes", kind: "option", title: "Yes" },
-  { key: "no", kind: "option", title: "No" },
+  { key: "yes", title: "Yes" },
+  { key: "no", title: "No" },
 ];
 
 function Highlighted(props: { text: string; matches: readonly number[] }) {
@@ -124,11 +117,11 @@ function Highlighted(props: { text: string; matches: readonly number[] }) {
  * that asks (which branch? what name?) continues here.
  */
 function Palette(props: { deps: Deps }) {
-  const { client, sessions, workspace, commands: hostCommandsService, interactions, dialogs, slots } = props.deps;
+  const { interactions, dialogs, slots } = props.deps;
   const [query, setQuery] = createSignal("");
   const [filter, setFilter] = createSignal("");
   const [active, setActive] = createSignal(0);
-  const [running, setRunning] = createSignal<CommandInfo | undefined>();
+  const [running, setRunning] = createSignal<Item | undefined>();
   const [local, setLocal] = createSignal<Asking | undefined>();
   const [recent, setRecent] = createSignal(loadRecent());
   let input!: HTMLInputElement;
@@ -145,108 +138,42 @@ function Palette(props: { deps: Deps }) {
     const next = remember(recent(), item.key);
     setRecent(next);
     save(RECENT_KEY, JSON.stringify(next));
-    if (item.command !== undefined) return void execute(item.command);
-    if (item.ask !== undefined) return void setLocal(item.ask());
+    if (item.input !== undefined) return void setLocal(askFor(item, item.input()));
+    if (item.keepOpen === true) return void execute(item);
     // Closing puts focus back first, so an item that opens a dialog or focuses the prompt keeps its focus.
     close();
-    queueMicrotask(() => item.run?.());
+    queueMicrotask(() => void item.run?.());
   };
-  const execute = async (command: CommandInfo) => {
-    setRunning(command);
+  /** Runs with the palette open, showing the questions it asks, until it settles. */
+  const execute = async (item: Item) => {
+    setRunning(item);
     setQuery("");
-    const ok = await hostCommandsService.run(command);
-    // This palette may have closed while the command ran; a palette opened since is not its to close.
-    if (disposed || running() !== command) return;
+    const outcome = await Promise.resolve(item.run?.()).catch(() => false);
+    // This palette may have closed while it ran; a palette opened since is not its to close.
+    if (disposed || running() !== item) return;
     setRunning(undefined);
-    if (ok && dialogs.current() === DIALOG) close();
+    if (outcome !== false && dialogs.current() === DIALOG) close();
   };
 
   // ---------------------------------------------------------------- items
 
-  /** An action that asks for a value first asks here; answering runs it. */
-  const askFor = (action: SlotItem<Action>, question: { readonly title: string; readonly placeholder?: string }): Asking => ({
-    id: `input:${action.id}`,
+  /** An item that asks for a value first asks here; answering runs it. */
+  const askFor = (item: Item, question: { readonly title: string; readonly placeholder?: string }): Asking => ({
+    id: `input:${item.key}`,
     question: { type: "ask", title: question.title, placeholder: question.placeholder },
     answer: (value) => {
       setLocal(undefined);
       close();
-      action.run(value);
+      void item.run?.(value);
     },
     dismiss: () => setLocal(undefined),
   });
 
-  const clientCommands = createMemo((): Item[] =>
-    slots
-      .list(Actions)
-      .filter((action) => action.hidden !== true && (action.when?.() ?? true))
-      .map((action) => {
-        const keys = typeof action.keys === "string" ? action.keys : action.keys?.[0];
-        const input = action.input;
-        return {
-          key: `action:${action.id}`,
-          kind: "command",
-          category: action.category,
-          title: action.title,
-          detail: action.detail,
-          keywords: action.keywords,
-          shortcut: keys === undefined ? undefined : formatKeys(keys),
-          icon: action.icon,
-          ...(input === undefined ? { run: () => action.run() } : { ask: () => askFor(action, input()) }),
-        };
-      }),
-  );
-
-  const hostCommands = createMemo((): Item[] =>
-    hostCommandsService.list().map((command) => ({
-      key: `command:${command.id}`,
-      kind: "command",
-      category: command.category,
-      title: command.title,
-      detail: command.description,
-      keywords: [...(command.keywords ?? []), ...(command.category === undefined ? [] : [command.category]), command.id],
-      icon: hostIcon(command),
-      command,
-    })),
-  );
-
-  const commands = createMemo(() => [...clientCommands(), ...hostCommands()]);
-
-  const sessionItems = createMemo((): Item[] =>
-    [...sessions.list()]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .map((session) => ({
-        key: `session:${session.id}`,
-        kind: "session",
-        title: sessionTitle(session),
-        detail: `${basename(session.cwd)} · ${relativeTime(session.updatedAt)}`,
-        keywords: [basename(session.cwd), session.id],
-        current: session.id === sessions.activeId(),
-        icon: ChatIcon,
-        run: () => void sessions.select(session.id),
-      })),
-  );
-
-  const projects = createMemo((): Item[] => {
-    const hostCwd = client.info()?.cwd;
-    return workspace.projects().map((path) => ({
-      key: `project:${path}`,
-      kind: "project",
-      title: basename(path),
-      detail: tildePath(path, client.info()?.home),
-      keywords: [path],
-      icon: FolderIcon,
-      run: () => sessions.newChat(path === hostCwd ? undefined : path),
-    }));
-  });
-
-  const pool = (mode: PaletteMode): Item[] =>
-    mode === "commands"
-      ? commands()
-      : mode === "sessions"
-        ? sessionItems()
-        : mode === "projects"
-          ? projects()
-          : [...commands(), ...sessionItems(), ...projects()];
+  const sources = () => slots.list(PaletteSources);
+  const prefixes = createMemo(() => sources().flatMap((source) => (source.prefix === undefined ? [] : [source.prefix])));
+  /** What a search looks through: every source, or the one whose prefix leads the query. */
+  const pool = (prefix: string | undefined): Item[] =>
+    (prefix === undefined ? sources() : sources().filter((source) => source.prefix === prefix)).flatMap((source) => [...source.items()]);
 
   // ---------------------------------------------------------------- questions
 
@@ -297,39 +224,34 @@ function Palette(props: { deps: Deps }) {
       return rank(options, filter()).map((ranked, index) => ({ type: "item", item: ranked.item, matches: ranked.matches, index }));
     }
     if (running() !== undefined) return [];
-    const { mode, text } = parseQuery(query());
+    const { prefix, text } = parseQuery(query(), prefixes());
     let index = 0;
     const item = (entry: { item: Item; matches: readonly number[] }): Row => ({ type: "item", ...entry, index: index++ });
-    if (text.trim() !== "") return rank(pool(mode), text, recent()).slice(0, RESULTS).map(item);
-    if (mode !== "all") return pool(mode).map((entry) => item({ item: entry, matches: [] }));
-    // Browsing: recent choices, then every command, the latest sessions, and projects.
-    const all = pool("all");
+    if (text.trim() !== "") return rank(pool(prefix), text, recent()).slice(0, RESULTS).map(item);
+    if (prefix !== undefined) return pool(prefix).map((entry) => item({ item: entry, matches: [] }));
+    // Browsing: recent choices, then each source in order (commands, the latest sessions, projects, and what plugins add).
+    const all = pool(undefined);
     const byKey = new Map(all.map((entry) => [entry.key, entry]));
     const recentItems = recent()
       .map((key) => byKey.get(key))
       .filter((entry): entry is Item => entry !== undefined)
       .slice(0, 5);
     const shown = new Set(recentItems.map((entry) => entry.key));
-    // Commands lead without a heading; the others are named so the switch from actions to places is visible.
+    // A source without a heading (commands) leads; the others are named so the switch from actions to places is visible.
     const section = (label: string | undefined, items: readonly Item[]): Row[] =>
       items.length === 0
         ? []
         : [...(label === undefined ? [] : [{ type: "heading" as const, label }]), ...items.map((entry) => item({ item: entry, matches: [] }))];
     return [
       ...section("Recent", recentItems),
-      ...section(
-        undefined,
-        commands().filter((entry) => !shown.has(entry.key)),
-      ),
-      ...section(
-        "Sessions",
-        sessionItems()
-          .filter((entry) => !shown.has(entry.key))
-          .slice(0, SESSIONS_BROWSED),
-      ),
-      ...section(
-        "Projects",
-        projects().filter((entry) => !shown.has(entry.key)),
+      ...sources().flatMap((source) =>
+        section(
+          source.heading,
+          source
+            .items()
+            .filter((entry) => !shown.has(entry.key))
+            .slice(0, source.browse ?? Number.POSITIVE_INFINITY),
+        ),
       ),
     ];
   });
@@ -431,7 +353,9 @@ function Palette(props: { deps: Deps }) {
     const question = asking()?.question;
     return question?.type === "confirm" ? question.detail : undefined;
   };
-  const activeId = () => (items()[active()] === undefined ? undefined : `palette-row-${active()}`);
+  // Unique per instance: the page could show two lists.
+  const listId = `palette-list-${createUniqueId()}`;
+  const activeId = () => (items()[active()] === undefined ? undefined : `${listId}-${active()}`);
 
   return (
     <Portal>
@@ -454,7 +378,7 @@ function Palette(props: { deps: Deps }) {
               type={secret() ? "password" : "text"}
               role="combobox"
               aria-expanded="true"
-              aria-controls="palette-list"
+              aria-controls={listId}
               aria-activedescendant={activeId()}
               aria-label={asking()?.question.title ?? "Search commands, sessions, and projects"}
               autocomplete="off"
@@ -469,7 +393,7 @@ function Palette(props: { deps: Deps }) {
           </div>
           <Show when={confirmDetail()}>{(detail) => <p class="palette-question-detail">{detail()}</p>}</Show>
           <Show when={rows().length > 0}>
-            <div ref={list} id="palette-list" class="palette-list" role="listbox" aria-label="Results">
+            <div ref={list} id={listId} class="palette-list" role="listbox" aria-label="Results">
               <For each={rows()}>
                 {(row) =>
                   row.type === "heading" ? (
@@ -478,7 +402,7 @@ function Palette(props: { deps: Deps }) {
                     </div>
                   ) : (
                     <div
-                      id={`palette-row-${row.index}`}
+                      id={`${listId}-${row.index}`}
                       class="palette-row"
                       role="option"
                       data-index={row.index}
@@ -514,7 +438,7 @@ function Palette(props: { deps: Deps }) {
             </div>
           </Show>
           <Show when={rows().length === 0 && asking() === undefined && running() === undefined}>
-            <div class="palette-empty">Nothing matches “{parseQuery(query()).text.trim()}”</div>
+            <div class="palette-empty">Nothing matches “{parseQuery(query(), prefixes()).text.trim()}”</div>
           </Show>
           <footer class="palette-foot">
             <Show
@@ -538,7 +462,13 @@ function Palette(props: { deps: Deps }) {
                 <kbd>↵</kbd> run
               </span>
               <span>
-                <kbd>&gt;</kbd> commands <kbd>@</kbd> sessions <kbd>#</kbd> projects
+                <For each={sources().filter((source) => source.prefix !== undefined)}>
+                  {(source) => (
+                    <>
+                      <kbd>{source.prefix}</kbd> {source.label}{" "}
+                    </>
+                  )}
+                </For>
               </span>
               <span class="palette-foot-end">
                 <kbd>{shortcut("mod", "K")}</kbd> close
@@ -564,7 +494,77 @@ export default defineUiPlugin({
     slots: Slots,
   },
   setup: (deps, plugin) => {
-    const { dialogs, interactions, slots } = deps;
+    const { client, sessions, workspace, commands, dialogs, interactions, slots } = deps;
+    // Its own sources go through the slot a plugin adds a source to (files, symbols): they are defaults, not built in.
+    const source = (id: string, order: number, value: PaletteSource) => plugin.onCleanup(slots.add(PaletteSources, { id, order, ...value }));
+    source("palette.commands", 0, {
+      label: "commands",
+      prefix: ">",
+      items: () => [
+        ...slots
+          .list(Actions)
+          .filter((action) => action.hidden !== true && (action.when?.() ?? true))
+          .map((action): PaletteItem => {
+            const keys = typeof action.keys === "string" ? action.keys : action.keys?.[0];
+            return {
+              key: `action:${action.id}`,
+              category: action.category,
+              title: action.title,
+              detail: action.detail,
+              keywords: action.keywords,
+              shortcut: keys === undefined ? undefined : formatKeys(keys),
+              icon: action.icon,
+              input: action.input,
+              run: (value) => action.run(value),
+            };
+          }),
+        // The host's commands run with the palette open, which shows the questions they ask.
+        ...commands.list().map((command): PaletteItem => ({
+          key: `command:${command.id}`,
+          category: command.category,
+          title: command.title,
+          detail: command.description,
+          keywords: [...(command.keywords ?? []), ...(command.category === undefined ? [] : [command.category]), command.id],
+          icon: hostIcon(command),
+          keepOpen: true,
+          run: () => commands.run(command),
+        })),
+      ],
+    });
+    source("palette.sessions", 10, {
+      label: "sessions",
+      heading: "Sessions",
+      prefix: "@",
+      browse: SESSIONS_BROWSED,
+      items: () =>
+        [...sessions.list()]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .map((session) => ({
+            key: `session:${session.id}`,
+            title: sessionTitle(session),
+            detail: `${basename(session.cwd)} · ${relativeTime(session.updatedAt)}`,
+            keywords: [basename(session.cwd), session.id],
+            current: session.id === sessions.activeId(),
+            icon: ChatIcon,
+            run: () => void sessions.select(session.id),
+          })),
+    });
+    source("palette.projects", 20, {
+      label: "projects",
+      heading: "Projects",
+      prefix: "#",
+      items: () => {
+        const hostCwd = client.info()?.cwd;
+        return workspace.projects().map((path) => ({
+          key: `project:${path}`,
+          title: basename(path),
+          detail: tildePath(path, client.info()?.home),
+          keywords: [path],
+          icon: FolderIcon,
+          run: () => sessions.newChat(path === hostCwd ? undefined : path),
+        }));
+      },
+    });
     plugin.onCleanup(
       slots.add(Layers, {
         id: DIALOG,
@@ -577,7 +577,7 @@ export default defineUiPlugin({
     );
     plugin.onCleanup(
       slots.add(Actions, {
-        id: "palette.open",
+        id: ActionIds.palette,
         title: "Command palette",
         icon: CommandIcon,
         hidden: true,

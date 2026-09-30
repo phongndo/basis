@@ -14,7 +14,8 @@ export default defineUiPlugin({
   setup: ({ slots, dialogs, interactions }, plugin) => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
-      const modal = dialogs.current() !== undefined || interactions.open().length > 0;
+      // A question some view shows inline (a login on the Providers page) is not a modal; the question dialog's are.
+      const modal = dialogs.current() !== undefined || interactions.open().some((request) => !interactions.claimed(request));
       const inField = typing(event.target);
       for (const action of slots.list(Actions)) {
         if (action.keys === undefined || (modal && !action.global)) continue;

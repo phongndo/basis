@@ -1,9 +1,9 @@
 import { Show } from "solid-js";
 import { tildePath } from "../model/format.ts";
-import { FolderIcon, FolderPlusIcon, XIcon } from "../components/icons.tsx";
-import { Actions, Client, Sessions, Settings, SettingsGroups, SettingsSections, Slots, Workspace } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Sessions, Settings, SettingsGroups, SettingsSections, Slots, Workspace } from "../ui/contracts.ts";
 import type { ClientService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { FolderIcon, FolderPlusIcon, XIcon } from "../ui/parts.tsx";
 
 const SECTION = "projects";
 
@@ -51,7 +51,7 @@ export default defineUiPlugin({
         title: "Projects",
         icon: FolderIcon,
         actions: () => (
-          <Show when={slots.get(Actions, "add-project.open")}>
+          <Show when={slots.get(Actions, ActionIds.addProject)}>
             {(action) => (
               <button class="button small" onClick={() => action().run()}>
                 <FolderPlusIcon /> Add project

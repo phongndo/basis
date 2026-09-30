@@ -17,6 +17,8 @@
     "dompurify": "3.4.16",
     "effect": "3.22.2",
     "marked": "18.0.14",
+    "mermaid": "12.0.0",
+    "shiki": "4.4.3",
     "solid-js": "1.9.15"
   },
   "devDependencies": {

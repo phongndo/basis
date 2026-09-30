@@ -3,11 +3,11 @@ import { Dynamic } from "solid-js/web";
 import { formatKeys } from "../lib/keys.ts";
 import { filterGroups } from "../model/settings.ts";
 import type { EntryGroup } from "../model/settings.ts";
-import { ArrowLeftIcon, GearIcon, SearchIcon, SlidersIcon, XIcon } from "../components/icons.tsx";
-import { Actions, Sessions, Settings, SettingsGroups, SettingsSections, SidebarFooter, Slots, Layers } from "../ui/contracts.ts";
+import { Actions, Layers, SectionIds, Sessions, Settings, SettingsGroups, SettingsSections, SidebarFooter, Slots } from "../ui/contracts.ts";
 import type { SettingsEntry, SettingsSection } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem, SlotsService } from "../ui/slots.ts";
+import { ArrowLeftIcon, GearIcon, SearchIcon, SlidersIcon, XIcon } from "../ui/parts.tsx";
 
 type Section = SlotItem<SettingsSection>;
 
@@ -224,7 +224,7 @@ export default defineUiPlugin({
     plugin.onCleanup(sessions.onSelect(() => open(undefined)));
 
     const add = (remove: () => void) => plugin.onCleanup(remove);
-    add(slots.add(SettingsSections, { id: "general", order: 0, title: "General", icon: SlidersIcon }));
+    add(slots.add(SettingsSections, { id: SectionIds.general, order: 0, title: "General", icon: SlidersIcon }));
     add(
       slots.add(Layers, {
         id: "settings",

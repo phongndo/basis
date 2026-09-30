@@ -1,10 +1,11 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { ImageContent, PromptContent } from "@lemma/contracts";
-import { ChatIcon, ImageIcon, SendIcon, StopIcon, XIcon } from "../components/icons.tsx";
 import {
+  ActionIds,
   Actions,
   Client,
+  ComposerActions,
   ComposerControls,
   ComposerFooter,
   ComposerNotices,
@@ -15,9 +16,10 @@ import {
   Slots,
   Workspace,
 } from "../ui/contracts.ts";
-import type { ClientService, ModelsService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import type { ClientService, ComposerActionProps, ModelsService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
+import { ChatIcon, ImageIcon, SendIcon, StopIcon, XIcon } from "../ui/parts.tsx";
 
 /** The formats every provider accepts; others (SVG, HEIC, TIFF…) would fail every later request in the session. */
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -55,7 +57,6 @@ function Composer(props: { deps: Deps }) {
   const [dragging, setDragging] = createSignal(false);
   const [sending, setSending] = createSignal(false);
   let input!: HTMLTextAreaElement;
-  let fileInput!: HTMLInputElement;
 
   createEffect(
     on(
@@ -116,6 +117,18 @@ function Composer(props: { deps: Deps }) {
     queueMicrotask(resize);
   };
 
+  const insert = (value: string) => {
+    const start = input.selectionStart ?? text().length;
+    const end = input.selectionEnd ?? start;
+    const next = text().slice(0, start) + value + text().slice(end);
+    setText(next);
+    drafts.set(draftKey(), next);
+    queueMicrotask(() => {
+      input.focus();
+      input.setSelectionRange(start + value.length, start + value.length);
+      resize();
+    });
+  };
   const addFiles = async (files: Iterable<File>) => {
     const images = [...files].filter((file) => file.type.startsWith("image/"));
     const supported = images.filter((file) => IMAGE_TYPES.has(file.type));
@@ -229,20 +242,7 @@ function Composer(props: { deps: Deps }) {
             <For each={slots.list(ComposerControls)}>{(control) => <Dynamic component={control.component} />}</For>
           </div>
           <div class="composer-actions">
-            <button type="button" class="icon-button" data-tip="Attach images" aria-label="Attach images" onClick={() => fileInput.click()}>
-              <ImageIcon />
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              multiple
-              hidden
-              onChange={(event) => {
-                void addFiles(event.currentTarget.files ?? []);
-                event.currentTarget.value = "";
-              }}
-            />
+            <For each={slots.list(ComposerActions)}>{(action) => <Dynamic component={action.component} addFiles={addFiles} insert={insert} />}</For>
             <Show
               when={sessions.busy()}
               fallback={
@@ -264,6 +264,29 @@ function Composer(props: { deps: Deps }) {
 }
 
 /** Where prompts are written: text, pasted or dropped images, send and stop. Its notices, controls, and footer are slots. */
+/** The default composer action: pick images to attach. */
+function AttachImages(props: ComposerActionProps) {
+  let picker!: HTMLInputElement;
+  return (
+    <>
+      <button type="button" class="icon-button" data-tip="Attach images" aria-label="Attach images" onClick={() => picker.click()}>
+        <ImageIcon />
+      </button>
+      <input
+        ref={picker}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        multiple
+        hidden
+        onChange={(event) => {
+          void props.addFiles([...(event.currentTarget.files ?? [])]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </>
+  );
+}
+
 export default defineUiPlugin({
   id: "composer",
   requires: { client: Client, sessions: Sessions, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
@@ -271,9 +294,11 @@ export default defineUiPlugin({
     const [focus, setFocus] = createSignal<() => void>();
     const deps: Deps = { ...use, drafts: new Map(), setFocus: (next) => setFocus(() => next) };
     plugin.onCleanup(use.slots.add(ComposerRegion, { id: "composer", component: () => <Composer deps={deps} /> }));
+    // Its own button goes through the slot other plugins add theirs to.
+    plugin.onCleanup(use.slots.add(ComposerActions, { id: "composer.attach", order: 100, component: AttachImages }));
     plugin.onCleanup(
       use.slots.add(Actions, {
-        id: "composer.focus",
+        id: ActionIds.focusComposer,
         order: 3,
         title: "Focus prompt",
         category: "Chat",

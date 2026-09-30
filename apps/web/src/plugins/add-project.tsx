@@ -1,11 +1,11 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, createUniqueId, onCleanup, onMount } from "solid-js";
 import type { JSX } from "solid-js";
 import type { DirectoryEntry } from "@lemma/contracts";
 import { Portal } from "solid-js/web";
-import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "../components/icons.tsx";
-import { Actions, Client, Dialogs, Layers, Notify, Slots, Workspace } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Dialogs, Layers, Notify, Slots, Workspace } from "../ui/contracts.ts";
 import type { ClientService, DialogsService, NotifyService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
+import { ChevronIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, Spinner } from "../ui/parts.tsx";
 
 const DIALOG = "add-project";
 
@@ -41,6 +41,8 @@ const Highlighted = (props: { name: string; matches: readonly number[] }): JSX.E
  * that matches nothing can be created as a new folder.
  */
 function AddProjectDialog(props: { deps: Deps }) {
+  // Unique per instance: the page could show two lists.
+  const listId = `add-project-list-${createUniqueId()}`;
   const { client, workspace, notify, dialogs } = props.deps;
   const [value, setValue] = createSignal("");
   const [listing, setListing] = createSignal<{ parent: string; entries: readonly DirectoryEntry[]; truncated: boolean }>();
@@ -236,8 +238,8 @@ function AddProjectDialog(props: { deps: Deps }) {
               aria-label="Folder path"
               role="combobox"
               aria-expanded="true"
-              aria-controls="add-project-list"
-              aria-activedescendant={`add-project-row-${active()}`}
+              aria-controls={listId}
+              aria-activedescendant={`${listId}-${active()}`}
               autocomplete="off"
               autocapitalize="off"
               spellcheck={false}
@@ -266,13 +268,13 @@ function AddProjectDialog(props: { deps: Deps }) {
               </Show>
             </nav>
           </Show>
-          <div class="palette-list" id="add-project-list" role="listbox" ref={list}>
+          <div class="palette-list" id={listId} role="listbox" ref={list}>
             <For each={rows()}>
               {(row, index) => (
                 <>
                   <Show when={section(index(), row)}>{(label) => <div class="palette-section">{label()}</div>}</Show>
                   <div
-                    id={`add-project-row-${index()}`}
+                    id={`${listId}-${index()}`}
                     class="palette-row"
                     classList={{ create: row.kind === "create" }}
                     role="option"
@@ -371,7 +373,7 @@ export default defineUiPlugin({
     );
     plugin.onCleanup(
       slots.add(Actions, {
-        id: "add-project.open",
+        id: ActionIds.addProject,
         order: 6,
         title: "Add project…",
         category: "Projects",

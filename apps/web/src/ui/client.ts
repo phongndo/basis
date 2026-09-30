@@ -1,8 +1,8 @@
 import { createSignal } from "solid-js";
 import type { ConnectionStatus, Host } from "@lemma/client";
 import type { HostEvent, HostInfo } from "@lemma/contracts";
-import { Client } from "../ui/contracts.ts";
-import { defineUiPlugin } from "../ui/define.ts";
+import { Client } from "./contracts.ts";
+import { defineUiPlugin } from "./define.ts";
 
 /**
  * The host connection as a capability. Built by the boot around the page's

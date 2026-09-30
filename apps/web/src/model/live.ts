@@ -25,9 +25,30 @@ export interface LiveState {
   readonly drafts: readonly StepDraft[];
   /** Steps whose durable event arrived; late deltas for them are ignored. */
   readonly settled: ReadonlySet<string>;
+  /** Output of tools still running, by tool call id: the tail, until the result is logged. */
+  readonly output: ReadonlyMap<string, string>;
 }
 
-export const emptyLive: LiveState = { drafts: [], settled: new Set() };
+export const emptyLive: LiveState = { drafts: [], settled: new Set(), output: new Map() };
+
+/** Live output kept per running tool: more than a view shows, bounded however long the tool runs. */
+export const OUTPUT_TAIL_CHARS = 16 * 1024;
+
+/** A running tool printed `chunk`. */
+export const appendOutput = (state: LiveState, toolCallId: string, chunk: string): LiveState => {
+  const text = (state.output.get(toolCallId) ?? "") + chunk;
+  const output = new Map(state.output);
+  output.set(toolCallId, text.length > OUTPUT_TAIL_CHARS ? text.slice(-OUTPUT_TAIL_CHARS) : text);
+  return { ...state, output };
+};
+
+/** The tool's result is logged: its live output is no longer shown. */
+export const dropOutput = (state: LiveState, toolCallId: string): LiveState => {
+  if (!state.output.has(toolCallId)) return state;
+  const output = new Map(state.output);
+  output.delete(toolCallId);
+  return { ...state, output };
+};
 
 const setBlock = (blocks: readonly (DraftBlock | undefined)[], index: number, block: DraftBlock) => {
   const next = blocks.slice();
@@ -89,28 +110,47 @@ export const settleStep = (state: LiveState, stepId: string): LiveState => {
   if (state.settled.has(stepId) && !state.drafts.some((draft) => draft.stepId === stepId)) return state;
   const settled = new Set(state.settled);
   settled.add(stepId);
-  return { drafts: state.drafts.filter((draft) => draft.stepId !== stepId), settled };
+  return { ...state, drafts: state.drafts.filter((draft) => draft.stepId !== stepId), settled };
 };
 
-/** A turn ended: nothing more will stream for it. */
-export const endTurn = (state: LiveState, turnId: string): LiveState => {
+/** Nothing more will stream for `turnId`: drops its drafts and ignores stragglers. */
+const settleTurn = (state: LiveState, turnId: string): LiveState => {
   if (!state.drafts.some((draft) => draft.turnId === turnId)) return state;
   const settled = new Set(state.settled);
   for (const draft of state.drafts) if (draft.turnId === turnId) settled.add(draft.stepId);
-  return { drafts: state.drafts.filter((draft) => draft.turnId !== turnId), settled };
+  return { ...state, drafts: state.drafts.filter((draft) => draft.turnId !== turnId), settled };
+};
+
+/** The session's running turn ended: nothing more streams for it, and, as a session runs one turn at a time, no tool of it is running. */
+export const endTurn = (state: LiveState, turnId: string): LiveState => {
+  const next = settleTurn(state, turnId);
+  return next.output.size === 0 ? next : { ...next, output: new Map() };
 };
 
 /**
  * Settles drafts the durable log already covers. Deltas and turn events can be
- * lost while disconnected; the log fetched on reconnect is authoritative.
+ * lost while disconnected; the log fetched on reconnect is authoritative. A
+ * logged `turn-end` drops the output of that turn's own tool calls only: the
+ * log holds every earlier turn's end too.
  */
 export const reconcileLive = (state: LiveState, events: readonly SessionEvent[]): LiveState => {
-  if (state.drafts.length === 0) return state;
+  if (state.drafts.length === 0 && state.output.size === 0) return state;
   let next = state;
+  const calls = new Map<string, string[]>();
   for (const { data } of events) {
-    if (data.type === "message" && data.message.role === "assistant" && data.stepId !== undefined) next = settleStep(next, data.stepId);
-    else if (data.type === "attempt") next = settleStep(next, data.stepId);
-    else if (data.type === "turn-end") next = endTurn(next, data.turnId);
+    if (data.type === "message" && data.message.role === "toolResult") next = dropOutput(next, data.message.toolCallId);
+    else if (data.type === "message" && data.message.role === "assistant") {
+      if (data.turnId !== undefined) {
+        const ids = calls.get(data.turnId) ?? [];
+        for (const part of data.message.content) if (part.type === "toolCall") ids.push(part.id);
+        calls.set(data.turnId, ids);
+      }
+      if (data.stepId !== undefined) next = settleStep(next, data.stepId);
+    } else if (data.type === "attempt") next = settleStep(next, data.stepId);
+    else if (data.type === "turn-end") {
+      next = settleTurn(next, data.turnId);
+      for (const id of calls.get(data.turnId) ?? []) next = dropOutput(next, id);
+    }
   }
   return next;
 };

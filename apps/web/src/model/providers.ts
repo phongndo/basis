@@ -1,4 +1,4 @@
-import type { ProviderInfo } from "@lemma/contracts";
+import type { ProviderInfo, CustomProviderSpec } from "@lemma/contracts";
 import claude from "../assets/providers/claude-ai-icon.svg?url";
 import openai from "../assets/providers/openai.svg?url";
 import openaiDark from "../assets/providers/openai_dark.svg?url";
@@ -186,28 +186,15 @@ export interface CustomProviderDraft {
   readonly hasKey: boolean;
 }
 
-/**
- * The llm plugin's `providers` item for a draft, with an id no other provider
- * has (a custom provider with a built-in's id would replace it). A key is not
- * written to config: the provider reads it from an environment variable named
- * after it, or from the credential store once `/login` saves the one typed.
- */
-export const customProviderEntry = (draft: CustomProviderDraft, taken: readonly string[]) => {
-  const base =
-    draft.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "custom";
-  let id = base;
-  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
+/** What the host is asked to add for a draft: its fields, trimmed, and each model once. The llm plugin picks the id. */
+export const customProviderSpec = (draft: CustomProviderDraft): CustomProviderSpec => {
   const models = [...new Set(draft.models.split(/[\s,]+/).filter(Boolean))];
   return {
-    id,
     name: draft.name.trim(),
     api: draft.api,
-    baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
-    models: models.map((model) => ({ id: model })),
-    ...(draft.hasKey ? { apiKey: { env: `${id.toUpperCase().replace(/-/g, "_")}_API_KEY` } } : {}),
+    baseUrl: draft.baseUrl.trim(),
+    models: [models[0] ?? "", ...models.slice(1)],
+    key: draft.hasKey,
   };
 };
 

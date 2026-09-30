@@ -69,10 +69,11 @@ describe("highlight", () => {
 
 describe("parseQuery", () => {
   it("reads a leading prefix as a mode", () => {
-    expect(parseQuery(">reload")).toEqual({ mode: "commands", text: "reload" });
-    expect(parseQuery("@fix")).toEqual({ mode: "sessions", text: "fix" });
-    expect(parseQuery("#lemma")).toEqual({ mode: "projects", text: "lemma" });
-    expect(parseQuery("reload >")).toEqual({ mode: "all", text: "reload >" });
+    const prefixes = [">", "@", "#", "#!"];
+    expect(parseQuery(">reload", prefixes)).toEqual({ prefix: ">", text: "reload" });
+    expect(parseQuery("@fix", prefixes)).toEqual({ prefix: "@", text: "fix" });
+    expect(parseQuery("#!tag", prefixes)).toEqual({ prefix: "#!", text: "tag" });
+    expect(parseQuery("reload >", prefixes)).toEqual({ text: "reload >" });
   });
 });
 

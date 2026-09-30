@@ -1,25 +1,69 @@
 import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import type { JSX } from "solid-js";
+import type { Component, JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { Schema } from "effect";
 import type { ImageContent, TextContent } from "@lemma/contracts";
 import { diffStats, parseDiff, readDetails } from "../model/details.ts";
 import { formatDuration, formatTokens, summarizeToolArgs, summarizePartialArgs, summarizeUsage, truncateLines } from "../model/format.ts";
+import { answerText, entryKey, foldRunning, foldTurn } from "../model/fold.ts";
+import type { TurnEntry } from "../model/fold.ts";
 import { parseDraftArgs } from "../model/live.ts";
 import type { DraftBlock, StepDraft } from "../model/live.ts";
 import { createProjector, pendingToolCalls, promptMarks } from "../model/transcript.ts";
 import type { AssistantItem, AttemptItem, Block, Item, PromptMark, ToolResultView, TurnView } from "../model/transcript.ts";
-import { AlertIcon, ChatIcon, CheckIcon, ChevronDownIcon, ChevronIcon, Spinner, XIcon } from "../components/icons.tsx";
-import { Markdown } from "../components/markdown.tsx";
-import { Client, Sessions, Slots, ToolViews, Views } from "../ui/contracts.ts";
-import type { ClientService, SessionsService } from "../ui/contracts.ts";
+import {
+  ChatThinkingPart,
+  ChatToolPart,
+  ChatTurnFooterPart,
+  ChatUserPart,
+  ChatWorkingPart,
+  ChatWorkPart,
+  Client,
+  Sessions,
+  Slots,
+  ToolViews,
+  Views,
+} from "../ui/contracts.ts";
+import type {
+  ChatThinkingProps,
+  ChatToolProps,
+  ChatTurnFooterProps,
+  ChatUserProps,
+  ChatWorkingProps,
+  ChatWorkProps,
+  ClientService,
+  SessionsService,
+} from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
-import type { SlotsService } from "../ui/slots.ts";
+import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
+import type { Part, SlotsService } from "../ui/slots.ts";
+import {
+  AlertIcon,
+  ChatIcon,
+  ChatThinking,
+  ChatTool,
+  ChatTurnFooter,
+  ChatUser,
+  ChatWork,
+  ChatWorking,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronIcon,
+  CopyIcon,
+  Markdown,
+  Spinner,
+  XIcon,
+} from "../ui/parts.tsx";
+import { copyText } from "../lib/clipboard.ts";
 
 export const ChatConfig = Schema.Struct({
   expandTools: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     title: "Open tool calls",
     description: "Show every tool call's arguments and output instead of one quiet line.",
+  }),
+  foldWork: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
+    title: "Fold finished work",
+    description: "Once a turn ends, fold its thinking and tool calls into one line above the answer.",
   }),
   promptRail: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
     title: "Prompt rail",
@@ -35,6 +79,8 @@ interface Chat {
   readonly isOpen: (key: string, fallback: boolean) => boolean;
   readonly toggle: (key: string, fallback: boolean) => void;
   readonly pending: () => ReadonlySet<string>;
+  /** The time, ticking each second while a turn runs, for elapsed-time labels. */
+  readonly now: () => number;
 }
 
 const imageSrc = (image: ImageContent) => `data:${image.mimeType};base64,${image.data}`;
@@ -50,7 +96,8 @@ function Images(props: { content: readonly (TextContent | ImageContent)[] }) {
   );
 }
 
-function UserView(props: { content: readonly (TextContent | ImageContent)[] }) {
+/** The default `chat.user` part. */
+function UserView(props: ChatUserProps) {
   const text = () =>
     props.content
       .filter((part): part is TextContent => part.type === "text")
@@ -66,9 +113,22 @@ function UserView(props: { content: readonly (TextContent | ImageContent)[] }) {
   );
 }
 
+/** A thought, through the `chat.thinking` part, opened and closed with the chat's other disclosures. */
 function Thinking(props: { chat: Chat; id: string; text: string; redacted?: boolean; live?: boolean }) {
-  const { isOpen, toggle } = props.chat;
-  const open = () => isOpen(props.id, false);
+  return (
+    <ChatThinking
+      text={props.text}
+      redacted={props.redacted}
+      live={props.live}
+      open={props.chat.isOpen(props.id, false)}
+      onToggle={() => props.chat.toggle(props.id, false)}
+    />
+  );
+}
+
+/** The default `chat.thinking` part. */
+function ThinkingView(props: ChatThinkingProps) {
+  const open = () => props.open;
   const preview = () =>
     props.text
       .trim()
@@ -77,7 +137,7 @@ function Thinking(props: { chat: Chat; id: string; text: string; redacted?: bool
       .at(props.live ? -1 : 0) ?? "";
   return (
     <div class="thinking" classList={{ open: open(), live: props.live === true }}>
-      <button class="thinking-head" aria-expanded={open()} onClick={() => toggle(props.id, false)}>
+      <button class="thinking-head" aria-expanded={open()} onClick={() => props.onToggle()}>
         <ChevronIcon class="chevron" />
         <span class="thinking-label">{props.live ? "Thinking" : props.redacted ? "Thinking (redacted)" : "Thought"}</span>
         <Show when={!open() && preview()}>
@@ -99,8 +159,9 @@ function Output(props: { id: string; text: string; error?: boolean; lines?: numb
     <div class="output" classList={{ error: props.error === true }}>
       <pre>{all() ? props.text.replace(/\n+$/, "") : cut().text}</pre>
       <Show when={cut().hidden > 0}>
-        <button class="link-button" onClick={() => setAll(!all())}>
-          {all() ? "Show less" : `Show ${cut().hidden} more lines`}
+        <button class="link-button output-more" aria-expanded={all()} onClick={() => setAll(!all())}>
+          <ChevronDownIcon />
+          {all() ? "Fewer lines" : `${cut().hidden} more lines`}
         </button>
       </Show>
     </div>
@@ -123,9 +184,18 @@ function Diff(props: { diff: string }) {
   );
 }
 
+/** Whole seconds, then minutes: a label that ticks without jumping in width every tenth. */
+const formatElapsed = (ms: number): string => {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+};
+
+/** Lines of a running tool's output shown under it. */
+const LIVE_LINES = 6;
+
 type ToolState = "running" | "queued" | "ok" | "error" | "interrupted";
 
-/** A tool call and its result. `result` absent while the tool runs (or if the turn stopped first). */
+/** A tool call, through the `chat.tool` part, with the chat's open state, its live output, and how long it has run. */
 function ToolCard(props: {
   chat: Chat;
   id: string;
@@ -135,108 +205,144 @@ function ToolCard(props: {
   result?: ToolResultView | undefined;
   state: ToolState;
 }) {
-  const { client, sessions, slots, isOpen, toggle } = props.chat;
-  const context = () => {
-    const info = client.info();
-    return info === undefined ? {} : { cwd: sessions.active()?.cwd ?? info.cwd, home: info.home };
-  };
-  /** A plugin's view of this tool, when one fills the slot for it. */
-  const custom = () => slots.get(ToolViews, props.name);
-  const details = createMemo(() => readDetails(props.result?.details));
-  const summary = createMemo(() => custom()?.summary?.(props.args, context()) ?? summarizeToolArgs(props.name, props.args, context()));
-  const primary = () => summary().primary ?? (props.partial === undefined ? undefined : summarizePartialArgs(props.name, props.partial));
-  const outputText = () =>
-    props.result?.content
-      .filter((part): part is TextContent => part.type === "text")
-      .map((part) => part.text)
-      .join("\n") ?? "";
-  const diff = () => details().diff;
-  const stats = createMemo(() => {
-    const d = diff();
-    return d === undefined ? undefined : diffStats(parseDiff(d));
-  });
-  // Every call starts as one quiet line unless configured otherwise; its status, diffstat, and timing say enough until it is opened.
+  // Every call starts as one quiet line unless configured otherwise.
   const defaultOpen = () => props.chat.config.expandTools;
-  const open = () => isOpen(props.id, defaultOpen());
-  const argsShown = () => summary().primary === undefined && props.args !== undefined && Object.keys(props.args).length > 0;
-  const duration = () => {
-    const t = props.result?.timing;
-    return t === undefined ? undefined : t.endedAt - t.startedAt;
-  };
+  /** The last lines a running tool printed; its result replaces them. */
+  const output = createMemo(() => {
+    const text = props.chat.sessions.live().output.get(props.id)?.replace(/\n+$/, "");
+    return text === undefined || text === "" ? undefined : text.split("\n").slice(-LIVE_LINES).join("\n");
+  });
+  // Measured from when the call appeared here: close enough to show that a slow command is still going.
+  const shownAt = Date.now();
+  const running = () => props.state === "running";
   return (
-    <div class={`tool tool-${props.state}`} classList={{ open: open() }}>
-      <button class="tool-head" aria-expanded={open()} onClick={() => toggle(props.id, defaultOpen())}>
-        <ChevronIcon class="chevron" />
-        <span class="tool-status">
-          <Switch>
-            <Match when={props.state === "running"}>
-              <Spinner />
-            </Match>
-            <Match when={props.state === "queued"}>
-              <span class="dot-muted" />
-            </Match>
-            <Match when={props.state === "ok"}>
-              <CheckIcon />
-            </Match>
-            <Match when={props.state === "error"}>
-              <XIcon />
-            </Match>
-            <Match when={props.state === "interrupted"}>
-              <span class="dot-muted" />
-            </Match>
-          </Switch>
-        </span>
-        <span class="tool-name">{props.name || "tool"}</span>
-        <Show when={primary()}>
-          <span class="tool-primary" classList={{ shell: summary().shell === true || props.name === "bash" }}>
-            {primary()}
-          </span>
-        </Show>
-        <Show when={summary().secondary}>
-          <span class="tool-secondary">{summary().secondary}</span>
-        </Show>
-        <span class="tool-meta">
-          <Show when={stats()}>
-            {(s) => (
-              <span class="diffstat">
-                <span class="add">+{s().added}</span> <span class="del">−{s().removed}</span>
-              </span>
-            )}
-          </Show>
-          <Show when={details().exitCode !== undefined && details().exitCode !== 0}>
-            <span class="badge badge-error">exit {details().exitCode}</span>
-          </Show>
-          <Show when={props.state === "interrupted"}>
-            <span class="badge">no result</span>
-          </Show>
-          <Show when={duration() !== undefined && duration()! >= 1000}>
-            <span class="muted">{formatDuration(duration()!)}</span>
-          </Show>
-        </span>
-      </button>
-      <Show when={open()}>
-        <Show
-          when={custom()?.body}
-          keyed
-          fallback={
-            <DefaultBody
-              id={props.id}
-              args={props.args}
-              result={props.result}
-              state={props.state}
-              argsShown={argsShown()}
-              diff={diff()}
-              outputText={outputText()}
-              details={details()}
-            />
-          }
-        >
-          {(body) => <Dynamic component={body} id={props.id} name={props.name} args={props.args} result={props.result} state={props.state} />}
-        </Show>
-      </Show>
-    </div>
+    <ChatTool
+      id={props.id}
+      name={props.name}
+      args={props.args}
+      partial={props.partial}
+      result={props.result}
+      state={props.state}
+      output={running() ? output() : undefined}
+      elapsed={running() ? props.chat.now() - shownAt : undefined}
+      open={props.chat.isOpen(props.id, defaultOpen())}
+      onToggle={() => props.chat.toggle(props.id, defaultOpen())}
+    />
   );
 }
+
+/**
+ * The default `chat.tool` part: one quiet line (status, name, summary,
+ * diffstat, time) that opens to the tool's `ToolViews` body, else the chat's.
+ */
+const toolView = (deps: { readonly client: ClientService; readonly sessions: SessionsService; readonly slots: SlotsService }) =>
+  function ToolView(props: ChatToolProps) {
+    const { client, sessions, slots } = deps;
+    const context = () => {
+      const info = client.info();
+      return info === undefined ? {} : { cwd: sessions.active()?.cwd ?? info.cwd, home: info.home };
+    };
+    /** A plugin's view of this tool, when one fills the slot for it. */
+    const custom = () => slots.get(ToolViews, props.name);
+    const details = createMemo(() => readDetails(props.result?.details));
+    const summary = createMemo(() => custom()?.summary?.(props.args, context()) ?? summarizeToolArgs(props.name, props.args, context()));
+    const primary = () => summary().primary ?? (props.partial === undefined ? undefined : summarizePartialArgs(props.name, props.partial));
+    const outputText = () =>
+      props.result?.content
+        .filter((part): part is TextContent => part.type === "text")
+        .map((part) => part.text)
+        .join("\n") ?? "";
+    const diff = () => details().diff;
+    const stats = createMemo(() => {
+      const d = diff();
+      return d === undefined ? undefined : diffStats(parseDiff(d));
+    });
+    const open = () => props.open;
+    const argsShown = () => summary().primary === undefined && props.args !== undefined && Object.keys(props.args).length > 0;
+    const duration = () => {
+      const t = props.result?.timing;
+      return t === undefined ? undefined : t.endedAt - t.startedAt;
+    };
+    return (
+      <div class={`tool tool-${props.state}`} classList={{ open: open() }}>
+        <button class="tool-head" aria-expanded={open()} onClick={() => props.onToggle()}>
+          <ChevronIcon class="chevron" />
+          <span class="tool-status">
+            <Switch>
+              <Match when={props.state === "running"}>
+                <Spinner />
+              </Match>
+              <Match when={props.state === "queued"}>
+                <span class="dot-muted" />
+              </Match>
+              <Match when={props.state === "ok"}>
+                <CheckIcon />
+              </Match>
+              <Match when={props.state === "error"}>
+                <XIcon />
+              </Match>
+              <Match when={props.state === "interrupted"}>
+                <span class="dot-muted" />
+              </Match>
+            </Switch>
+          </span>
+          <span class="tool-name">{props.name || "tool"}</span>
+          <Show when={primary()}>
+            <span class="tool-primary" classList={{ shell: summary().shell === true || props.name === "bash" }}>
+              {primary()}
+            </span>
+          </Show>
+          <Show when={summary().secondary}>
+            <span class="tool-secondary">{summary().secondary}</span>
+          </Show>
+          <span class="tool-meta">
+            <Show when={stats()}>
+              {(s) => (
+                <span class="diffstat">
+                  <span class="add">+{s().added}</span> <span class="del">−{s().removed}</span>
+                </span>
+              )}
+            </Show>
+            <Show when={details().exitCode !== undefined && details().exitCode !== 0}>
+              <span class="badge badge-error">exit {details().exitCode}</span>
+            </Show>
+            <Show when={props.state === "interrupted"}>
+              <span class="badge">no result</span>
+            </Show>
+            <Show when={duration() !== undefined && duration()! >= 1000}>
+              <span class="muted">{formatDuration(duration()!)}</span>
+            </Show>
+            <Show when={props.elapsed !== undefined && props.elapsed >= 1000}>
+              <span class="muted">{formatElapsed(props.elapsed!)}</span>
+            </Show>
+          </span>
+        </button>
+        <Show when={props.output}>{(text) => <pre class="tool-live">{text()}</pre>}</Show>
+        <Show when={open()}>
+          <Show
+            when={custom()?.body}
+            keyed
+            fallback={
+              <DefaultBody
+                id={props.id}
+                args={props.args}
+                result={props.result}
+                state={props.state}
+                argsShown={argsShown()}
+                diff={diff()}
+                outputText={outputText()}
+                details={details()}
+              />
+            }
+          >
+            {(body) => (
+              <Dynamic component={body} id={props.id} name={props.name} args={props.args} result={props.result} state={props.state} output={props.output} />
+            )}
+          </Show>
+        </Show>
+      </div>
+    );
+  };
 
 function DefaultBody(props: {
   id: string;
@@ -342,15 +448,17 @@ function Attempt(props: { chat: Chat; item: AttemptItem }) {
   );
 }
 
-function ItemView(props: { chat: Chat; item: Item; turnEnded: boolean }): JSX.Element {
+function ItemView(props: { chat: Chat; item: Item; turnEnded: boolean; note?: boolean }): JSX.Element {
   return (
     <Switch>
-      <Match when={props.item.kind === "user" && props.item}>{(item) => <UserView content={item().content} />}</Match>
+      <Match when={props.item.kind === "user" && props.item}>{(item) => <ChatUser content={item().content} />}</Match>
       <Match when={props.item.kind === "assistant" && props.item}>
         {(item) => (
           <div class="assistant">
             <Blocks chat={props.chat} blocks={item().blocks} turnEnded={props.turnEnded} />
-            <StopNote item={item()} />
+            <Show when={props.note !== false}>
+              <StopNote item={item()} />
+            </Show>
           </div>
         )}
       </Match>
@@ -378,13 +486,31 @@ function ItemView(props: { chat: Chat; item: Item; turnEnded: boolean }): JSX.El
   );
 }
 
-function TurnFooter(props: { turn: TurnView }) {
+/** The default `chat.turn-footer` part. */
+function TurnFooter(props: ChatTurnFooterProps) {
   const usage = createMemo(() => summarizeUsage(props.turn.usage));
   const duration = () => (props.turn.endedAt === undefined ? undefined : props.turn.endedAt - props.turn.startedAt);
   const model = () => props.turn.models.map((ref) => ref.slice(ref.indexOf("/") + 1)).join(", ");
   const reason = () => props.turn.end?.reason;
+  const answer = () => props.answer;
+  const [copied, setCopied] = createSignal<boolean>();
+  const copy = () =>
+    void copyText(answer()).then((ok) => {
+      setCopied(ok);
+      setTimeout(() => setCopied(undefined), 1500);
+    });
   return (
     <footer class="turn-footer" data-tip={usage().title}>
+      <Show when={answer()}>
+        <button
+          class="icon-button turn-copy"
+          aria-label="Copy response"
+          data-tip={copied() === undefined ? "Copy response" : copied() ? "Copied" : "Copy failed"}
+          onClick={copy}
+        >
+          {copied() === undefined ? <CopyIcon /> : copied() ? <CheckIcon /> : <XIcon />}
+        </button>
+      </Show>
       <Show when={reason() === "cancelled"}>
         <span class="badge">cancelled</span>
       </Show>
@@ -415,11 +541,91 @@ function TurnFooter(props: { turn: TurnView }) {
   );
 }
 
+/** A finished turn's work behind its answer, as one line: how long it took and how many tool calls; opening it shows them. */
+/** Folded work, through the `chat.work` part; the chat renders the steps inside it. */
+function WorkFold(props: { chat: Chat; work: Extract<TurnEntry, { kind: "work" }> }) {
+  return (
+    <ChatWork
+      steps={props.work.items.length}
+      tools={props.work.tools}
+      failed={props.work.failed}
+      duration={props.work.duration}
+      live={props.work.live}
+      open={props.chat.isOpen(props.work.key, false)}
+      onToggle={() => props.chat.toggle(props.work.key, false)}
+    >
+      <For each={props.work.items}>{(item) => <ItemView chat={props.chat} item={item} turnEnded={!props.work.live} note={false} />}</For>
+    </ChatWork>
+  );
+}
+
+/** The default `chat.work` part: one quiet line that opens to the steps. */
+function WorkView(props: ChatWorkProps) {
+  return (
+    <div class="work" classList={{ open: props.open }}>
+      <button class="work-head" aria-expanded={props.open} onClick={() => props.onToggle()}>
+        <ChevronIcon class="chevron" />
+        <span class="work-label">
+          {props.live
+            ? props.steps === 1
+              ? "1 earlier step"
+              : `${props.steps} earlier steps`
+            : props.duration === undefined
+              ? "Worked"
+              : `Worked for ${formatDuration(props.duration)}`}
+        </span>
+        <span class="work-meta">
+          {props.tools === 1 ? "1 tool call" : `${props.tools} tool calls`}
+          <Show when={props.failed > 0}>
+            <span class="work-failed"> · {props.failed} failed</span>
+          </Show>
+        </span>
+      </button>
+      <Show when={props.open}>
+        <div class="work-body">{props.children}</div>
+      </Show>
+    </div>
+  );
+}
+
+/** The default `chat.working` part. */
+function WorkingView(props: ChatWorkingProps) {
+  return (
+    <div class="working">
+      <span class="pulse" />
+      Working
+      <Show when={props.startedAt}>{(started) => <span class="working-time">{formatElapsed(props.now - started())}</span>}</Show>
+    </div>
+  );
+}
+
 function Turn(props: { chat: Chat; turn: TurnView }) {
   const ended = () => props.turn.end !== undefined;
+  const folded = createMemo(() => (props.chat.config.foldWork ? (foldTurn(props.turn) ?? foldRunning(props.turn)) : undefined));
+  // A fold makes new entries each time the turn changes: keyed by entry key, what stays in view stays mounted.
+  const byKey = createMemo(() => new Map((folded() ?? []).map((entry) => [entryKey(entry), entry])));
   return (
     <section class="turn" data-turn={props.turn.key}>
-      <For each={props.turn.items}>{(item) => <ItemView chat={props.chat} item={item} turnEnded={ended()} />}</For>
+      <Show when={folded()} fallback={<For each={props.turn.items}>{(item) => <ItemView chat={props.chat} item={item} turnEnded={ended()} />}</For>}>
+        <For each={[...byKey().keys()]}>
+          {(key) => (
+            <Show when={byKey().get(key)}>
+              {(entry) =>
+                entry().kind === "work" ? (
+                  <WorkFold chat={props.chat} work={entry() as Extract<TurnEntry, { kind: "work" }>} />
+                ) : (
+                  <ItemView
+                    chat={props.chat}
+                    item={(entry() as Extract<TurnEntry, { kind: "item" }>).item}
+                    turnEnded={ended()}
+                    note={(entry() as Extract<TurnEntry, { kind: "item" }>).note}
+                  />
+                )
+              }
+            </Show>
+          )}
+        </For>
+      </Show>
       <Show when={props.turn.end?.reason === "error" && props.turn.end.error}>
         <div class="callout callout-error">
           <AlertIcon />
@@ -427,7 +633,7 @@ function Turn(props: { chat: Chat; turn: TurnView }) {
         </div>
       </Show>
       <Show when={ended()}>
-        <TurnFooter turn={props.turn} />
+        <ChatTurnFooter turn={props.turn} answer={answerText(props.turn)} />
       </Show>
     </section>
   );
@@ -436,7 +642,7 @@ function Turn(props: { chat: Chat; turn: TurnView }) {
 function DraftBlockView(props: { chat: Chat; block: DraftBlock; stepId: string; index: number }) {
   return (
     <Switch>
-      <Match when={props.block.kind === "text" && props.block}>{(b) => <Markdown text={b().text} class="streaming" />}</Match>
+      <Match when={props.block.kind === "text" && props.block}>{(b) => <Markdown text={b().text} class="streaming" streaming />}</Match>
       <Match when={props.block.kind === "thinking" && props.block}>
         {(b) => <Thinking chat={props.chat} id={`${props.stepId}:${props.index}`} text={b().text} live />}
       </Match>
@@ -477,15 +683,16 @@ function Transcript(props: { chat: Chat; turns: readonly TurnView[] }) {
   const { sessions, pending } = props.chat;
   const drafts = () => sessions.live().drafts;
   const working = () => sessions.busy() && drafts().every((draft) => draft.finished) && pending().size === 0;
+  const turnStarted = () => {
+    const last = props.turns.at(-1);
+    return last !== undefined && last.end === undefined ? last.startedAt : undefined;
+  };
   return (
     <div class="transcript">
       <Index each={props.turns}>{(turn) => <Turn chat={props.chat} turn={turn()} />}</Index>
       <Index each={drafts()}>{(draft) => <Draft chat={props.chat} draft={draft()} />}</Index>
       <Show when={working()}>
-        <div class="working">
-          <span class="pulse" />
-          Working
-        </div>
+        <ChatWorking startedAt={turnStarted()} now={props.chat.now()} />
       </Show>
     </div>
   );
@@ -596,15 +803,34 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
     locateSoon();
   };
 
+  /** A disclosure the reader just opened or closed: it stays where it was on screen rather than the view jumping to the bottom. */
+  let anchor: { readonly element: Element; readonly top: number } | undefined;
+  const noteToggle = (event: MouseEvent) => {
+    const button = (event.target as Element | null)?.closest?.("button[aria-expanded]");
+    if (button === null || button === undefined) return;
+    anchor = { element: button, top: button.getBoundingClientRect().top };
+    // A toggle that changes no size leaves nothing to hold.
+    requestAnimationFrame(() => requestAnimationFrame(() => (anchor = undefined)));
+  };
+
   onMount(() => {
     // Follow new output while the reader is at the bottom; leave them alone once they scroll up.
     const observer = new ResizeObserver(() => {
-      if (stuck()) toBottom();
+      const held = anchor;
+      anchor = undefined;
+      if (held !== undefined && held.element.isConnected) {
+        scroller.scrollTop += held.element.getBoundingClientRect().top - held.top;
+        lastTop = scroller.scrollTop;
+        setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80);
+      } else if (stuck()) toBottom();
       locateSoon();
     });
     observer.observe(content);
+    // Capture: the toggle's own handler changes the DOM before a bubbling listener would see the click.
+    content.addEventListener("click", noteToggle, true);
     onCleanup(() => {
       observer.disconnect();
+      content.removeEventListener("click", noteToggle, true);
       cancelAnimationFrame(locating);
     });
   });
@@ -679,6 +905,13 @@ export default defineUiPlugin({
       return projector(sessions.branch());
     });
     const pending = createMemo(() => pendingToolCalls(transcript()));
+    const [now, setNow] = createSignal(Date.now());
+    createEffect(() => {
+      if (!sessions.busy()) return;
+      setNow(Date.now());
+      const timer = setInterval(() => setNow(Date.now()), 1000);
+      onCleanup(() => clearInterval(timer));
+    });
     const chat: Chat = {
       client,
       sessions,
@@ -687,7 +920,17 @@ export default defineUiPlugin({
       isOpen: (key, fallback) => expanded().get(key) ?? fallback,
       toggle: (key, fallback) => setExpanded((map) => new Map(map).set(key, !(map.get(key) ?? fallback))),
       pending,
+      now,
     };
+    // Its own parts' defaults; any plugin replaces one by adding with a lower order.
+    const part = <P extends Record<string, any>>(slot: Part<P>, component: Component<P>) =>
+      plugin.onCleanup(slots.add(slot, { id: `chat.${slot.name.slice("part.chat.".length)}`, order: DEFAULT_PART_ORDER, component }));
+    part(ChatUserPart, UserView);
+    part(ChatThinkingPart, ThinkingView);
+    part(ChatToolPart, toolView({ client, sessions, slots }));
+    part(ChatWorkPart, WorkView);
+    part(ChatWorkingPart, WorkingView);
+    part(ChatTurnFooterPart, TurnFooter);
     plugin.onCleanup(
       slots.add(Views, {
         id: "chat",

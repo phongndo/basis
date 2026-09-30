@@ -5,14 +5,18 @@ import chat from "./chat.tsx";
 import commands from "./commands.ts";
 import composer from "./composer.tsx";
 import connection from "./connection.tsx";
+import diagrams from "./diagrams.tsx";
 import dialogs from "./dialogs.ts";
 import eventLog from "./event-log.tsx";
+import highlight from "./highlight.ts";
 import hostPlugins from "./host-plugins.ts";
 import interactionDialog from "./interaction-dialog.tsx";
 import interactions from "./interactions.ts";
 import keymap from "./keymap.ts";
+import kit from "./kit.tsx";
 import modelPicker from "./model-picker.tsx";
 import models from "./models.ts";
+import notify from "./notify.ts";
 import palette from "./palette.tsx";
 import pluginsPage from "./plugins-page.tsx";
 import projectsPage from "./projects-page.tsx";
@@ -37,6 +41,8 @@ import workspace from "./workspace.ts";
  */
 export const bundled: readonly Plugin[] = [
   slots,
+  kit,
+  notify,
   toasts,
   sessions,
   models,
@@ -51,6 +57,8 @@ export const bundled: readonly Plugin[] = [
   sidebar,
   sessionView,
   chat,
+  highlight,
+  diagrams,
   trajectory,
   composer,
   modelPicker,

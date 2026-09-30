@@ -616,7 +616,11 @@ export const createMockHost = (): Host => {
     if (!(await stream(sessionId, turnId, step1, m1))) return end("cancelled");
     total = m1.usage;
     append(sessionId, { type: "message", turnId, stepId: step1, message: m1, timing: { startedAt, firstTokenAt: startedAt + 300, endedAt: Date.now() } });
-    await sleep(900);
+    // The command prints as it runs, like the host's bash tool.
+    for (const line of ["drwxr-xr-x client\n", "drwxr-xr-x contracts\n", "drwxr-xr-x core\n"]) {
+      await sleep(300);
+      emit({ type: "tool-output", sessionId, toolCallId: call.id, chunk: line });
+    }
     if (cancelled.has(sessionId)) return end("cancelled");
     append(sessionId, {
       type: "message",
@@ -639,7 +643,7 @@ export const createMockHost = (): Host => {
       [
         {
           type: "text",
-          text: `There are three packages: **client**, **contracts**, and **core**.\n\nYou asked: _${text.slice(0, 120)}_ — this is the mock host, so that's as far as I go. Try:\n\n1. The model picker (Ctrl+K)\n2. Esc to stop a turn\n3. Settings → Providers for the login flow`,
+          text: `There are three packages: **client**, **contracts**, and **core**.\n\nYou asked: _${text.slice(0, 120)}_ — this is the mock host, so that's as far as I go. Try:\n\n1. The model picker (Ctrl+K)\n2. Esc to stop a turn\n3. Settings → Providers for the login flow, or from a shell:\n\n   \`\`\`sh\n   lemma models --all\n   \`\`\`\n\nHow they depend on each other:\n\n\`\`\`mermaid\ngraph LR\n  client --> contracts\n  core --> effect\n  contracts --> core\n\`\`\`\n\nAnd the entry point:\n\n\`\`\`ts\nimport { boot } from "./ui/boot.tsx";\n\nawait boot({ host, token, bundled, api, element, safe: false });\n\`\`\``,
         },
       ],
       usage(3300, 110, 11000),
@@ -901,25 +905,6 @@ export const createMockHost = (): Host => {
           if (i < 0) throw new HostError({ code: "ReloadError", message: `error [${id}]: No plugin "${id}"`, subject: id });
           if (plugins[i]!.locked !== undefined && row.enabled === false) {
             throw new HostError({ code: "ReloadError", message: `error [${id}]: "${id}" cannot be turned off: ${plugins[i]!.locked}`, subject: id });
-          }
-          // Custom providers: items of the llm plugin's `providers`, listed like built-ins.
-          for (const item of row.add?.providers ?? []) {
-            const entry = item as { id: string; name?: string; apiKey?: unknown };
-            const at = providers.findIndex((p) => p.id === entry.id);
-            const info: ProviderInfo = {
-              id: entry.id,
-              name: entry.name ?? entry.id,
-              auth: [{ type: "api_key", name: `${entry.name ?? entry.id} API key`, interactive: true }],
-              configured: entry.apiKey === undefined,
-              ...(entry.apiKey === undefined ? { source: "no key required" } : {}),
-              custom: true,
-            };
-            if (at === -1) providers.push(info);
-            else providers[at] = info;
-          }
-          for (const removed of row.remove?.providers ?? []) {
-            const at = providers.findIndex((p) => p.id === removed && p.custom);
-            if (at !== -1) providers.splice(at, 1);
           }
           if (row.add !== undefined || row.remove !== undefined) return { started: [], restarted: [id], stopped: [] };
           if (row.values !== undefined) {

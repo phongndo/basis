@@ -1,7 +1,7 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 import { parseConfigValue } from "@lemma/contracts";
 import type { ConfigField, ConfigValues } from "@lemma/contracts";
-import { Toggle } from "./toggle.tsx";
+import { Toggle } from "../ui/parts.tsx";
 
 const show = (value: unknown): string => (value === undefined ? "" : Array.isArray(value) ? value.join(", ") : String(value));
 
