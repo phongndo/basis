@@ -3,12 +3,12 @@ import { cleanupSessionResources, createModels } from "@earendil-works/pi-ai";
 import type { AuthCheck, AuthContext, Provider, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Events, Hooks, PluginContext, definePlugin } from "@lemma/core";
-import { Credentials, Interaction, InteractionError, Llm, LlmError, LlmRequestHook, Notice, parseModelRef } from "@lemma/contracts";
+import { Credentials, HostControl, Interaction, InteractionError, Llm, LlmError, LlmRequestHook, Notice, parseModelRef } from "@lemma/contracts";
 import type { AuthType, LlmRequest, NoticePayload, ProviderInfo, StreamEvent } from "@lemma/contracts";
 import { authInteraction, credentialStore, runner, toNotice } from "./auth.ts";
 import { makeEventMapper, reasoningFor, toContext, toModelInfo } from "./convert.ts";
 import { networkSources, withLiveCatalog } from "./catalog.ts";
-import { CustomProvider, customProvider, selectProviders, withoutAnthropicOAuth } from "./providers.ts";
+import { CustomProvider, customEntry, customProvider, selectProviders, withoutAnthropicOAuth } from "./providers.ts";
 
 export const Config = Schema.Struct({
   include: Schema.optional(Schema.Array(Schema.String)).annotations({ description: "Built-in provider ids to register; default all." }),
@@ -32,7 +32,8 @@ export interface Options {
   readonly fetch?: typeof fetch;
 }
 
-export function toProviderInfo(provider: Provider, check: AuthCheck | undefined, custom = false): ProviderInfo {
+/** `custom`: the user's entry for a provider they added (`true` when only that much is known). */
+export function toProviderInfo(provider: Provider, check: AuthCheck | undefined, custom: CustomProvider | boolean = false): ProviderInfo {
   const { apiKey, oauth } = provider.auth;
   return {
     id: provider.id,
@@ -43,7 +44,8 @@ export function toProviderInfo(provider: Provider, check: AuthCheck | undefined,
     ],
     configured: check !== undefined,
     ...(check?.source === undefined ? {} : { source: check.source }),
-    ...(custom ? { custom: true } : {}),
+    ...(custom === false ? {} : { custom: true }),
+    ...(typeof custom === "object" && custom.logo !== undefined ? { logo: custom.logo } : {}),
   };
 }
 
@@ -64,7 +66,7 @@ export function makeLlmPlugin(options: Options = {}) {
     id: "llm",
     config: Config,
     provides: [Llm],
-    requires: [Credentials, Interaction],
+    requires: [Credentials, Interaction, HostControl],
     layer: (config: Config) =>
       Layer.scoped(
         Llm,
@@ -74,6 +76,7 @@ export function makeLlmPlugin(options: Options = {}) {
           const events = yield* Events;
           const credentials = yield* Credentials;
           const interaction = yield* Interaction;
+          const host = yield* HostControl;
           const run = runner(yield* Effect.runtime<never>());
 
           const models = createModels({
@@ -86,7 +89,41 @@ export function makeLlmPlugin(options: Options = {}) {
           const sources = networkSources(options.fetch ?? fetch, siblings);
           for (const provider of builtins) models.setProvider(config.liveCatalogs ? withLiveCatalog(provider, sources) : provider);
           for (const provider of config.providers ?? []) models.setProvider(customProvider(provider));
-          const customIds = new Set((config.providers ?? []).map((provider) => provider.id));
+          const custom = new Map((config.providers ?? []).map((provider) => [provider.id, provider]));
+          /**
+           * Saves a change to this plugin's own `providers` list, in the config file its config comes from; the host
+           * reloads it, after replying when that restarts the caller's transport.
+           */
+          const saveProviders = (change: { readonly add?: readonly CustomProvider[]; readonly remove?: readonly string[] }) =>
+            host.plugins
+              .pipe(
+                Effect.map((plugins) => plugins.find((info) => info.id === plugin.id)?.configScope),
+                Effect.flatMap((scope) =>
+                  host.configure(
+                    {
+                      [plugin.id]: {
+                        ...(change.add === undefined ? {} : { add: { providers: change.add } }),
+                        ...(change.remove === undefined ? {} : { remove: { providers: change.remove } }),
+                      },
+                    },
+                    scope === "project" ? { scope } : undefined,
+                  ),
+                ),
+              )
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new LlmError({ reason: "SaveFailed", message: error.diagnostics.map((diagnostic) => diagnostic.message).join("; "), cause: error }),
+                ),
+                Effect.asVoid,
+              );
+          const customOf = (providerId: string) =>
+            Effect.suspend(() => {
+              const entry = custom.get(providerId);
+              return entry === undefined
+                ? Effect.fail(new LlmError({ reason: "UnknownProvider", message: `No provider "${providerId}" was added by the user` }))
+                : Effect.succeed(entry);
+            });
 
           // Pooled Codex websockets keep the event loop alive until released.
           yield* Effect.addFinalizer(() =>
@@ -159,7 +196,7 @@ export function makeLlmPlugin(options: Options = {}) {
               (provider) =>
                 Effect.tryPromise((signal) => models.checkAuth(provider.id, { signal })).pipe(
                   Effect.orElseSucceed(() => undefined),
-                  Effect.map((check) => toProviderInfo(provider, check, customIds.has(provider.id))),
+                  Effect.map((check) => toProviderInfo(provider, check, custom.get(provider.id) ?? false)),
                 ),
               { concurrency: "unbounded" },
             ),
@@ -239,6 +276,22 @@ export function makeLlmPlugin(options: Options = {}) {
                     cause: error,
                   }),
               }),
+
+            addCustom: (spec) =>
+              Effect.gen(function* () {
+                const taken = new Set([...models.getProviders().map((provider) => provider.id), ...custom.keys()]);
+                const entry = customEntry(spec, taken);
+                if (entry === undefined) return yield* new LlmError({ reason: "InvalidProvider", message: `Unknown wire API "${spec.api}"` });
+                yield* saveProviders({ add: [entry] });
+                return entry.id;
+              }),
+
+            removeCustom: (providerId) => Effect.zipRight(customOf(providerId), saveProviders({ remove: [providerId] })),
+
+            setLogo: (providerId, svg) =>
+              Effect.flatMap(customOf(providerId), ({ logo: _logo, ...entry }) =>
+                saveProviders({ add: [svg === undefined ? entry : { ...entry, logo: svg }] }),
+              ),
           });
         }),
       ),

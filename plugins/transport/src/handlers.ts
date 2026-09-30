@@ -45,6 +45,9 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     // Like a turn, the login outlives this call: a dropped client can return and answer its questions.
     "Llm.Login": ({ provider, type }) => login(provider, type).pipe(Effect.mapError(toHostError)),
     "Llm.Logout": ({ provider }) => llm.logout(provider).pipe(Effect.mapError(toHostError)),
+    "Llm.AddCustom": ({ spec }) => llm.addCustom(spec).pipe(Effect.mapError(toHostError)),
+    "Llm.RemoveCustom": ({ provider }) => llm.removeCustom(provider).pipe(Effect.mapError(toHostError)),
+    "Llm.SetLogo": ({ provider, svg }) => llm.setLogo(provider, svg).pipe(Effect.mapError(toHostError)),
 
     "Interaction.List": () => Effect.sync(() => [...interactions.open()]),
     "Interaction.Answer": ({ id, answer }) => interactions.answer(id, answer),

@@ -1,3 +1,4 @@
+import type { CustomProviderSpec } from "@lemma/contracts";
 import { createProvider } from "@earendil-works/pi-ai";
 import type { Api, ApiKeyAuth, Model, Provider, ProviderStreams } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
@@ -27,6 +28,7 @@ export const apis = {
 } satisfies Record<string, () => ProviderStreams>;
 
 export const ApiId = Schema.Literal(...(Object.keys(apis) as (keyof typeof apis)[]));
+export type ApiId = typeof ApiId.Type;
 
 const Cost = Schema.Struct({ input: Schema.Number, output: Schema.Number, cacheRead: Schema.Number, cacheWrite: Schema.Number });
 /** pi-ai's per-API `compat` flags (e.g. `supportsDeveloperRole: false` for Ollama); passed through unchecked. */
@@ -58,7 +60,33 @@ export const CustomProvider = Schema.Struct({
   /** Applied to every model; a model's own `compat` wins per field. */
   compat: Schema.optional(Compat),
   models: Schema.Array(CustomModel),
+  /** Its logo, as SVG markup, for clients to show (`Llm.setLogo`). */
+  logo: Schema.optional(Schema.String),
 });
+
+/**
+ * The config entry for a provider the user adds: its id from its name, unique
+ * among `taken`; its key, when it needs one, asked for at login or read from
+ * `<ID>_API_KEY`. Undefined for an unknown wire API.
+ */
+export function customEntry(spec: CustomProviderSpec, taken: ReadonlySet<string>): CustomProvider | undefined {
+  if (!Object.hasOwn(apis, spec.api)) return undefined;
+  const base =
+    spec.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "custom";
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+  return {
+    id,
+    name: spec.name.trim(),
+    api: spec.api as ApiId,
+    baseUrl: spec.baseUrl.trim().replace(/\/+$/, ""),
+    models: [...new Set(spec.models)].map((model) => ({ id: model })),
+    ...(spec.key === true ? { apiKey: { env: `${id.toUpperCase().replace(/-/g, "_")}_API_KEY` } } : {}),
+  };
+}
 export type CustomProvider = typeof CustomProvider.Type;
 
 /**

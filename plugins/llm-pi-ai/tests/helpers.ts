@@ -2,8 +2,8 @@ import { Effect, Layer } from "effect";
 import type { AuthContext } from "@earendil-works/pi-ai";
 import { PluginContext, definePlugin, makeCore } from "@lemma/core";
 import type { Plugin } from "@lemma/core";
-import { Credentials, Interaction, Notice } from "@lemma/contracts";
-import type { Credential, InteractionError, Llm, NoticePayload } from "@lemma/contracts";
+import { Credentials, HostControl, Interaction, Notice } from "@lemma/contracts";
+import type { ConfigScope, Credential, InteractionError, Llm, NoticePayload, PluginChange } from "@lemma/contracts";
 
 export function fakeCredentials(initial: Record<string, Credential> = {}) {
   const store = new Map<string, Credential>(Object.entries(initial));
@@ -66,11 +66,36 @@ export const envContext = (env: Record<string, string> = {}): AuthContext => ({
   fileExists: async () => false,
 });
 
+/** A host that records the config changes plugins ask it to save; `configure` succeeds as a deferred change would. */
+export function fakeHost(options: { readonly configScope?: ConfigScope } = {}) {
+  const saved: Record<string, PluginChange>[] = [];
+  const scopes: (ConfigScope | undefined)[] = [];
+  const unused = () => Effect.die("not used by the llm plugin");
+  const service = {
+    plugins: Effect.succeed([{ id: "llm", ...(options.configScope === undefined ? {} : { configScope: options.configScope }) }]),
+    composition: unused(),
+    restart: unused,
+    reload: unused(),
+    configure: (plugins: Record<string, PluginChange>, configure?: { readonly scope?: ConfigScope }) =>
+      Effect.sync(() => {
+        saved.push(plugins);
+        scopes.push(configure?.scope);
+        return { started: [], restarted: [], stopped: [], unchanged: [], failed: [], interrupted: 0, faults: [], deferred: true };
+      }),
+    ui: unused(),
+    configureUi: unused,
+  } as unknown as typeof HostControl.Service;
+  const plugin = definePlugin({ id: "host", provides: [HostControl], layer: Layer.succeed(HostControl, service) });
+  return { saved, scopes, plugin };
+}
+
+/** Runs `body` against `plugins`, adding a `fakeHost` when none of them provides `HostControl`. */
 export const runWith = <A, E>(plugins: readonly Plugin[], body: Effect.Effect<A, E, Llm>, configs: Record<string, unknown> = {}): Promise<A> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const core = yield* makeCore(plugins, { configs });
+        const hosted = plugins.some((plugin) => plugin.provides.some((tag) => tag.key === HostControl.key));
+        const core = yield* makeCore(hosted ? plugins : [...plugins, fakeHost().plugin], { configs });
         return yield* core.run(body) as Effect.Effect<A, E | unknown>;
       }),
     ) as Effect.Effect<A>,

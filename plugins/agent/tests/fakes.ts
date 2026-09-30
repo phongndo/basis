@@ -100,6 +100,9 @@ export function fakeLlm(scripts: readonly (Script | ((request: LlmRequest) => Sc
       },
       login: () => Effect.void,
       logout: () => Effect.void,
+      addCustom: () => Effect.succeed("custom"),
+      removeCustom: () => Effect.void,
+      setLogo: () => Effect.void,
     }),
   });
   return { plugin, requests };

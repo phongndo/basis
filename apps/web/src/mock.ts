@@ -754,6 +754,39 @@ export const createMockHost = (): Host => {
         const { source: _source, ...rest } = providers[i]!;
         providers[i] = { ...rest, configured: false };
       },
+      // Like the llm plugin: an id from the name, free among the providers; listed once "saved".
+      addCustom: async (spec) => {
+        await sleep(300);
+        const base =
+          spec.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "custom";
+        let id = base;
+        for (let n = 2; providers.some((provider) => provider.id === id); n++) id = `${base}-${n}`;
+        providers.push({
+          id,
+          name: spec.name,
+          auth: [{ type: "api_key", name: `${spec.name} API key`, interactive: true }],
+          configured: spec.key !== true,
+          ...(spec.key === true ? {} : { source: "no key required" }),
+          custom: true,
+        });
+        return id;
+      },
+      removeCustom: async (provider) => {
+        await sleep(300);
+        const at = providers.findIndex((candidate) => candidate.id === provider && candidate.custom);
+        if (at === -1) throw new HostError({ code: "LlmError", message: `No provider "${provider}" was added by the user`, subject: provider });
+        providers.splice(at, 1);
+      },
+      setLogo: async (provider, svg) => {
+        await sleep(200);
+        const at = providers.findIndex((candidate) => candidate.id === provider && candidate.custom);
+        if (at === -1) throw new HostError({ code: "LlmError", message: `No provider "${provider}" was added by the user`, subject: provider });
+        const { logo: _logo, ...rest } = providers[at]!;
+        providers[at] = svg === undefined ? rest : { ...rest, logo: svg };
+      },
     },
     workspace: {
       status: async (path) => workspaceStatus(path),

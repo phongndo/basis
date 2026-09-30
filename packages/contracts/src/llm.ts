@@ -179,10 +179,29 @@ export const ProviderInfo = Schema.Struct({
   configured: Schema.Boolean,
   /** Where the working auth comes from: `OPENAI_API_KEY`, `OAuth`, `auth.json`. */
   source: Schema.optional(Schema.String),
-  /** Added by config (the llm plugin's `providers`) rather than built in, so it can be removed there. */
+  /** Added by the user (`Llm.addCustom`) rather than built in, so it can be removed. */
   custom: Schema.optional(Schema.Boolean),
+  /** A custom provider's own logo, as SVG markup (`Llm.setLogo`). */
+  logo: Schema.optional(Schema.String),
 });
 export type ProviderInfo = typeof ProviderInfo.Type;
+
+/**
+ * A provider the user adds: an endpoint that speaks one of the wire protocols
+ * the llm plugin knows (`openai-completions`, say), with the models to offer.
+ * How it is stored is the llm plugin's business.
+ */
+export const CustomProviderSpec = Schema.Struct({
+  name: Schema.NonEmptyString,
+  /** The wire protocol, by its id. */
+  api: Schema.String,
+  baseUrl: Schema.String,
+  /** Model ids the endpoint serves. */
+  models: Schema.NonEmptyArray(Schema.String),
+  /** It needs an API key, asked for at login; false for keyless local servers. */
+  key: Schema.optional(Schema.Boolean),
+});
+export type CustomProviderSpec = typeof CustomProviderSpec.Type;
 
 export class LlmRequest extends Schema.Class<LlmRequest>("lemma/LlmRequest")({
   model: ModelRef,
@@ -216,7 +235,7 @@ export type StreamEvent = typeof StreamEvent.Type;
 
 /** A request that cannot start: unknown model or provider. Provider failures arrive as an `error` event instead. */
 export class LlmError extends Data.TaggedError("LlmError")<{
-  readonly reason: "UnknownModel" | "UnknownProvider" | "NotConfigured" | "LoginFailed" | "Cancelled";
+  readonly reason: "UnknownModel" | "UnknownProvider" | "NotConfigured" | "LoginFailed" | "Cancelled" | "InvalidProvider" | "SaveFailed";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -236,5 +255,15 @@ export class Llm extends Context.Tag("lemma/Llm")<
     /** Runs the provider's login flow through `Interaction` and stores the credential. */
     readonly login: (provider: string, type: AuthType) => Effect.Effect<void, LlmError>;
     readonly logout: (provider: string) => Effect.Effect<void, LlmError>;
+    /**
+     * Adds a provider of the user's; resolves with its id. It is saved in the
+     * llm plugin's config, whose reload may finish after this returns: it is
+     * listed once `providers` does.
+     */
+    readonly addCustom: (spec: CustomProviderSpec) => Effect.Effect<string, LlmError>;
+    /** Removes a provider `addCustom` added, with its logo. */
+    readonly removeCustom: (provider: string) => Effect.Effect<void, LlmError>;
+    /** Sets or clears a custom provider's logo (SVG markup; the caller checks it is safe to show). */
+    readonly setLogo: (provider: string, svg: string | undefined) => Effect.Effect<void, LlmError>;
   }
 >() {}

@@ -190,6 +190,9 @@ export const fakeLlm = definePlugin({
               Effect.mapError((error) => (error instanceof LlmError ? error : new LlmError({ reason: "LoginFailed", message: error.message, cause: error }))),
             ),
       logout: () => Effect.void,
+      addCustom: (spec) => Effect.succeed(spec.name.toLowerCase()),
+      removeCustom: () => Effect.void,
+      setLogo: () => Effect.void,
     })),
   ),
 });

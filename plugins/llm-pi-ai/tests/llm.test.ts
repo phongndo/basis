@@ -8,7 +8,7 @@ import { PluginContext, definePlugin } from "@lemma/core";
 import { InteractionError, Llm, LlmError, LlmRequest, LlmRequestHook, StreamEvent } from "@lemma/contracts";
 import type { Credential } from "@lemma/contracts";
 import { credentialStore, makeEventMapper, makeLlmPlugin, runner } from "../src/index.ts";
-import { envContext, fakeCredentials, fakeInteraction, noticeRecorder, offline, runWith } from "./helpers.ts";
+import { envContext, fakeCredentials, fakeHost, fakeInteraction, noticeRecorder, offline, runWith } from "./helpers.ts";
 
 const decodeEvent = Schema.decodeUnknownSync(StreamEvent, { onExcessProperty: "error" });
 
@@ -409,5 +409,75 @@ describe("credential store adapter", () => {
     expect(store.get("x")).toEqual(oauth);
     await adapter.delete("x");
     expect(await adapter.read("x")).toBeUndefined();
+  });
+
+  it("adds, relabels, and removes the user's providers through its own config", async () => {
+    const host = fakeHost();
+    const { plugins } = setup({ providers: () => [] });
+    const gateway = { providers: [{ id: "my-gateway", name: "My Gateway", api: "openai-completions", baseUrl: "http://localhost:1", models: [{ id: "m" }] }] };
+    const [added, bad, missing] = await runWith(
+      [...plugins, host.plugin],
+      Effect.gen(function* () {
+        const llm = yield* Llm;
+        const added = yield* llm.addCustom({
+          name: "My Gateway",
+          api: "openai-completions",
+          baseUrl: "http://example.test/v1/",
+          models: ["a", "b", "a"],
+          key: true,
+        });
+        const bad = yield* Effect.flip(llm.addCustom({ name: "X", api: "carrier-pigeon", baseUrl: "http://x", models: ["m"] }));
+        // Only the table's own keys are wire APIs.
+        const inherited = yield* Effect.flip(llm.addCustom({ name: "X", api: "toString", baseUrl: "http://x", models: ["m"] }));
+        expect(inherited).toMatchObject({ reason: "InvalidProvider" });
+        yield* llm.setLogo("my-gateway", "<svg/>");
+        yield* llm.removeCustom("my-gateway");
+        const missing = yield* Effect.flip(llm.removeCustom("never-added"));
+        return [added, bad, missing] as const;
+      }),
+      { llm: gateway },
+    );
+    // Its id avoids the one already taken; the key is asked for at login or read from the environment.
+    expect(added).toBe("my-gateway-2");
+    expect(bad).toMatchObject({ reason: "InvalidProvider" });
+    expect(missing).toMatchObject({ reason: "UnknownProvider" });
+    expect(host.saved).toEqual([
+      {
+        llm: {
+          add: {
+            providers: [
+              {
+                id: "my-gateway-2",
+                name: "My Gateway",
+                api: "openai-completions",
+                baseUrl: "http://example.test/v1",
+                models: [{ id: "a" }, { id: "b" }],
+                apiKey: { env: "MY_GATEWAY_2_API_KEY" },
+              },
+            ],
+          },
+        },
+      },
+      { llm: { add: { providers: [{ ...gateway.providers[0], logo: "<svg/>" }] } } },
+      { llm: { remove: { providers: ["my-gateway"] } } },
+    ]);
+    // A saved logo is how clients show the provider.
+    const listed = await runWith(
+      [...plugins, host.plugin],
+      Effect.flatMap(Llm, (llm) => llm.providers),
+      { llm: { providers: [{ ...gateway.providers[0], logo: "<svg/>" }] } },
+    );
+    expect(listed.find((provider) => provider.id === "my-gateway")).toMatchObject({ custom: true, logo: "<svg/>" });
+    expect(host.scopes).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("saves the user's providers in the config file its config comes from", async () => {
+    const host = fakeHost({ configScope: "project" });
+    const { plugins } = setup({ providers: () => [] });
+    await runWith(
+      [...plugins, host.plugin],
+      Effect.flatMap(Llm, (llm) => llm.addCustom({ name: "Local", api: "openai-completions", baseUrl: "http://localhost:1", models: ["m"] })),
+    );
+    expect(host.scopes).toEqual(["project"]);
   });
 });

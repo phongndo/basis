@@ -2,6 +2,7 @@ import { Cause, Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import { HostError } from "@lemma/contracts";
 import type {
   AuthType,
+  CustomProviderSpec,
   CommandInfo,
   CommandResult,
   ConfigScope,
@@ -66,6 +67,10 @@ export interface Host {
     readonly models: (available?: boolean) => Promise<readonly ModelInfo[]>;
     readonly login: (provider: string, type: AuthType) => Promise<void>;
     readonly logout: (provider: string) => Promise<void>;
+    /** Adds a provider of the user's; resolves with its id once saved (listed once `providers` lists it). */
+    readonly addCustom: (spec: CustomProviderSpec) => Promise<string>;
+    readonly removeCustom: (provider: string) => Promise<void>;
+    readonly setLogo: (provider: string, svg: string | undefined) => Promise<void>;
   };
   readonly interaction: {
     /** Questions still waiting on an answer. */
@@ -221,6 +226,9 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       models: (available) => call(rpc.Llm.Models(available === undefined ? {} : { available })),
       login: (provider, type) => unit(rpc.Llm.Login({ provider, type })),
       logout: (provider) => unit(rpc.Llm.Logout({ provider })),
+      addCustom: (spec) => call(rpc.Llm.AddCustom({ spec })),
+      removeCustom: (provider) => unit(rpc.Llm.RemoveCustom({ provider })),
+      setLogo: (provider, svg) => unit(rpc.Llm.SetLogo({ provider, ...(svg === undefined ? {} : { svg }) })),
     },
     interaction: {
       list: () => call(rpc.Interaction.List()),

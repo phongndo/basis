@@ -5,7 +5,7 @@ import { CommandInfo, CommandResult } from "./commands.ts";
 import { ConfigField, ConfigValues } from "./config.ts";
 import { CompositionInfo, ConfigScope, FaultRecord, HookUse, NoticePayload, PluginChange, PluginSource, RegistryUse, UiComposition } from "./host.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
-import { AuthType, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
+import { AuthType, CustomProviderSpec, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
 import { SessionEvent, SessionInfo } from "./sessions.ts";
 import { DirectoryListing, GitBranch, WorkspaceStatus } from "./workspace.ts";
 
@@ -109,6 +109,9 @@ export class HostRpcs extends RpcGroup.make(
   /** Drives the provider's login flow; its questions arrive as `interaction` events and its progress as `notice` events. */
   Rpc.make("Llm.Login", { payload: { provider: Schema.String, type: AuthType }, error: HostError }),
   Rpc.make("Llm.Logout", { payload: { provider: Schema.String }, error: HostError }),
+  Rpc.make("Llm.AddCustom", { payload: { spec: CustomProviderSpec }, success: Schema.String, error: HostError }),
+  Rpc.make("Llm.RemoveCustom", { payload: { provider: Schema.String }, error: HostError }),
+  Rpc.make("Llm.SetLogo", { payload: { provider: Schema.String, svg: Schema.optional(Schema.String) }, error: HostError }),
 
   /** Questions still waiting on an answer, so a client can show them without resubscribing. */
   Rpc.make("Interaction.List", { success: Schema.Array(InteractionRequest) }),
