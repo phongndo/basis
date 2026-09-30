@@ -37,7 +37,8 @@ jobs:
       - run: pnpm check
       - run: pnpm test
 
-  # The Nix development shell as developers use it, plus the packed-package and browser checks.
+  # The Nix development shell as developers use it, plus the packed-package and browser checks, and the web
+  # app's replaceability checked on its real composition in Chromium (apps/web/AGENTS.md).
   nix:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -49,6 +50,7 @@ jobs:
       - run: nix develop -c pnpm test
       - run: nix develop -c pnpm package:check
       - run: nix develop .#browser -c pnpm browser:check
+      - run: nix develop .#browser -c pnpm --filter @lemma/web ui:check
 
   sustained:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
