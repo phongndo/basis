@@ -37,6 +37,16 @@
   border-right: 1px solid var(--border);
 }
 
+/* In a desktop window, the window's controls take the nav's top 48px. */
+[data-titlebar] .settings-nav {
+  padding-top: 48px;
+  app-region: drag;
+}
+
+[data-titlebar] .settings-head {
+  app-region: drag;
+}
+
 .settings-nav .sidebar-search {
   flex: none;
   margin-bottom: 6px;

@@ -15,6 +15,12 @@ const MAX_WIDTH = 400;
 const MIN_MAIN = 560;
 const NARROW = "(max-width: 820px)";
 
+/** Chromium's Window Controls Overlay: a desktop window (Electron) whose own controls sit over the page's top-left. */
+interface ControlsOverlay extends EventTarget {
+  readonly visible: boolean;
+}
+const controlsOverlay = (navigator as { windowControlsOverlay?: ControlsOverlay }).windowControlsOverlay;
+
 const clampWidth = (width: number) => Math.round(Math.max(MIN_WIDTH, Math.min(width, MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - MIN_MAIN))));
 
 /**
@@ -35,6 +41,7 @@ export default defineUiPlugin({
     const [viewport, setViewport] = createSignal(window.innerWidth);
     const [collapsed, setCollapsed] = createSignal(load(COLLAPSED_KEY) === "1");
     const [resizing, setResizing] = createSignal(false);
+    const [titlebar, setTitlebar] = createSignal(controlsOverlay?.visible === true);
     const width = () => {
       viewport();
       return clampWidth(chosen());
@@ -97,8 +104,15 @@ export default defineUiPlugin({
 
     function Shell() {
       const onResize = () => setViewport(window.innerWidth);
-      onMount(() => window.addEventListener("resize", onResize));
-      onCleanup(() => window.removeEventListener("resize", onResize));
+      const onGeometry = () => setTitlebar(controlsOverlay?.visible === true);
+      onMount(() => {
+        window.addEventListener("resize", onResize);
+        controlsOverlay?.addEventListener("geometrychange", onGeometry);
+      });
+      onCleanup(() => {
+        window.removeEventListener("resize", onResize);
+        controlsOverlay?.removeEventListener("geometrychange", onGeometry);
+      });
       const sidebar = () => slots.first(SidebarRegion);
       const main = () => slots.first(MainRegion);
       return (
@@ -106,6 +120,7 @@ export default defineUiPlugin({
           class="app"
           classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed() || sidebar() === undefined, resizing: resizing() }}
           style={{ "--sidebar": `${width()}px` }}
+          data-titlebar={titlebar() ? "" : undefined}
         >
           <Show when={sidebar()} keyed>
             {(region) => (

@@ -121,6 +121,11 @@
     cursor: default;
   }
 
+  /* A title bar (see `data-titlebar`) drags the window; what you click in it does not. */
+  [data-titlebar] :is(button, input, select, textarea, a, label, [role="button"], [tabindex]) {
+    app-region: no-drag;
+  }
+
   code,
   pre,
   kbd {

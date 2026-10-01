@@ -53,6 +53,13 @@ import type { Region, SlotsService } from "./slots.ts";
  *   plugin sets both, and stylesheets and renderers (diagrams) read them.
  * - `aria-expanded` on a button marks a disclosure: the chat keeps it in place
  *   when it opens instead of following new output.
+ * - `data-titlebar` on the shell's `.app` means the page fills a desktop
+ *   window whose own controls overlay its top-left (`env(titlebar-area-*)`).
+ *   The bar atop each column is then the window's title bar: it is 48px tall
+ *   and marks itself `app-region: drag`. The shell sets `--titlebar-inset` on
+ *   the column under the controls (the sidebar, or the main column when the
+ *   sidebar is hidden or a drawer), the room its bar leaves at the left; a
+ *   full-screen layer leaves a 48px strip over its own left column.
  */
 
 // ------------------------------------------------------------------ slots

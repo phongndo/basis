@@ -57,6 +57,12 @@
   flex-direction: column;
 }
 
+/* In a desktop window, the column whose top-left the window's controls cover makes room for them. */
+[data-titlebar] .sidebar-slot,
+[data-titlebar].sidebar-collapsed .main-col {
+  --titlebar-inset: env(titlebar-area-x, 0px);
+}
+
 @media (max-width: 820px) {
   .sidebar-slot {
     position: fixed;
@@ -74,6 +80,9 @@
   }
   .sidebar-rail {
     display: none;
+  }
+  [data-titlebar] .main-col {
+    --titlebar-inset: env(titlebar-area-x, 0px);
   }
   .scrim {
     position: fixed;
