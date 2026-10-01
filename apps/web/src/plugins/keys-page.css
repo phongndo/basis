@@ -1,11 +1,9 @@
-/* A page of ordinary settings width, though the section has its own body. */
+/* A page like the ordinary sections, though it has its own body. */
 .keys-page {
   display: flex;
   flex-direction: column;
   gap: 24px;
   width: 100%;
-  max-width: 712px;
-  margin: 0 auto;
   padding-bottom: 64px;
 }
 

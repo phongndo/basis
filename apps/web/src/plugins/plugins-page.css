@@ -150,12 +150,15 @@
   font-size: 12.5px;
 }
 
-/* Both panes run to the bottom of the screen and scroll on their own, whatever is selected. */
+/*
+ * Both panes run to the bottom of the screen and scroll on their own, whatever is selected. The table is only
+ * as wide as its columns need (room for the longest ids); the details, which wrap, take the rest.
+ */
 .inspector-split {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+  grid-template-columns: minmax(0, 600px) minmax(340px, 1fr);
 }
 
 .inspector-table {
