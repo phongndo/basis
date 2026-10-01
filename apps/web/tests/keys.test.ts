@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bindingOf, formatKeys, matchesKeys } from "../src/lib/keys.ts";
 
-// Not a Mac here, so `mod` is Ctrl.
+// Not a Mac here, so `mod` is Ctrl. Node has a `navigator` that reports the host, so pin it.
+vi.hoisted(() => {
+  Object.defineProperty(globalThis, "navigator", { value: { platform: "Linux x86_64", userAgent: "" }, configurable: true });
+});
+
 const press = (key: string, code: string, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean } = {}) =>
   ({ key, code, ctrlKey: mods.ctrl ?? false, shiftKey: mods.shift ?? false, altKey: mods.alt ?? false, metaKey: mods.meta ?? false }) as KeyboardEvent;
 
