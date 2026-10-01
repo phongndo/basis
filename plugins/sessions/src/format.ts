@@ -63,9 +63,17 @@ export function decodeLine(text: string, header: boolean): Either.Either<Line, s
   return Either.mapLeft(decoded, (error) => firstLine(error.message));
 }
 
+/** Url-safe random id that never starts with `-`, so a command line doesn't read it as an option. */
+const randomId = (bytes: number): string => {
+  for (;;) {
+    const id = randomBytes(bytes).toString("base64url");
+    if (!id.startsWith("-")) return id;
+  }
+};
+
 /** Short, url-safe, random. 72 bits for sessions (global), 48 bits for events (per session, collisions retried). */
-export const sessionId = (): string => randomBytes(9).toString("base64url");
-export const eventId = (): string => randomBytes(6).toString("base64url");
+export const sessionId = (): string => randomId(9);
+export const eventId = (): string => randomId(6);
 
 /** Directory for a working directory, pi-style: `/home/me/app` → `--home-me-app--`. The header's `cwd` stays authoritative. */
 export const encodeCwd = (cwd: string): string => `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
