@@ -2,13 +2,14 @@ import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, 
 import type { Component } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import type { CommandInfo, InteractionRequest } from "@lemma/contracts";
+import { keysFor, overridesFrom } from "../model/keybindings.ts";
 import { formatKeys, shortcut } from "../lib/keys.ts";
 import { load, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { highlight, parseQuery, rank, remember } from "../model/palette.ts";
 import type { Searchable } from "../model/palette.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import { ActionIds, Actions, Client, Commands, Dialogs, Interactions, Layers, PaletteSources, Sessions, Slots, Workspace } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Commands, Dialogs, Interactions, Layers, PaletteSources, Sessions, Slots, UiPlugins, Workspace } from "../ui/contracts.ts";
 import type {
   ClientService,
   CommandsService,
@@ -34,6 +35,8 @@ interface Deps {
   readonly interactions: InteractionsService;
   readonly dialogs: DialogsService;
   readonly slots: SlotsService;
+  /** An action to ask for at once when the palette opens: its keys were pressed and it needs a value. Taken once read. */
+  readonly takeRequested: () => string | undefined;
 }
 
 /** A row: a source's item, or an option of a question (which has nothing to run). */
@@ -324,7 +327,12 @@ function Palette(props: { deps: Deps }) {
     }
   };
 
-  onMount(() => queueMicrotask(() => input.focus()));
+  onMount(() => {
+    const requested = props.deps.takeRequested();
+    const item = requested === undefined ? undefined : pool(undefined).find((candidate) => candidate.key === `action:${requested}`);
+    if (item?.input !== undefined) setLocal(askFor(item, item.input()));
+    queueMicrotask(() => input.focus());
+  });
   onCleanup(() => {
     disposed = true;
     previous?.focus?.();
@@ -495,10 +503,20 @@ export default defineUiPlugin({
     commands: Commands,
     interactions: Interactions,
     dialogs: Dialogs,
+    uiPlugins: UiPlugins,
     slots: Slots,
   },
-  setup: (deps, plugin) => {
-    const { client, sessions, workspace, commands, dialogs, interactions, slots } = deps;
+  setup: (services, plugin) => {
+    const { client, sessions, workspace, commands, dialogs, interactions, uiPlugins, slots } = services;
+    let requested: string | undefined;
+    const deps: Deps = {
+      ...services,
+      takeRequested: () => {
+        const id = requested;
+        requested = undefined;
+        return id;
+      },
+    };
     // Its own sources go through the slot a plugin adds a source to (files, symbols): they are defaults, not built in.
     const source = (id: string, order: number, value: PaletteSource) => plugin.onCleanup(slots.add(PaletteSources, { id, order, ...value }));
     source("palette.commands", 0, {
@@ -509,7 +527,7 @@ export default defineUiPlugin({
           .list(Actions)
           .filter((action) => action.hidden !== true && (action.when?.() ?? true))
           .map((action): PaletteItem => {
-            const keys = typeof action.keys === "string" ? action.keys : action.keys?.[0];
+            const keys = keysFor(action.id, action.keys, overridesFrom(uiPlugins.list()))[0];
             return {
               key: `action:${action.id}`,
               category: action.category,
@@ -546,8 +564,8 @@ export default defineUiPlugin({
           .map((session) => ({
             key: `session:${session.id}`,
             title: sessionTitle(session),
-            detail: `${basename(session.cwd)} · ${relativeTime(session.updatedAt)}`,
-            keywords: [basename(session.cwd), session.id],
+            detail: `${workspace.projectName(session.cwd)} · ${relativeTime(session.updatedAt)}`,
+            keywords: [workspace.projectName(session.cwd), basename(session.cwd), session.id],
             current: session.id === sessions.activeId(),
             icon: ChatIcon,
             run: () => void sessions.select(session.id),
@@ -558,14 +576,13 @@ export default defineUiPlugin({
       heading: "Projects",
       prefix: "#",
       items: () => {
-        const hostCwd = client.info()?.cwd;
         return workspace.projects().map((path) => ({
           key: `project:${path}`,
-          title: basename(path),
+          title: workspace.projectName(path),
           detail: tildePath(path, client.info()?.home),
-          keywords: [path],
+          keywords: [path, basename(path)],
           icon: FolderIcon,
-          run: () => sessions.newChat(path === hostCwd ? undefined : path),
+          run: () => sessions.newChat(path),
         }));
       },
     });
@@ -589,7 +606,14 @@ export default defineUiPlugin({
         // Opens over any other dialog; a question the host asks keeps the screen until answered.
         global: true,
         when: () => dialogs.current() === DIALOG || interactions.open().length === 0,
-        run: () => dialogs.open(dialogs.current() === DIALOG ? undefined : DIALOG),
+        // With an action's id, opens asking for that action's value (the keymap does this for an action that needs one).
+        run: (actionId) => {
+          if (actionId !== undefined) {
+            requested = actionId;
+            dialogs.open(undefined);
+            queueMicrotask(() => dialogs.open(DIALOG));
+          } else dialogs.open(dialogs.current() === DIALOG ? undefined : DIALOG);
+        },
       }),
     );
   },

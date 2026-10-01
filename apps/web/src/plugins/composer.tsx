@@ -1,6 +1,8 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { Schema } from "effect";
 import type { ImageContent, PromptContent } from "@lemma/contracts";
+import { modKey } from "../lib/keys.ts";
 import {
   ActionIds,
   Actions,
@@ -38,7 +40,15 @@ const readImage = (file: File): Promise<ImageContent> =>
     reader.readAsDataURL(file);
   });
 
+export const ComposerConfig = Schema.Struct({
+  send: Schema.optionalWith(Schema.Literal("enter", "mod+enter"), { default: () => "enter" as const }).annotations({
+    title: "Send with",
+    description: "enter: Enter sends and Shift+Enter starts a new line. mod+enter: ⌘Enter (Ctrl+Enter) sends and Enter starts a new line.",
+  }),
+});
+
 interface Deps {
+  readonly config: typeof ComposerConfig.Type;
   readonly client: ClientService;
   readonly sessions: SessionsService;
   readonly models: ModelsService;
@@ -152,7 +162,8 @@ function Composer(props: { deps: Deps }) {
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && !event.altKey) {
+    const sends = props.deps.config.send === "mod+enter" ? modKey(event) : !modKey(event) && !event.ctrlKey && !event.metaKey;
+    if (event.key === "Enter" && sends && !event.shiftKey && !event.isComposing && !event.altKey) {
       event.preventDefault();
       void submit();
     } else if (event.key === "Escape" && sessions.busy()) {
@@ -291,10 +302,11 @@ function AttachImages(props: ComposerActionProps) {
 export default defineUiPlugin({
   id: "composer",
   styles,
+  config: ComposerConfig,
   requires: { client: Client, sessions: Sessions, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (use, plugin) => {
     const [focus, setFocus] = createSignal<() => void>();
-    const deps: Deps = { ...use, drafts: new Map(), setFocus: (next) => setFocus(() => next) };
+    const deps: Deps = { ...use, config: plugin.config, drafts: new Map(), setFocus: (next) => setFocus(() => next) };
     plugin.onCleanup(use.slots.add(ComposerRegion, { id: "composer", component: () => <Composer deps={deps} /> }));
     // Its own button goes through the slot other plugins add theirs to.
     plugin.onCleanup(use.slots.add(ComposerActions, { id: "composer.attach", order: 100, component: AttachImages }));
@@ -303,7 +315,7 @@ export default defineUiPlugin({
         id: ActionIds.focusComposer,
         order: 3,
         title: "Focus prompt",
-        category: "Chat",
+        category: "Thread",
         icon: ChatIcon,
         keys: "/",
         when: () => focus() !== undefined,

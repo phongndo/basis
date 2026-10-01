@@ -330,7 +330,7 @@ export default defineUiPlugin({
       slots.add(SettingsGroups, {
         id: "model-picker",
         section: SectionIds.general,
-        title: "New chats",
+        title: "New threads",
         entries: () => [
           {
             text: "Model provider llm default",

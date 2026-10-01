@@ -20,7 +20,50 @@ const parse = (binding: string) => {
   return { key, mod: parts.includes("mod"), shift: parts.includes("shift"), alt: parts.includes("alt") };
 };
 
-const NAMES: Readonly<Record<string, string>> = { escape: "Esc", enter: "↵", arrowup: "↑", arrowdown: "↓" };
+const NAMES: Readonly<Record<string, string>> = {
+  escape: "Esc",
+  enter: "↵",
+  arrowup: "↑",
+  arrowdown: "↓",
+  arrowleft: "←",
+  arrowright: "→",
+  space: "Space",
+  backspace: "⌫",
+  delete: "Del",
+  tab: "Tab",
+  pageup: "PgUp",
+  pagedown: "PgDn",
+  home: "Home",
+  end: "End",
+};
+
+type KeyEvent = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
+
+/**
+ * The key pressed, lowercase, as bindings name it. Letters and digits come from
+ * the physical key, so ⌥K on a Mac (which types ˚) is still `k`; other keys
+ * from what they type (`/`, `?`), and the space bar is `space`.
+ */
+export const keyOf = (event: Pick<KeyboardEvent, "key" | "code">): string => {
+  const physical = /^Key([A-Z])$/.exec(event.code)?.[1] ?? /^Digit(\d)$/.exec(event.code)?.[1];
+  if (physical !== undefined) return physical.toLowerCase();
+  return event.key === " " ? "space" : event.key.toLowerCase();
+};
+
+const MODIFIERS = new Set(["meta", "control", "alt", "shift", "os", "capslock", "fn"]);
+
+/**
+ * The binding `event` presses, for recording a shortcut: `mod+shift+k`, `alt+arrowdown`, `/`.
+ * Undefined for a modifier on its own. Shift is written for letters, digits, and named keys;
+ * for a symbol it is part of typing it (`?`).
+ */
+export const bindingOf = (event: KeyEvent): string | undefined => {
+  const key = keyOf(event);
+  if (MODIFIERS.has(key) || key === "dead" || key === "unidentified") return undefined;
+  const named = key.length > 1 || /^[a-z0-9]$/.test(key);
+  const parts = [...(modKey(event as KeyboardEvent) ? ["mod"] : []), ...(event.shiftKey && named ? ["shift"] : []), ...(event.altKey ? ["alt"] : []), key];
+  return parts.join("+");
+};
 
 /** A binding as the platform writes it: `mod+shift+o` is ⌘⇧O or Ctrl+Shift+O. */
 export const formatKeys = (binding: string): string => {
@@ -35,9 +78,9 @@ export const formatKeys = (binding: string): string => {
  */
 export const matchesKeys = (binding: string, event: KeyboardEvent): boolean => {
   const { key, mod, shift, alt } = parse(binding);
-  if (event.key.toLowerCase() !== key || modKey(event) !== mod || event.altKey !== alt) return false;
+  if (keyOf(event) !== key || modKey(event) !== mod || event.altKey !== alt) return false;
   if (!mod && (event.ctrlKey || event.metaKey)) return false;
-  return shift || /^[a-z]$/.test(key) ? event.shiftKey === shift : true;
+  return shift || /^[a-z0-9]$/.test(key) || key.length > 1 ? event.shiftKey === shift : true;
 };
 
 /** A binding with no modifier types into a text field, so it waits until focus leaves one. */

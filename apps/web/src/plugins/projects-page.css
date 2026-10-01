@@ -1,10 +1,56 @@
-.project-row > .icon {
-  flex: none;
-  color: var(--text-3);
+.project-picker-row {
+  margin-bottom: 8px;
 }
 
-.project-row .setting-desc {
+.project-picker {
+  gap: 6px;
+  max-width: 260px;
+}
+
+.project-picker-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-name {
+  width: 240px;
+}
+
+.project-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-location code {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.button.button-danger {
+  background: var(--err);
+  border-color: transparent;
+  color: #fff;
+}
+
+.button.button-danger:hover:not(:disabled) {
+  background: var(--err);
+  filter: brightness(1.08);
+}
+
+.button.button-danger:disabled {
+  opacity: 0.45;
+}
+
+.delete-project-dialog code {
+  font-size: 12px;
+}
+
+.delete-project-running {
+  color: var(--warn);
 }

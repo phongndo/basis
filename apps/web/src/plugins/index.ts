@@ -1,6 +1,7 @@
 import type { Plugin } from "@lemma/core";
 import addProject from "./add-project.tsx";
 import appearance from "./appearance.tsx";
+import archivedPage from "./archived-page.tsx";
 import chat from "./chat.tsx";
 import commands from "./commands.ts";
 import composer from "./composer.tsx";
@@ -13,6 +14,7 @@ import hostPlugins from "./host-plugins.ts";
 import interactionDialog from "./interaction-dialog.tsx";
 import interactions from "./interactions.ts";
 import keymap from "./keymap.ts";
+import keysPage from "./keys-page.tsx";
 import kit from "./kit.tsx";
 import modelPicker from "./model-picker.tsx";
 import models from "./models.ts";
@@ -68,7 +70,9 @@ export const bundled: readonly Plugin[] = [
   settings,
   providers,
   pluginsPage,
+  keysPage,
   projectsPage,
+  archivedPage,
   addProject,
   eventLog,
   interactionDialog,

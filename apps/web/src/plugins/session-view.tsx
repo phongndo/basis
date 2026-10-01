@@ -3,7 +3,7 @@ import type { JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { tildePath } from "../model/format.ts";
 import { sessionTitle } from "../model/sessions.ts";
-import { Actions, Client, ComposerRegion, Layout, MainRegion, Notify, SessionHeader, Sessions, Slots, Views } from "../ui/contracts.ts";
+import { Actions, Client, ComposerRegion, Layout, MainRegion, Notify, SessionHeader, Sessions, Slots, Views, Workspace } from "../ui/contracts.ts";
 import type { Action } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem } from "../ui/slots.ts";
@@ -20,8 +20,8 @@ import styles from "./session-view.css?inline";
 export default defineUiPlugin({
   id: "session-view",
   styles,
-  requires: { client: Client, sessions: Sessions, slots: Slots, layout: Layout, notify: Notify },
-  setup: ({ client, sessions, slots, layout, notify }, plugin) => {
+  requires: { client: Client, sessions: Sessions, workspace: Workspace, slots: Slots, layout: Layout, notify: Notify },
+  setup: ({ client, sessions, workspace, slots, layout, notify }, plugin) => {
     const [chosen, setChosen] = createSignal<string>();
     const views = () => slots.list(Views);
     /** The chosen view while it exists; a new chat always shows the first. */
@@ -42,8 +42,8 @@ export default defineUiPlugin({
       {
         id: "session.new-chat",
         order: 1,
-        title: "New chat",
-        category: "Chat",
+        title: "New thread",
+        category: "Thread",
         icon: PenSquareIcon,
         keys: "mod+shift+o",
         global: true,
@@ -56,7 +56,7 @@ export default defineUiPlugin({
         id: "session.cancel",
         order: 11,
         title: "Stop the running turn",
-        category: "Chat",
+        category: "Thread",
         keywords: ["cancel"],
         icon: StopIcon,
         keys: "escape",
@@ -66,9 +66,10 @@ export default defineUiPlugin({
       {
         id: "session.rename",
         order: 13,
-        title: "Rename session…",
-        category: "Chat",
-        keywords: ["title"],
+        title: "Rename thread…",
+        category: "Thread",
+        keywords: ["title", "session"],
+        keys: "mod+alt+r",
         icon: PenSquareIcon,
         when: () => sessions.active() !== undefined,
         input: () => ({ title: `Rename “${sessionTitle(sessions.active())}”`, placeholder: sessionTitle(sessions.active()) }),
@@ -80,8 +81,8 @@ export default defineUiPlugin({
       {
         id: "session.copy-id",
         order: 14,
-        title: "Copy session ID",
-        category: "Chat",
+        title: "Copy thread ID",
+        category: "Thread",
         keywords: ["cli", "lemma"],
         icon: CopyIcon,
         when: () => sessions.active() !== undefined,
@@ -120,17 +121,26 @@ export default defineUiPlugin({
       </button>
     ));
     header("session.title", 10, "start", () => {
-      const cwd = () => sessions.active()?.cwd ?? sessions.pendingCwd() ?? client.info()?.cwd;
+      const cwd = () => workspace.workingDir();
+      // The project by its folder's name, the full path on hover: `lemma / Fix the build`.
       return (
         <div class="main-title">
-          <h1>{sessions.activeId() === undefined ? "New chat" : sessionTitle(sessions.active())}</h1>
-          <Show when={cwd()}>
-            {(dir) => (
-              <span class="main-cwd" data-tip={dir()}>
-                {tildePath(dir(), client.info()?.home)}
-              </span>
-            )}
+          <Show when={!workspace.isStandalone(cwd()) && cwd()}>
+            {(dir) => {
+              const path = () => tildePath(dir(), client.info()?.home);
+              return (
+                <>
+                  <span class="main-project" data-tip={path()}>
+                    {workspace.projectName(dir())}
+                  </span>
+                  <span class="main-sep" aria-hidden="true">
+                    /
+                  </span>
+                </>
+              );
+            }}
           </Show>
+          <h1>{sessions.activeId() === undefined ? "New thread" : sessionTitle(sessions.active())}</h1>
         </div>
       );
     });

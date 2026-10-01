@@ -1,31 +1,101 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { formatKeys } from "../lib/keys.ts";
+import type { SessionInfo } from "@lemma/contracts";
+import { copyText } from "../lib/clipboard.ts";
+import { loadJson, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
-import { groupSessions, sessionTitle } from "../model/sessions.ts";
-import { ActionIds, Actions, Client, Sessions, SidebarActions, SidebarFooter, SidebarRegion, SidebarRowPart, Slots } from "../ui/contracts.ts";
-import type { ClientService, SessionsService, SidebarRowProps } from "../ui/contracts.ts";
+import { fileSessions, sessionTitle } from "../model/sessions.ts";
+import {
+  ActionIds,
+  Actions,
+  Client,
+  Notify,
+  ProjectActions,
+  SessionActions,
+  Sessions,
+  SidebarActions,
+  SidebarFooter,
+  SidebarRegion,
+  SidebarRowPart,
+  Slots,
+  Workspace,
+} from "../ui/contracts.ts";
+import type { Action, ClientService, MenuAction, SessionAction, SessionsService, SidebarRowProps, WorkspaceService } from "../ui/contracts.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { defineUiPlugin } from "../ui/define.ts";
-import { CheckIcon, CommandIcon, FolderIcon, FolderPlusIcon, PenSquareIcon, PlusIcon, Popover, SearchIcon, SidebarRow, XIcon } from "../ui/parts.tsx";
+import {
+  ArchiveIcon,
+  ChatIcon,
+  CopyIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  FolderPlusIcon,
+  MoreIcon,
+  PenSquareIcon,
+  PencilIcon,
+  PinIcon,
+  PlusIcon,
+  Popover,
+  SearchIcon,
+  SidebarRow,
+  TrashIcon,
+  XIcon,
+} from "../ui/parts.tsx";
 import styles from "./sidebar.css?inline";
 
 interface Deps {
   readonly client: ClientService;
   readonly sessions: SessionsService;
   readonly slots: SlotsService;
+  readonly workspace: WorkspaceService;
   readonly now: () => number;
-  /** The project the list is narrowed to, or all when undefined; the filter and new-chat buttons share it. */
-  readonly scope: () => string | undefined;
-  readonly allGroups: () => ReturnType<typeof groupSessions>;
   readonly newChatIn: (cwd?: string) => void;
 }
 
-/** The default `sidebar.row` part: title, running dot, and time; double-click renames. */
+/**
+ * A menu's items for one subject, grouped by `section`. An item with a
+ * `confirm` text arms on the first pick, showing the text, and runs on the second.
+ */
+function ActionMenu<Subject, Control>(props: { subject: Subject; control: Control; actions: readonly MenuAction<Subject, Control>[]; close: () => void }) {
+  const [armed, setArmed] = createSignal<MenuAction<Subject, Control> | undefined>();
+  return (
+    <For each={props.actions}>
+      {(action, index) => {
+        const confirm = () => action.confirm?.(props.subject);
+        return (
+          <>
+            <Show when={action.section && index() > 0}>
+              <div class="menu-sep" role="separator" />
+            </Show>
+            <button
+              class="menu-item"
+              classList={{ "menu-danger": action.danger === true }}
+              role="menuitem"
+              onClick={() => {
+                if (confirm() !== undefined && armed() !== action) {
+                  setArmed(() => action);
+                  return;
+                }
+                props.close();
+                action.run(props.subject, props.control);
+              }}
+            >
+              <Show when={action.icon}>{(icon) => <Dynamic component={icon()} />}</Show>
+              <span class="menu-label">{armed() === action ? confirm() : action.label(props.subject)}</span>
+            </button>
+          </>
+        );
+      }}
+    </For>
+  );
+}
+
+/** The default `sidebar.row` part: title, running dot, and time, which gives way to a ⋯ menu on hover; double-click renames. */
 function SessionRow(props: SidebarRowProps) {
   const [editing, setEditing] = createSignal(false);
+  let openMenu: (() => void) | undefined;
   const commit = (value: string) => {
     setEditing(false);
     if (value.trim() !== "" && value.trim() !== props.session.title) props.rename(value);
@@ -34,22 +104,43 @@ function SessionRow(props: SidebarRowProps) {
     <Show
       when={editing()}
       fallback={
-        <button
+        <div
           class="session-row"
-          data-session-row
           classList={{ active: props.active }}
-          aria-current={props.active ? "page" : undefined}
-          onClick={() => props.select()}
-          onDblClick={() => setEditing(true)}
+          onContextMenu={(event) => {
+            if (props.actions.length === 0) return;
+            event.preventDefault();
+            openMenu?.();
+          }}
         >
-          <Show when={props.running}>
-            <span class="running-dot" data-tip="Running" />
+          <button
+            class="session-open"
+            data-session-row
+            aria-current={props.active ? "page" : undefined}
+            onClick={() => props.select()}
+            onDblClick={() => setEditing(true)}
+          >
+            <Show when={props.running}>
+              <span class="running-dot" data-tip="Running" />
+            </Show>
+            <span class="session-title" classList={{ untitled: props.session.title === undefined }}>
+              {sessionTitle(props.session)}
+            </span>
+            <span class="session-time">{relativeTime(props.session.updatedAt, props.now)}</span>
+          </button>
+          <Show when={props.actions.length > 0}>
+            <Popover
+              label="Session actions"
+              tip="More"
+              trigger={<MoreIcon />}
+              triggerClass="icon-button session-more"
+              placement="bottom-start"
+              controller={(handle) => (openMenu = handle.open)}
+            >
+              {(close) => <ActionMenu subject={props.session} control={{ rename: () => setEditing(true) }} actions={props.actions} close={close} />}
+            </Popover>
           </Show>
-          <span class="session-title" classList={{ untitled: props.session.title === undefined }}>
-            {sessionTitle(props.session)}
-          </span>
-          <span class="session-time">{relativeTime(props.session.updatedAt, props.now)}</span>
-        </button>
+        </div>
       }
     >
       <input
@@ -76,32 +167,42 @@ function SessionRow(props: SidebarRowProps) {
   );
 }
 
-/** A folder's name and where it is, as the sidebar shows it: `lemma` in `~/code/`. */
-const cwdLabel = (cwd: string, home: string | undefined) => {
-  const path = tildePath(cwd, home);
-  const slash = path.lastIndexOf("/");
-  return { name: slash === -1 ? path : path.slice(slash + 1) || path, parent: slash <= 0 ? "" : path.slice(0, slash + 1) };
-};
+const COLLAPSED_KEY = "lemma.sidebar.collapsed";
+/** The pinned section's key among the folded ones, which are otherwise project directories. */
+const PINNED = ":pinned";
 
 function Sidebar(props: { deps: Deps; onPick: () => void }) {
-  const { client, sessions, slots } = props.deps;
+  const { client, sessions, slots, workspace } = props.deps;
   const [query, setQuery] = createSignal("");
-  const { scope, allGroups } = props.deps;
-  const groups = createMemo(() => {
+  // Sections folded shut, by project directory (or PINNED); kept across reloads. A search shows every match regardless.
+  const [collapsed, setCollapsed] = createSignal(new Set(loadJson<string[]>(COLLAPSED_KEY, [])));
+  const isOpen = (key: string) => query().trim() !== "" || !collapsed().has(key);
+  const toggle = (key: string) => {
+    const next = new Set(collapsed());
+    if (!next.delete(key)) next.add(key);
+    setCollapsed(next);
+    save(COLLAPSED_KEY, next.size === 0 ? undefined : JSON.stringify([...next]));
+  };
+  const filed = createMemo(() => {
     const needle = query().trim().toLowerCase();
-    return allGroups()
-      .filter((group) => scope() === undefined || group.cwd === scope())
-      .map((group) => ({
-        ...group,
-        sessions: needle === "" ? group.sessions : group.sessions.filter((session) => sessionTitle(session).toLowerCase().includes(needle)),
-      }))
-      .filter((group) => group.sessions.length > 0);
+    const matches = (session: SessionInfo) => needle === "" || sessionTitle(session).toLowerCase().includes(needle);
+    const { pinned, groups } = fileSessions(sessions.list());
+    return {
+      pinned: pinned.filter(matches),
+      groups: groups.map((group) => ({ ...group, sessions: group.sessions.filter(matches) })).filter((group) => group.sessions.length > 0),
+    };
   });
+  const shown = () => filed().pinned.length + filed().groups.length > 0;
+  /** Opens a project's menu from a right-click on its head, by directory. */
+  const openProjectMenu = new Map<string, () => void>();
   const home = () => client.info()?.home;
+  const standalone = (cwd: string) => workspace.isStandalone(cwd);
   const newChatIn = (cwd?: string) => {
     props.deps.newChatIn(cwd);
     props.onPick();
   };
+  const sessionActions = (session: SessionInfo) => slots.list(SessionActions).filter((action) => action.when?.(session) ?? true);
+  const projectActions = (cwd: string) => slots.list(ProjectActions).filter((action) => action.when?.(cwd) ?? true);
   const onKey = (event: KeyboardEvent) => {
     // Arrow keys move between session rows.
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -111,6 +212,28 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
     event.preventDefault();
     rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
   };
+  const rows = (list: readonly SessionInfo[]) => (
+    <ul class="session-list">
+      <For each={list}>
+        {(session) => (
+          <li>
+            <SidebarRow
+              session={session}
+              active={sessions.activeId() === session.id}
+              running={sessions.running().includes(session.id)}
+              now={props.deps.now()}
+              select={() => {
+                void sessions.select(session.id);
+                props.onPick();
+              }}
+              rename={(title) => void sessions.rename(session.id, title)}
+              actions={sessionActions(session)}
+            />
+          </li>
+        )}
+      </For>
+    </ul>
+  );
   return (
     <nav class="sidebar" aria-label="Sessions" onKeyDown={onKey}>
       <div class="sidebar-head">
@@ -144,45 +267,73 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
         <Show when={sessions.loaded() && sessions.list().length === 0}>
           <p class="sidebar-empty">No sessions yet. Your conversations will appear here.</p>
         </Show>
-        <Show when={sessions.list().length > 0 && groups().length === 0}>
-          <p class="sidebar-empty">No matching sessions.</p>
+        <Show when={sessions.list().length > 0 && !shown()}>
+          <p class="sidebar-empty">{query().trim() === "" ? "Every session is archived." : "No matching sessions."}</p>
         </Show>
-        <For each={groups()}>
+        <Show when={filed().pinned.length > 0}>
+          <section class="session-group">
+            <div class="group-head">
+              <button class="group-toggle" aria-expanded={isOpen(PINNED)} onClick={() => toggle(PINNED)}>
+                <PinIcon />
+                <span class="group-name">Pinned</span>
+              </button>
+            </div>
+            <Show when={isOpen(PINNED)}>{rows(filed().pinned)}</Show>
+          </section>
+        </Show>
+        <For each={filed().groups}>
           {(group) => (
             <section class="session-group">
-              <div class="group-head" data-tip={group.cwd}>
-                <FolderIcon />
-                <span class="group-name">{cwdLabel(group.cwd, home()).name}</span>
-                <span class="group-parent">{cwdLabel(group.cwd, home()).parent}</span>
+              <div
+                class="group-head"
+                onContextMenu={(event) => {
+                  const open = openProjectMenu.get(group.cwd);
+                  if (open === undefined) return;
+                  event.preventDefault();
+                  open();
+                }}
+              >
                 <button
-                  class="icon-button group-new"
+                  class="group-toggle"
+                  aria-expanded={isOpen(group.cwd)}
+                  data-tip={standalone(group.cwd) ? "Threads in no project" : tildePath(group.cwd, home())}
+                  onClick={() => toggle(group.cwd)}
+                >
+                  <Show when={!standalone(group.cwd)} fallback={<ChatIcon />}>
+                    <Show when={isOpen(group.cwd)} fallback={<FolderIcon />}>
+                      <FolderOpenIcon />
+                    </Show>
+                  </Show>
+                  <span class="group-name">{standalone(group.cwd) ? "No project" : workspace.projectName(group.cwd)}</span>
+                </button>
+                <Show when={!standalone(group.cwd) && projectActions(group.cwd).length > 0}>
+                  <Popover
+                    label={`Actions for ${workspace.projectName(group.cwd)}`}
+                    tip="More"
+                    trigger={<MoreIcon />}
+                    triggerClass="icon-button group-button"
+                    placement="bottom-start"
+                    controller={(handle) => openProjectMenu.set(group.cwd, handle.open)}
+                  >
+                    {(close) => <ActionMenu subject={group.cwd} control={undefined} actions={projectActions(group.cwd)} close={close} />}
+                  </Popover>
+                </Show>
+                <button
+                  class="icon-button group-button"
                   classList={{ active: sessions.activeId() === undefined && sessions.pendingCwd() === group.cwd }}
-                  aria-label={`New chat in ${group.cwd}`}
-                  data-tip={`New chat in ${tildePath(group.cwd, home())}`}
-                  onClick={() => newChatIn(group.cwd)}
+                  aria-label={standalone(group.cwd) ? "New thread in no project" : `New thread in ${group.cwd}`}
+                  data-tip={standalone(group.cwd) ? "New thread in no project" : `New thread in ${tildePath(group.cwd, home())}`}
+                  onClick={() => {
+                    if (standalone(group.cwd)) {
+                      void workspace.newStandalone();
+                      props.onPick();
+                    } else newChatIn(group.cwd);
+                  }}
                 >
                   <PlusIcon />
                 </button>
               </div>
-              <ul class="session-list">
-                <For each={group.sessions}>
-                  {(session) => (
-                    <li>
-                      <SidebarRow
-                        session={session}
-                        active={sessions.activeId() === session.id}
-                        running={sessions.running().includes(session.id)}
-                        now={props.deps.now()}
-                        select={() => {
-                          void sessions.select(session.id);
-                          props.onPick();
-                        }}
-                        rename={(title) => void sessions.rename(session.id, title)}
-                      />
-                    </li>
-                  )}
-                </For>
-              </ul>
+              <Show when={isOpen(group.cwd)}>{rows(group.sessions)}</Show>
             </section>
           )}
         </For>
@@ -194,25 +345,126 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
   );
 }
 
-/** Sessions by project, with search, a project filter, and new-chat buttons. Its foot is a slot (settings, connection). */
+/** Sessions by project, pinned ones first, with search, new-chat buttons, and a menu for each session and project. Its foot is a slot (settings, connection). */
 export default defineUiPlugin({
   id: "sidebar",
   styles,
-  requires: { client: Client, sessions: Sessions, slots: Slots },
+  requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (use, plugin) => {
     // Relative times refresh once a minute.
     const [now, setNow] = createSignal(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     plugin.onCleanup(() => window.clearInterval(timer));
-    const { client, sessions, slots } = use;
-    const [scope, setScope] = createSignal<string | undefined>();
-    const allGroups = createMemo(() => groupSessions(sessions.list()));
-    const home = () => client.info()?.home;
-    const newChatIn = (cwd?: string) => sessions.newChat(cwd === client.info()?.cwd ? undefined : cwd);
-    const deps: Deps = { ...use, now, scope, allGroups, newChatIn };
+    const { client, sessions, workspace, notify, slots } = use;
+    const newChatIn = (cwd?: string) => sessions.newChat(cwd);
+    const deps: Deps = { client, sessions, slots, workspace, now, newChatIn };
     plugin.onCleanup(slots.add(SidebarRegion, { id: "sidebar", component: (props) => <Sidebar deps={deps} onPick={props.onPick} /> }));
     plugin.onCleanup(slots.add(SidebarRowPart, { id: "sidebar.row", order: DEFAULT_PART_ORDER, component: SessionRow }));
 
+    // Its menus' items go through the slots other plugins add theirs to.
+    const sessionAction = (id: string, order: number, action: SessionAction) => plugin.onCleanup(slots.add(SessionActions, { id, order, ...action }));
+    sessionAction("sidebar.rename", 10, { label: () => "Rename", icon: PencilIcon, run: (_, row) => row.rename() });
+    sessionAction("sidebar.pin", 20, {
+      label: (session) => (session.pinned === true ? "Unpin" : "Pin"),
+      icon: PinIcon,
+      run: (session) => void sessions.mark(session.id, { pinned: session.pinned !== true }),
+    });
+    sessionAction("sidebar.archive", 30, {
+      label: (session) => (session.archived === true ? "Unarchive" : "Archive"),
+      icon: ArchiveIcon,
+      run: (session) => void sessions.mark(session.id, { archived: session.archived !== true }),
+    });
+    sessionAction("sidebar.delete", 40, {
+      label: () => "Delete",
+      icon: TrashIcon,
+      danger: true,
+      section: true,
+      run: (session) => void sessions.remove(session.id),
+    });
+
+    // The open thread, from the keyboard and the palette; Settings › Keyboard rebinds these.
+    const open = () => sessions.active();
+    const threadAction = (id: string, order: number, action: Omit<Action, "category" | "when"> & { readonly when?: () => boolean }) =>
+      plugin.onCleanup(slots.add(Actions, { id, order, category: "Thread", ...action, when: () => open() !== undefined && (action.when?.() ?? true) }));
+    /** The thread `step` rows away from the open one in the sidebar's order (pinned first, then by project), wrapping. */
+    const neighbor = (step: number) => {
+      const { pinned, groups } = fileSessions(sessions.list());
+      const order = [...pinned, ...groups.flatMap((group) => group.sessions)];
+      if (order.length === 0) return undefined;
+      const at = order.findIndex((session) => session.id === sessions.activeId());
+      return order[at === -1 ? 0 : (at + step + order.length) % order.length];
+    };
+    plugin.onCleanup(
+      slots.add(Actions, {
+        id: "sidebar.next-thread",
+        order: 20,
+        category: "Thread",
+        title: "Next thread",
+        keys: "mod+alt+arrowdown",
+        whileTyping: true,
+        run: () => {
+          const next = neighbor(1);
+          if (next !== undefined) void sessions.select(next.id);
+        },
+      }),
+    );
+    plugin.onCleanup(
+      slots.add(Actions, {
+        id: "sidebar.previous-thread",
+        order: 21,
+        category: "Thread",
+        title: "Previous thread",
+        keys: "mod+alt+arrowup",
+        whileTyping: true,
+        run: () => {
+          const previous = neighbor(-1);
+          if (previous !== undefined) void sessions.select(previous.id);
+        },
+      }),
+    );
+    threadAction("sidebar.pin-thread", 23, {
+      title: "Pin or unpin thread",
+      icon: PinIcon,
+      keys: "mod+alt+p",
+      run: () => {
+        const session = open();
+        if (session !== undefined) void sessions.mark(session.id, { pinned: session.pinned !== true });
+      },
+    });
+    threadAction("sidebar.archive-thread", 24, {
+      title: "Archive thread",
+      icon: ArchiveIcon,
+      keys: "mod+alt+a",
+      when: () => open()?.archived !== true,
+      run: () => {
+        const session = open();
+        if (session !== undefined) void sessions.mark(session.id, { archived: true });
+      },
+    });
+    threadAction("sidebar.delete-thread", 25, {
+      title: "Delete thread",
+      icon: TrashIcon,
+      run: () => {
+        const session = open();
+        if (session !== undefined) void sessions.remove(session.id);
+      },
+    });
+
+    plugin.onCleanup(
+      slots.add(ProjectActions, { id: "sidebar.new-chat", order: 10, label: () => "New thread", icon: PenSquareIcon, run: (cwd) => newChatIn(cwd) }),
+    );
+    plugin.onCleanup(
+      slots.add(ProjectActions, {
+        id: "sidebar.copy-path",
+        order: 20,
+        label: () => "Copy path",
+        icon: CopyIcon,
+        run: (cwd) =>
+          void copyText(cwd).then((copied) =>
+            notify.toast(copied ? { level: "info", message: `Copied ${cwd}` } : { level: "error", message: "Could not copy" }),
+          ),
+      }),
+    );
     // Its head's buttons go through the slot other plugins add theirs to.
     type ActionProps = { readonly onPick: () => void };
     const action = (id: string, order: number, component: (props: ActionProps) => JSX.Element) =>
@@ -222,70 +474,6 @@ export default defineUiPlugin({
       slots.get(Actions, id)?.run();
       props.onPick();
     };
-    action("sidebar.palette", 0, (props) => (
-      <Show when={slots.get(Actions, ActionIds.palette)}>
-        {(palette) => (
-          <button
-            class="icon-button"
-            aria-label="Command palette"
-            data-tip={`Commands, sessions, projects · ${formatKeys(String(palette().keys ?? "mod+k"))}`}
-            onClick={() => runAction(ActionIds.palette, props)}
-          >
-            <CommandIcon />
-          </button>
-        )}
-      </Show>
-    ));
-    action("sidebar.projects", 10, () => (
-      <Popover
-        label={scope() === undefined ? "Projects" : `Project: ${tildePath(scope()!, home())}`}
-        trigger={<FolderIcon />}
-        triggerClass={scope() === undefined ? "icon-button" : "icon-button active"}
-      >
-        {(close) => (
-          <>
-            <button
-              class="menu-item"
-              role="menuitemradio"
-              aria-checked={scope() === undefined}
-              onClick={() => {
-                setScope(undefined);
-                close();
-              }}
-            >
-              <span class="menu-check">
-                <Show when={scope() === undefined}>
-                  <CheckIcon />
-                </Show>
-              </span>
-              All projects
-            </button>
-            <For each={allGroups()}>
-              {(group) => (
-                <button
-                  class="menu-item"
-                  role="menuitemradio"
-                  aria-checked={scope() === group.cwd}
-                  data-tip={group.cwd}
-                  onClick={() => {
-                    setScope(group.cwd);
-                    close();
-                  }}
-                >
-                  <span class="menu-check">
-                    <Show when={scope() === group.cwd}>
-                      <CheckIcon />
-                    </Show>
-                  </span>
-                  <span class="menu-label">{cwdLabel(group.cwd, home()).name}</span>
-                  <span class="menu-hint">{cwdLabel(group.cwd, home()).parent}</span>
-                </button>
-              )}
-            </For>
-          </>
-        )}
-      </Popover>
-    ));
     action("sidebar.add-project", 20, (props) => (
       <Show when={slots.get(Actions, ActionIds.addProject)}>
         <button class="icon-button" aria-label="Add project" data-tip="Add project" onClick={() => runAction(ActionIds.addProject, props)}>
@@ -297,10 +485,10 @@ export default defineUiPlugin({
       <button
         class="icon-button"
         classList={{ active: sessions.activeId() === undefined }}
-        data-tip="New chat"
-        aria-label="New chat"
+        data-tip="New thread"
+        aria-label="New thread"
         onClick={() => {
-          newChatIn(scope());
+          newChatIn();
           props.onPick();
         }}
       >

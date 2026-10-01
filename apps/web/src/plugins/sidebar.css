@@ -43,36 +43,50 @@
 .group-head {
   display: flex;
   align-items: center;
-  gap: 6px;
   height: 26px;
-  padding: 0 4px 0 8px;
+  padding-right: 4px;
   color: var(--text-3);
   font-size: 12px;
 }
 
+.group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.group-toggle:hover .group-name {
+  color: var(--text);
+}
+
 .group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-2);
   font-weight: 600;
   white-space: nowrap;
 }
 
-.group-parent {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1;
-}
-
-.group-new {
+.group-button {
   width: 22px;
   height: 22px;
   opacity: 0;
 }
 
-.group-head:hover .group-new,
-.group-new:focus-visible,
-.group-new.active {
+.group-head:hover .group-button,
+.group-button:focus-visible,
+.group-button.active,
+.group-button[aria-expanded="true"] {
   opacity: 1;
 }
 
@@ -83,17 +97,59 @@
 }
 
 .session-row {
-  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+
+.session-open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 30px;
+  height: 100%;
   padding: 0 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: inherit;
   background: transparent;
+  color: inherit;
   text-align: left;
+  font: inherit;
   font-size: 13px;
+}
+
+/* The time gives way to the ⋯ menu while the row is hovered, focused, or its menu is open. */
+.session-more {
+  position: absolute;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+}
+
+.session-row:hover .session-more,
+.session-row:focus-within .session-more,
+.session-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.session-row:hover .session-time,
+.session-row:focus-within .session-time,
+.session-row:has(.session-more[aria-expanded="true"]) .session-time {
+  visibility: hidden;
+}
+
+@media (hover: none) {
+  .session-more {
+    opacity: 1;
+  }
+
+  .session-time {
+    visibility: hidden;
+  }
 }
 
 .session-row:hover {
@@ -148,4 +204,12 @@
   gap: 2px;
   padding: 8px 12px 8px 8px;
   border-top: 1px solid var(--border);
+}
+
+.menu-item.menu-danger {
+  color: var(--err);
+}
+
+.menu-item.menu-danger[data-active="true"] {
+  color: var(--err);
 }

@@ -19,6 +19,7 @@ import type { ClientService, NotifyService, SessionsService, WorkspaceService } 
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import {
+  ChatIcon,
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
@@ -147,29 +148,38 @@ function ModePicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]
 }
 
 function ProjectPicker(props: { deps: Deps }) {
-  const { client, sessions, workspace, slots } = props.deps;
+  const { sessions, workspace, slots } = props.deps;
   const isNew = () => sessions.activeId() === undefined;
   const projects = workspace.projects;
   const current = () => workspace.workingDir() ?? "";
   const addProject = () => slots.get(Actions, ActionIds.addProject);
+  const standalone = () => workspace.isStandalone(current());
   const label = () => (
-    <>
+    <Show
+      when={!standalone()}
+      fallback={
+        <>
+          <ChatIcon />
+          <span class="strip-label">No project</span>
+        </>
+      }
+    >
       <FolderIcon />
-      <span class="strip-label">{baseName(current())}</span>
-    </>
+      <span class="strip-label">{workspace.projectName(current())}</span>
+    </Show>
   );
   return (
     <Show
       when={isNew()}
       fallback={
-        <span class="strip-chip static" data-tip={current()}>
+        <span class="strip-chip static" data-tip={standalone() ? "A thread of its own, in no project" : current()}>
           {label()}
         </span>
       }
     >
       <Popover
         label="Project"
-        tip={current()}
+        tip={standalone() ? "A thread of its own, in no project" : current()}
         trigger={
           <>
             {label()}
@@ -182,7 +192,6 @@ function ProjectPicker(props: { deps: Deps }) {
       >
         {(close) => (
           <>
-            <div class="menu-section">Start in</div>
             <For each={projects()}>
               {(path) => (
                 <button
@@ -190,7 +199,7 @@ function ProjectPicker(props: { deps: Deps }) {
                   role="menuitemradio"
                   aria-checked={path === current()}
                   onClick={() => {
-                    sessions.newChat(path === client.info()?.cwd ? undefined : path);
+                    sessions.newChat(path);
                     close();
                   }}
                 >
@@ -199,15 +208,34 @@ function ProjectPicker(props: { deps: Deps }) {
                       <CheckIcon />
                     </Show>
                   </span>
-                  <span class="menu-label">{baseName(path)}</span>
+                  <span class="menu-label">{workspace.projectName(path)}</span>
                   <span class="menu-hint">{path.slice(0, path.length - baseName(path).length - 1)}</span>
                 </button>
               )}
             </For>
+            <Show when={projects().length > 0}>
+              <div class="menu-sep" />
+            </Show>
+            <button
+              class="menu-item"
+              role="menuitemradio"
+              aria-checked={standalone()}
+              onClick={() => {
+                close();
+                void workspace.newStandalone();
+              }}
+            >
+              <span class="menu-check">
+                <Show when={standalone()} fallback={<ChatIcon />}>
+                  <CheckIcon />
+                </Show>
+              </span>
+              <span class="menu-label">No project</span>
+              <span class="menu-hint">a thread of its own</span>
+            </button>
             <Show when={addProject()}>
               {(action) => (
                 <>
-                  <div class="menu-sep" />
                   <button
                     class="menu-item"
                     role="menuitem"
@@ -439,7 +467,7 @@ export default defineUiPlugin({
       deps.slots.add(SettingsGroups, {
         id: "workspace-bar",
         section: SectionIds.general,
-        title: "New chats",
+        title: "New threads",
         order: 10,
         entries: () => [
           {
@@ -447,7 +475,7 @@ export default defineUiPlugin({
             view: () => (
               <SettingRow
                 title="Start in a new worktree"
-                description="In a git repository, a new chat gets its own checkout on a new branch, so its changes stay apart."
+                description="In a git repository, a new thread gets its own checkout on a new branch, so its changes stay apart."
               >
                 <Toggle label="Start in a new worktree" checked={deps.workspace.worktree().enabled} onChange={deps.workspace.setWorktree} />
               </SettingRow>

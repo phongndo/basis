@@ -124,6 +124,12 @@ export const FolderIcon = () => (
     <path d="M2.5 4.5a1 1 0 011-1h3l1.5 1.5h4.5a1 1 0 011 1v6a1 1 0 01-1 1h-9a1 1 0 01-1-1z" />
   </Icon>
 );
+export const FolderOpenIcon = () => (
+  <Icon>
+    <path d="M2.5 11.5v-7a1 1 0 011-1h3l1.5 1.5h4a1 1 0 011 1v1" />
+    <path d="M2.5 11.5l1.6-4.2a1 1 0 01.9-.6h8.1a.6.6 0 01.6.8l-1.4 3.7a1 1 0 01-.9.6H3.5a1 1 0 01-1-.3z" />
+  </Icon>
+);
 export const FilterIcon = () => (
   <Icon>
     <path d="M2.5 4h11M4.5 8h7M6.5 12h3" />
@@ -199,6 +205,27 @@ export const MoreIcon = () => (
     <circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none" />
   </Icon>
 );
+export const PinIcon = (props: { filled?: boolean }) => (
+  <Icon>
+    <path d="M6 2.5h4M6.75 2.5v4L4.5 9.25h7L9.25 6.5v-4M8 9.25v4.25" fill={props.filled ? "currentColor" : "none"} />
+  </Icon>
+);
+export const ArchiveIcon = () => (
+  <Icon>
+    <rect x="2.5" y="3" width="11" height="3" rx=".75" />
+    <path d="M3.5 6v6a1 1 0 001 1h7a1 1 0 001-1V6M6.5 8.5h3" />
+  </Icon>
+);
+export const TrashIcon = () => (
+  <Icon>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 001 .9h3.8a1 1 0 001-.9l.6-8" />
+  </Icon>
+);
+export const PencilIcon = () => (
+  <Icon>
+    <path d="M10.5 3l2.5 2.5L6 12.5H3.5V10z" />
+  </Icon>
+);
 export const BrainIcon = () => (
   <Icon>
     <path d="M6 3a2 2 0 00-2 2 2 2 0 00-1 3.5A2 2 0 005 12a2 2 0 003 .5V3.5A2 2 0 006 3zM10 3a2 2 0 012 2 2 2 0 011 3.5 2 2 0 01-2 3.5 2 2 0 01-3 .5" />
@@ -263,6 +290,7 @@ export const icons: Readonly<Record<IconName, Component<{ class?: string; filled
   refresh: RefreshIcon,
   external: ExternalIcon,
   folder: FolderIcon,
+  "folder-open": FolderOpenIcon,
   filter: FilterIcon,
   search: SearchIcon,
   "folder-plus": FolderPlusIcon,
@@ -273,6 +301,10 @@ export const icons: Readonly<Record<IconName, Component<{ class?: string; filled
   laptop: LaptopIcon,
   star: StarIcon,
   more: MoreIcon,
+  pin: PinIcon,
+  archive: ArchiveIcon,
+  trash: TrashIcon,
+  pencil: PencilIcon,
   brain: BrainIcon,
   chat: ChatIcon,
   trajectory: TrajectoryIcon,

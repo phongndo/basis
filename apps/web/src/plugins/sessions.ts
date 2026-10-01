@@ -1,7 +1,7 @@
 import { batch, createMemo, createSignal } from "solid-js";
 import { SessionLog, startPrompt } from "@lemma/client";
 import { branchOf } from "@lemma/contracts";
-import type { HostEvent, PromptContent, SessionEvent, SessionInfo, TurnOptions } from "@lemma/contracts";
+import type { HostEvent, PromptContent, SessionEvent, SessionInfo, SessionMarks, TurnOptions } from "@lemma/contracts";
 import { appendOutput, applyDelta, dropOutput, emptyLive, endTurn, reconcileLive, settleStep } from "../model/live.ts";
 import type { LiveState } from "../model/live.ts";
 import { resolveLeaf, trackTurn, upsertSession } from "../model/sessions.ts";
@@ -65,6 +65,11 @@ export default defineUiPlugin({
       if (next !== current) setLive({ ...live(), [sessionId]: next });
     };
     const upsert = (info: SessionInfo) => setList((sessions) => upsertSession(sessions, info));
+    /** Drops a deleted session, leaving it first if it is open. */
+    const forget = (sessionId: string) => {
+      if (activeId() === sessionId) void select(undefined);
+      setList((sessions) => sessions.filter((session) => session.id !== sessionId));
+    };
 
     const closeLog = () => {
       stopLog?.();
@@ -182,6 +187,9 @@ export default defineUiPlugin({
             }
             return;
           }
+          case "session-removed":
+            forget(event.sessionId);
+            return;
           case "session-changed":
             upsert(event.info);
             if (sessionLog?.sessionId === event.info.id) sessionLog.noteLastSeq(event.info.lastSeq);
@@ -260,6 +268,7 @@ export default defineUiPlugin({
           setPendingCwd(cwd);
           void select(undefined);
         },
+        startIn: setPendingCwd,
         rename: async (sessionId: string, title: string) => {
           const trimmed = title.trim();
           if (trimmed === "") return;
@@ -267,6 +276,21 @@ export default defineUiPlugin({
             upsert(await host.session.setTitle(sessionId, trimmed));
           } catch (error) {
             notify.report(error, "Rename failed");
+          }
+        },
+        mark: async (sessionId: string, marks: SessionMarks) => {
+          try {
+            upsert(await host.session.mark(sessionId, marks));
+          } catch (error) {
+            notify.report(error, "Could not update the session");
+          }
+        },
+        remove: async (sessionId: string) => {
+          try {
+            await host.session.remove(sessionId);
+            forget(sessionId);
+          } catch (error) {
+            notify.report(error, "Could not delete the session");
           }
         },
         send,

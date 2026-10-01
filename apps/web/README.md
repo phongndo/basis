@@ -48,6 +48,17 @@ lemma ui disable sidebar               # (--project for the project's config)
 lemma ui config chat expandTools true  # one config field; --unset removes it
 ```
 
+Shortcuts are config too: every action (anything the palette lists) can have
+keys. Settings › Keyboard (`mod+/`) records them and writes the `keymap`
+plugin's `bindings`, one line per action, which a file edit changes as well:
+
+```jsonc
+{ "ui": { "keymap": { "config": { "bindings": ["shell.toggle-sidebar = mod+shift+y", "session.view.trajectory ="] } } } }
+```
+
+Nothing after `=` unbinds an action; the composer's send key is the
+`composer` plugin's `send` (`enter` or `mod+enter`).
+
 Open the app with `?safe` to ignore rows and files: the way back from a
 customization that broke the page, including one that turned the settings off.
 
@@ -69,6 +80,7 @@ plugins use nothing else.
   tool's summary and body, in the chat and the trajectory), `CodeBlocks` (how
   fenced code renders: `highlight` and `diagrams` fill it), `PaletteSources`
   (what the palette searches), `SessionHeader`, `SidebarActions`,
+  `SessionActions` and `ProjectActions` (the sidebar's ⋯ menus),
   `ComposerActions`, `WorkspaceBarItems`, `PluginTabs` (the Plugins page
   inspector), `TrajectoryTabs` and `TrajectoryActions`. The bundled plugins add
   their own buttons, tabs, and sources through these same slots. Take over a

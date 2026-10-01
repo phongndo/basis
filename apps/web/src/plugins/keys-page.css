@@ -1,0 +1,132 @@
+/* A page of ordinary settings width, though the section has its own body. */
+.keys-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 712px;
+  margin: 0 auto;
+  padding-bottom: 64px;
+}
+
+.keys-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keys-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.keys-search .icon {
+  color: var(--text-3);
+}
+
+.shortcut-row .setting-control {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcut-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.shortcut-key {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.shortcut-key kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+}
+
+.shortcut-key:hover kbd {
+  border-color: var(--border-strong);
+}
+
+/* Remove sits on the chip's corner, shown while the chip is hovered or focused. */
+.shortcut-remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-raised);
+  opacity: 0;
+}
+
+.shortcut-remove .icon {
+  width: 10px;
+  height: 10px;
+}
+
+.shortcut-chip:hover .shortcut-remove,
+.shortcut-chip:focus-within .shortcut-remove {
+  opacity: 1;
+}
+
+.shortcut-add,
+.shortcut-reset {
+  width: 26px;
+  height: 26px;
+  color: var(--text-3);
+}
+
+.shortcut-row:not(:hover, :focus-within) .shortcut-add {
+  opacity: 0.35;
+}
+
+.shortcut-reset.hidden {
+  visibility: hidden;
+}
+
+.key-recorder {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--text-2);
+  font-size: 12px;
+  outline: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.shortcut-conflict {
+  margin-top: 2px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+@media (hover: none) {
+  .shortcut-remove,
+  .shortcut-row .shortcut-add {
+    opacity: 1;
+  }
+}

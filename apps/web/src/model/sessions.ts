@@ -24,6 +24,15 @@ export const groupSessions = (sessions: readonly SessionInfo[]): SessionGroup[] 
     .sort((a, b) => b.updatedAt - a.updatedAt);
 };
 
+/** The sidebar's filing: pinned sessions on their own, newest first, the rest by project, archived ones in neither. */
+export const fileSessions = (sessions: readonly SessionInfo[]): { readonly pinned: SessionInfo[]; readonly groups: SessionGroup[] } => {
+  const shown = sessions.filter((session) => session.archived !== true);
+  return {
+    pinned: shown.filter((session) => session.pinned === true).sort((a, b) => b.updatedAt - a.updatedAt),
+    groups: groupSessions(shown.filter((session) => session.pinned !== true)),
+  };
+};
+
 /** Replaces or inserts `info` by id. */
 export const upsertSession = (sessions: readonly SessionInfo[], info: SessionInfo): SessionInfo[] => {
   const index = sessions.findIndex((session) => session.id === info.id);

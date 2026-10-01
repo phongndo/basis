@@ -19,8 +19,9 @@
 .main-title {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  font-size: 14px;
 }
 
 .main-title h1 {
@@ -30,13 +31,18 @@
   text-overflow: ellipsis;
 }
 
-.main-cwd {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-3);
-  white-space: nowrap;
+.main-project {
+  flex: none;
+  max-width: 40%;
   overflow: hidden;
+  color: var(--text-3);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-sep {
+  flex: none;
+  color: var(--text-3);
 }
 
 .busy-chip {

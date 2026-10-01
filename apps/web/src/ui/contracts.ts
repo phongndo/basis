@@ -22,6 +22,7 @@ import type {
   ReloadResult,
   SessionEvent,
   SessionInfo,
+  SessionMarks,
   TextContent,
   ThinkingLevel,
   TurnOptions,
@@ -30,6 +31,7 @@ import type {
 } from "@lemma/contracts";
 import type { CodeBlock } from "../lib/markdown.ts";
 import type { ToolSummary } from "../model/format.ts";
+import type { ProjectSettings } from "../model/prefs.ts";
 import type { LiveState } from "../model/live.ts";
 import type { ToolResultView, TurnView } from "../model/transcript.ts";
 import { definePart, defineSlot } from "./slots.ts";
@@ -125,7 +127,13 @@ export interface SessionsService {
   readonly onSelect: (listener: (sessionId: string | undefined) => void) => () => void;
   /** A new chat, created by its first prompt, in `cwd` or the host's directory. */
   readonly newChat: (cwd?: string) => void;
+  /** Sets where the next new thread starts without going to it (no `select`): a default, not a choice. */
+  readonly startIn: (cwd: string | undefined) => void;
   readonly rename: (sessionId: string, title: string) => Promise<void>;
+  /** Pins or archives it; failures are reported. */
+  readonly mark: (sessionId: string, marks: SessionMarks) => Promise<void>;
+  /** Deletes it for good, leaving it first if it is open; failures (a running turn) are reported. */
+  readonly remove: (sessionId: string) => Promise<void>;
   /** Sends a prompt, creating the session first for a new chat (in `cwd`, else the pending directory). Resolves false when it was refused. */
   readonly send: (content: PromptContent, options?: { readonly turn?: TurnOptions | undefined; readonly cwd?: string | undefined }) => Promise<boolean>;
   readonly cancel: () => void;
@@ -184,8 +192,19 @@ export interface WorkspaceService {
   /** Added by hand (remembered), so they are offered before they have sessions. */
   readonly added: Accessor<readonly string[]>;
   readonly add: (path: string) => void;
-  /** Stops offering a project added by hand; one with sessions stays listed through them. */
+  /** Stops listing a project, the host's directory included, until a thread starts in it or it is added again. */
   readonly remove: (path: string) => void;
+  /** A project's settings (remembered in this browser); fields absent follow the defaults. */
+  readonly projectSettings: (cwd: string) => ProjectSettings;
+  /** Changes some of them; an undefined field, or a blank name, returns to the default. */
+  readonly configureProject: (cwd: string, patch: { readonly [K in keyof ProjectSettings]?: ProjectSettings[K] | undefined }) => void;
+  /** What to call a project: its name setting, else its folder's name. */
+  readonly projectName: (cwd: string) => string;
+  /** Where threads with no project run: a folder of the host's own (`<home>/scratch`), never listed among `projects`. */
+  readonly standaloneDir: Accessor<string | undefined>;
+  readonly isStandalone: (cwd: string | undefined) => boolean;
+  /** Starts a thread with no project, making its folder on the host first if needed. */
+  readonly newStandalone: () => Promise<void>;
   /** Starts a new chat in the folder at `input` (`~` allowed) once the host confirms it exists. */
   readonly open: (input: string) => Promise<boolean>;
   /** Where the composer works: the active session's directory, else the new chat's, else the host's. */
@@ -194,7 +213,7 @@ export interface WorkspaceService {
   readonly status: Accessor<WorkspaceStatus | undefined>;
   readonly setStatus: (status: WorkspaceStatus) => void;
   readonly refresh: () => Promise<void>;
-  /** For a new chat in a git repository: whether it starts in a fresh worktree (remembered), and from which branch. */
+  /** For a new thread in a git repository: whether it starts in a fresh worktree (the project's setting, else the remembered global one), and from which branch. */
   readonly worktree: Accessor<WorktreeDraft>;
   readonly setWorktree: (enabled: boolean) => void;
   readonly setWorktreeBase: (base: string | undefined) => void;
@@ -289,10 +308,36 @@ export const Root = defineSlot<Region>("root");
 export const Layers = defineSlot<Region>("layers");
 export const SidebarRegion = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar");
 export const MainRegion = defineSlot<Region>("main");
-/** Buttons in the sidebar's head beside its search: the palette, project filter, add project, and new chat are its defaults. `onPick` closes the drawer on narrow screens. */
+/** Buttons in the sidebar's head beside its search: add project and new chat are its defaults. `onPick` closes the drawer on narrow screens. */
 export const SidebarActions = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar.actions");
 /** Items at the foot of the sidebar: the settings button, the connection badge. `onPick` closes the drawer on narrow screens. */
 export const SidebarFooter = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar.footer");
+
+/** An item in a menu about one thing: a session, a project. */
+export interface MenuAction<Subject, Control = undefined> {
+  readonly label: (subject: Subject) => string;
+  readonly icon?: Component;
+  /** Shown in red: it destroys something. */
+  readonly danger?: boolean;
+  /** When it returns text, the first pick shows that and only a second pick runs the action. */
+  readonly confirm?: (subject: Subject) => string | undefined;
+  readonly when?: (subject: Subject) => boolean;
+  /** Starts a group: a separator comes before it. */
+  readonly section?: boolean;
+  readonly run: (subject: Subject, control: Control) => void;
+}
+
+/** What a session's menu item can do to its row. */
+export interface SessionRowControl {
+  /** Edits the title in place. */
+  readonly rename: () => void;
+}
+/** An item in a session's menu in the sidebar (its row's ⋯ button, or a right-click). Rename, pin, archive, and delete are the sidebar's defaults. */
+export type SessionAction = MenuAction<SessionInfo, SessionRowControl>;
+export const SessionActions = defineSlot<SessionAction>("session.actions");
+/** An item in a project's menu in the sidebar, by the project's directory. New thread and copy path are the sidebar's defaults; project settings and delete, the projects page's. */
+export type ProjectAction = MenuAction<string>;
+export const ProjectActions = defineSlot<ProjectAction>("project.actions");
 
 export interface SessionView {
   readonly title: string;
@@ -452,7 +497,10 @@ export interface Action {
   readonly whileTyping?: boolean;
   /** Not listed in the palette. */
   readonly hidden?: boolean;
-  /** Asks for a value in the palette first (the question is read when asked); `run` receives it. */
+  /**
+   * Asks for a value in the palette first (the question is read when asked); `run` receives it.
+   * Pressing its keys does the same: the keymap runs `ActionIds.palette` with this action's id.
+   */
   readonly input?: () => { readonly title: string; readonly placeholder?: string };
   readonly run: (value?: string) => void;
 }
@@ -502,6 +550,7 @@ export const PaletteSources = defineSlot<PaletteSource>("palette.sources");
  * so a plugin that replaces one keeps its id and what calls it keeps working.
  */
 export const ActionIds = {
+  /** Run with an action's id, opens asking for that action's value. */
   palette: "palette.open",
   addProject: "add-project.open",
   providers: "providers.open",
@@ -624,6 +673,7 @@ export type IconName =
   | "refresh"
   | "external"
   | "folder"
+  | "folder-open"
   | "filter"
   | "search"
   | "folder-plus"
@@ -634,6 +684,10 @@ export type IconName =
   | "laptop"
   | "star"
   | "more"
+  | "pin"
+  | "archive"
+  | "trash"
+  | "pencil"
   | "brain"
   | "chat"
   | "trajectory"
@@ -724,6 +778,8 @@ export interface SidebarRowProps {
   readonly now: number;
   readonly select: () => void;
   readonly rename: (title: string) => void;
+  /** Its menu: the `SessionActions` that apply to it, in order. */
+  readonly actions: readonly SessionAction[];
 }
 /** A session in the sidebar's list. Arrow keys move between elements marked `data-session-row`. */
 export const SidebarRowPart = definePart<SidebarRowProps>("sidebar.row");
