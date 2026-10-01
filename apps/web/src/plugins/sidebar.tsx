@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { SessionInfo } from "@lemma/contracts";
 import { copyText } from "../lib/clipboard.ts";
+import { formatKeys } from "../lib/keys.ts";
 import { loadJson, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { fileSessions, sessionTitle } from "../model/sessions.ts";
@@ -28,6 +29,8 @@ import { defineUiPlugin } from "../ui/define.ts";
 import {
   ArchiveIcon,
   ChatIcon,
+  CheckIcon,
+  CommandIcon,
   CopyIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -52,6 +55,8 @@ interface Deps {
   readonly workspace: WorkspaceService;
   readonly now: () => number;
   readonly newChatIn: (cwd?: string) => void;
+  /** The project the list is narrowed to, or all when undefined; the head's projects button sets it. */
+  readonly scope: () => string | undefined;
 }
 
 /**
@@ -186,10 +191,15 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
   const filed = createMemo(() => {
     const needle = query().trim().toLowerCase();
     const matches = (session: SessionInfo) => needle === "" || sessionTitle(session).toLowerCase().includes(needle);
+    const scope = props.deps.scope();
+    const inScope = (session: SessionInfo) => scope === undefined || session.cwd === scope;
     const { pinned, groups } = fileSessions(sessions.list());
     return {
-      pinned: pinned.filter(matches),
-      groups: groups.map((group) => ({ ...group, sessions: group.sessions.filter(matches) })).filter((group) => group.sessions.length > 0),
+      pinned: pinned.filter((session) => inScope(session) && matches(session)),
+      groups: groups
+        .filter((group) => scope === undefined || group.cwd === scope)
+        .map((group) => ({ ...group, sessions: group.sessions.filter(matches) }))
+        .filter((group) => group.sessions.length > 0),
     };
   });
   const shown = () => filed().pinned.length + filed().groups.length > 0;
@@ -357,7 +367,15 @@ export default defineUiPlugin({
     plugin.onCleanup(() => window.clearInterval(timer));
     const { client, sessions, workspace, notify, slots } = use;
     const newChatIn = (cwd?: string) => sessions.newChat(cwd);
-    const deps: Deps = { client, sessions, slots, workspace, now, newChatIn };
+    /** Projects with threads, which the list can be narrowed to; a chosen one that loses its last thread lets go. */
+    const scopes = createMemo(() => fileSessions(sessions.list()).groups.map((group) => group.cwd));
+    const [chosenScope, setScope] = createSignal<string | undefined>();
+    const scope = () => {
+      const chosen = chosenScope();
+      return chosen !== undefined && scopes().includes(chosen) ? chosen : undefined;
+    };
+    const scopeName = (cwd: string) => (workspace.isStandalone(cwd) ? "No project" : workspace.projectName(cwd));
+    const deps: Deps = { client, sessions, slots, workspace, now, newChatIn, scope };
     plugin.onCleanup(slots.add(SidebarRegion, { id: "sidebar", component: (props) => <Sidebar deps={deps} onPick={props.onPick} /> }));
     plugin.onCleanup(slots.add(SidebarRowPart, { id: "sidebar.row", order: DEFAULT_PART_ORDER, component: SessionRow }));
 
@@ -474,6 +492,66 @@ export default defineUiPlugin({
       slots.get(Actions, id)?.run();
       props.onPick();
     };
+    /** An action's first binding, if it has one. */
+    const keysOf = (action: Action) => [action.keys ?? []].flat()[0];
+    action("sidebar.palette", 0, (props) => (
+      <Show when={slots.get(Actions, ActionIds.palette)}>
+        {(palette) => (
+          <button
+            class="icon-button"
+            aria-label="Command palette"
+            data-tip={keysOf(palette()) === undefined ? "Commands, threads, projects" : `Commands, threads, projects · ${formatKeys(keysOf(palette())!)}`}
+            onClick={() => runAction(ActionIds.palette, props)}
+          >
+            <CommandIcon />
+          </button>
+        )}
+      </Show>
+    ));
+    action("sidebar.projects", 10, () => {
+      const choose = (cwd: string | undefined, close: () => void) => {
+        setScope(cwd);
+        close();
+      };
+      return (
+        <Popover
+          label={scope() === undefined ? "Projects" : `Project: ${scopeName(scope()!)}`}
+          trigger={<FolderIcon />}
+          triggerClass={scope() === undefined ? "icon-button" : "icon-button active"}
+        >
+          {(close) => (
+            <>
+              <button class="menu-item" role="menuitemradio" aria-checked={scope() === undefined} onClick={() => choose(undefined, close)}>
+                <span class="menu-check">
+                  <Show when={scope() === undefined}>
+                    <CheckIcon />
+                  </Show>
+                </span>
+                All projects
+              </button>
+              <For each={scopes()}>
+                {(cwd) => (
+                  <button
+                    class="menu-item"
+                    role="menuitemradio"
+                    aria-checked={scope() === cwd}
+                    data-tip={workspace.isStandalone(cwd) ? undefined : tildePath(cwd, client.info()?.home)}
+                    onClick={() => choose(cwd, close)}
+                  >
+                    <span class="menu-check">
+                      <Show when={scope() === cwd}>
+                        <CheckIcon />
+                      </Show>
+                    </span>
+                    <span class="menu-label">{scopeName(cwd)}</span>
+                  </button>
+                )}
+              </For>
+            </>
+          )}
+        </Popover>
+      );
+    });
     action("sidebar.add-project", 20, (props) => (
       <Show when={slots.get(Actions, ActionIds.addProject)}>
         <button class="icon-button" aria-label="Add project" data-tip="Add project" onClick={() => runAction(ActionIds.addProject, props)}>
