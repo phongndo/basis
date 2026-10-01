@@ -4,8 +4,11 @@ packages:
   - apps/*
   - examples/*
 allowBuilds:
+  electron: true
   esbuild: true
   msgpackr-extract: false
   "@google/genai": false
   protobufjs: false
   "@parcel/watcher": false
+minimumReleaseAgeExclude:
+  - electron@44.5.1

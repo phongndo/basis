@@ -11,10 +11,12 @@ plugin that can be replaced by id. Plugins are composed by the core in
 | [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                     |
 | [`apps/web`](apps/web/README.md)                        | The web client: plugins on the same kernel, each replaceable; served by `transport`           |
 | [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents         |
+| [`apps/desktop`](apps/desktop/README.md)                | The web app in a desktop window (Electron), attaching to a running host or starting one       |
 | [`examples/*`](examples)                                | Plugin files written as a user writes them, such as [approvals](examples/approvals/README.md) |
 
 ```sh
 nix develop -c pnpm start          # build the web app, start the host, print its URL
+nix develop -c pnpm desktop        # the same app in a desktop window
 nix develop -c pnpm lemma status   # query the running host; `pnpm lemma --help` lists commands
 ```
 

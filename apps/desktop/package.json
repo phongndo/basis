@@ -1,0 +1,23 @@
+{
+  "name": "@lemma/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "start": "pnpm --filter @lemma/core --filter @lemma/web build && env -u ELECTRON_RUN_AS_NODE electron .",
+    "dev": "pnpm --filter @lemma/core build && LEMMA_WEB_URL=${LEMMA_WEB_URL:-http://127.0.0.1:5173} env -u ELECTRON_RUN_AS_NODE electron .",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lemma/host": "workspace:*",
+    "@lemma/plugin-host": "workspace:*",
+    "@lemma/plugin-transport": "workspace:*",
+    "effect": "3.22.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "electron": "44.5.1",
+    "typescript": "7.0.2"
+  }
+}
