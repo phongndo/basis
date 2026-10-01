@@ -3,10 +3,10 @@ import * as path from "node:path";
 import { Effect, Option, Schema } from "effect";
 import type { Context, Scope } from "effect";
 import { Events } from "@lemma/core";
-import { Notice, Paths, SessionAppended, SessionChanged, SessionError, SessionEvent } from "@lemma/contracts";
+import { Notice, Paths, SessionAppended, SessionChanged, SessionError, SessionEvent, SessionRemoved } from "@lemma/contracts";
 import type { SessionInfo, Sessions } from "@lemma/contracts";
-import { createFile, errorCode, infoOf, io, load, openFile, scan } from "./file.ts";
-import type { Writer } from "./file.ts";
+import { applyMarks, createFile, errorCode, infoOf, io, load, openFile, scan, unfiled } from "./file.ts";
+import type { FiledAs, Writer } from "./file.ts";
 import { encodeCwd, eventId, idFromFileName, sessionFile, sessionId as newSessionId } from "./format.ts";
 import type { Header, Line } from "./format.ts";
 
@@ -19,6 +19,7 @@ interface Open {
   readonly byId: Map<string, SessionEvent>;
   leaf: string | undefined;
   title: string | undefined;
+  marks: FiledAs;
   updatedAt: number;
   readonly validBytes: number;
   writer?: Writer;
@@ -40,7 +41,7 @@ const validateEvent = Schema.validateEither(SessionEvent);
 const notFound = (sessionId: string, message: string) => new SessionError({ sessionId, reason: "NotFound", message });
 
 const infoOfOpen = (open: Open): SessionInfo =>
-  infoOf(open.header, { leaf: open.leaf, title: open.title, updatedAt: open.updatedAt, lastSeq: open.events.length });
+  infoOf(open.header, { leaf: open.leaf, title: open.title, marks: open.marks, updatedAt: open.updatedAt, lastSeq: open.events.length });
 
 export const make: Effect.Effect<Service, never, Paths | Events | Scope.Scope> = Effect.gen(function* () {
   const paths = yield* Paths;
@@ -108,9 +109,13 @@ export const make: Effect.Effect<Service, never, Paths | Events | Scope.Scope> =
       return yield* refresh(id, found.file);
     });
 
-  /** Loads the whole session once; later calls reuse it. Callers hold `entry.lock`. */
+  /**
+   * Loads the whole session once; later calls reuse it. Callers hold `entry.lock`, and every
+   * write goes through here: one queued behind a `remove` fails instead of recreating the file.
+   */
   const openLocked = (entry: Entry): Effect.Effect<Open, SessionError> =>
     Effect.gen(function* () {
+      if (entries.get(entry.id) !== entry) return yield* notFound(entry.id, `Session ${entry.id} does not exist`);
       if (entry.open !== undefined) return entry.open;
       const loaded = yield* load(entry.file, entry.id);
       const open: Open = { ...loaded };
@@ -156,7 +161,17 @@ export const make: Effect.Effect<Service, never, Paths | Events | Scope.Scope> =
       const header: Header = { type: "session", version: 1, id, cwd, createdAt };
       const file = sessionFile(root, cwd, createdAt, id);
       const writer = yield* createFile(file, header);
-      const open: Open = { header, events: [], byId: new Map(), leaf: undefined, title: undefined, updatedAt: createdAt, validBytes: 0, writer };
+      const open: Open = {
+        header,
+        events: [],
+        byId: new Map(),
+        leaf: undefined,
+        title: undefined,
+        marks: unfiled,
+        updatedAt: createdAt,
+        validBytes: 0,
+        writer,
+      };
       const entry = yield* remember(id, file, infoOfOpen(open));
       entry.open = open;
       yield* changed(entry);
@@ -217,6 +232,37 @@ export const make: Effect.Effect<Service, never, Paths | Events | Scope.Scope> =
       );
     });
 
+  const mark: Service["mark"] = (sessionId, marks) =>
+    Effect.gen(function* () {
+      const entry = yield* locate(sessionId);
+      return yield* entry.lock.withPermits(1)(
+        Effect.gen(function* () {
+          const open = yield* openLocked(entry);
+          const line = { type: "marks" as const, ...marks, at: Date.now() };
+          yield* commit(entry, open, line, () => {
+            open.marks = applyMarks(open.marks, marks);
+          });
+          yield* changed(entry);
+          return entry.info;
+        }),
+      );
+    });
+
+  const remove: Service["remove"] = (sessionId) =>
+    Effect.gen(function* () {
+      const entry = yield* locate(sessionId);
+      yield* entry.lock.withPermits(1)(
+        Effect.gen(function* () {
+          if (entries.get(sessionId) !== entry) return yield* notFound(sessionId, `Session ${sessionId} does not exist`);
+          // Delete before closing: a failed delete leaves the session exactly as it was, writer included.
+          yield* Effect.tryPromise({ try: () => fs.rm(entry.file), catch: io(sessionId, `Cannot delete ${entry.file}`) });
+          entries.delete(sessionId);
+          yield* entry.open?.writer?.close ?? Effect.void;
+        }),
+      );
+      yield* events.publish(SessionRemoved, { sessionId });
+    });
+
   const branch: Service["branch"] = (sessionId, options) =>
     Effect.flatMap(opened(sessionId), (open) => {
       const leaf = options?.leaf ?? open.leaf;
@@ -260,5 +306,7 @@ export const make: Effect.Effect<Service, never, Paths | Events | Scope.Scope> =
     events: (sessionId, options) => Effect.map(opened(sessionId), (open) => open.events.slice(Math.max(0, options?.after ?? 0))),
     branch,
     checkout,
+    mark,
+    remove,
   } satisfies Service;
 });

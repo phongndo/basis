@@ -91,6 +91,9 @@ Sessions and turns
   session show <id>              Session info and its current branch as a transcript
   session new [--cwd <dir>]      Create a session (default: the current directory)
   session title <id> <title>     Rename a session
+  session pin|unpin <id>         Keep a session at the top of the web app's sidebar, or stop
+  session archive|unarchive <id> Hide a session from the sidebar (it stays on disk), or bring it back
+  session delete <id>            Delete a session's log for good (refused while a turn runs in it)
   session checkout <id> <event>  Move the session's leaf: the next prompt branches from that event
   run <id|new> <prompt…>         Send a prompt and wait for the turn to end
     --model <provider/model>     Model for this turn (see lemma models)
@@ -379,6 +382,20 @@ const sessionCommand = (sub: string | undefined, arg: string | undefined, rest: 
       if (arg === undefined || title === "") return usage("session title needs a session id and a title");
       return ({ rpc }) => Effect.map(rpc.Session.SetTitle({ sessionId: arg, title }), (info) => ({ json: info, text: `${info.id}  ${info.title ?? ""}` }));
     }
+    case "pin":
+    case "unpin":
+    case "archive":
+    case "unarchive": {
+      if (arg === undefined) return usage(`session ${sub} needs a session id`);
+      if (rest.length) return usage(`Unexpected argument "${rest[0]}"`);
+      const marks = sub === "pin" || sub === "unpin" ? { pinned: sub === "pin" } : { archived: sub === "archive" };
+      const done = { pin: "pinned", unpin: "unpinned", archive: "archived", unarchive: "unarchived" }[sub];
+      return ({ rpc }) => Effect.map(rpc.Session.Mark({ sessionId: arg, ...marks }), (info) => ({ json: info, text: `${info.id}  ${done}` }));
+    }
+    case "delete":
+      if (arg === undefined) return usage("session delete needs a session id");
+      if (rest.length) return usage(`Unexpected argument "${rest[0]}"`);
+      return ({ rpc }) => Effect.map(rpc.Session.Delete({ sessionId: arg }), () => ({ json: { id: arg, deleted: true }, text: `${arg}  deleted` }));
     case "checkout": {
       const eventId = rest[0];
       if (arg === undefined || eventId === undefined) return usage("session checkout needs a session id and an event id");
@@ -390,7 +407,11 @@ const sessionCommand = (sub: string | undefined, arg: string | undefined, rest: 
         }));
     }
     default:
-      return usage(sub === undefined ? "session needs a command: list, show, new, title, or checkout" : `Unknown session command "${sub}"`);
+      return usage(
+        sub === undefined
+          ? "session needs a command: list, show, new, title, pin, unpin, archive, unarchive, delete, or checkout"
+          : `Unknown session command "${sub}"`,
+      );
   }
 };
 

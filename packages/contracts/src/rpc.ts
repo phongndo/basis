@@ -60,6 +60,7 @@ export type ReloadResult = typeof ReloadResult.Type;
 export const HostEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literal("session-appended"), sessionId: Schema.String, event: SessionEvent }),
   Schema.Struct({ type: Schema.Literal("session-changed"), info: SessionInfo }),
+  Schema.Struct({ type: Schema.Literal("session-removed"), sessionId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("delta"), sessionId: Schema.String, turnId: Schema.String, stepId: Schema.String, event: StreamEvent }),
   Schema.Struct({ type: Schema.Literal("tool-output"), sessionId: Schema.String, toolCallId: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn-started"), sessionId: Schema.String, turnId: Schema.String }),
@@ -98,6 +99,13 @@ export class HostRpcs extends RpcGroup.make(
   }),
   Rpc.make("Session.Checkout", { payload: { sessionId: Schema.String, eventId: Schema.String }, success: SessionInfo, error: HostError }),
   Rpc.make("Session.SetTitle", { payload: { sessionId: Schema.String, title: Schema.String }, success: SessionInfo, error: HostError }),
+  Rpc.make("Session.Mark", {
+    payload: { sessionId: Schema.String, pinned: Schema.optional(Schema.Boolean), archived: Schema.optional(Schema.Boolean) },
+    success: SessionInfo,
+    error: HostError,
+  }),
+  /** Fails `Busy` while a turn runs in it. */
+  Rpc.make("Session.Delete", { payload: { sessionId: Schema.String }, error: HostError }),
 
   /** Returns when the turn ends. */
   Rpc.make("Agent.Prompt", { payload: { sessionId: Schema.String, content: PromptContent, options: Schema.optional(TurnOptions) }, error: HostError }),

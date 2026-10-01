@@ -186,6 +186,24 @@ describe("transport", () => {
       }),
     ));
 
+  test("pins, archives, and deletes sessions, telling subscribers", () =>
+    withHost((host) =>
+      Effect.gen(function* () {
+        const client = yield* host.connect("websocket");
+        const events = yield* subscribe(host, client);
+        const session = yield* client.Session.Create({});
+        expect(yield* client.Session.Mark({ sessionId: session.id, pinned: true })).toMatchObject({ id: session.id, pinned: true });
+        const archived = yield* client.Session.Mark({ sessionId: session.id, archived: true });
+        expect(archived).toMatchObject({ pinned: true, archived: true });
+        yield* waitFor(events, (event) => event.type === "session-changed" && event.info.archived === true);
+        yield* client.Session.Delete({ sessionId: session.id });
+        yield* waitFor(events, (event) => event.type === "session-removed" && event.sessionId === session.id);
+        expect(yield* client.Session.List({})).toEqual([]);
+        const missing = yield* Effect.flip(client.Session.Delete({ sessionId: session.id }));
+        expect(missing).toMatchObject({ _tag: "HostError", code: "NotFound" });
+      }),
+    ));
+
   test(
     "serves sessions, turns, models, and host control over WebSocket",
     () =>

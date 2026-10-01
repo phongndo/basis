@@ -21,10 +21,12 @@ pi-style (`/home/me/app` → `--home-me-app--`); the header's `cwd` is authorita
 | 1        | `{ "type": "session", "version": 1, id, cwd, createdAt }`                   |
 | event    | a `SessionEvent` (`seq`, `id`, `parent`, `at`, `data`); no top-level `type` |
 | checkout | `{ "type": "checkout", "leaf": eventId, "at" }`                             |
+| marks    | `{ "type": "marks", "pinned"?, "archived"?, "at" }`                         |
 
 `seq` counts events only (checkout lines do not advance it). The leaf is the last
 event appended or the last checkout, whichever is later. The title is the latest
-`title` event. Session ids are 12 url-safe random characters; event ids 8.
+`title` event; `pinned` and `archived` are the latest value each marks line gave
+(a marks line moves neither the leaf nor `updatedAt`: filing a session is not activity in it). Session ids are 12 url-safe random characters; event ids 8.
 
 ## Behavior
 
@@ -49,5 +51,7 @@ event appended or the last checkout, whichever is later. The title is the latest
   in memory, with its handle open, for the plugin's lifetime.
 - **Single writer.** Two processes appending to one session would interleave;
   the store assumes one host per sessions directory.
+- **Removal.** `remove` closes the file and deletes it; the session is gone from
+  memory and listings, and `SessionRemoved` is published.
 - `SessionAppended` and `SessionChanged` are published after each write. They are
   losable; the file is the source of truth.

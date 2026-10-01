@@ -196,7 +196,14 @@ export const formatReload = (report: {
 };
 
 export const formatSessions = (sessions: readonly SessionInfo[], withCwd: boolean): string =>
-  pad(sessions.map((session) => [session.id, time(session.updatedAt), session.title ?? "(untitled)", ...(withCwd ? [session.cwd] : [])]));
+  pad(
+    sessions.map((session) => [
+      session.id,
+      time(session.updatedAt),
+      [session.title ?? "(untitled)", session.pinned ? "[pinned]" : "", session.archived ? "[archived]" : ""].filter(Boolean).join(" "),
+      ...(withCwd ? [session.cwd] : []),
+    ]),
+  );
 
 /** Long tool output is cut to its first lines; `--json` has the full content. */
 const MAX_LINES = 12;

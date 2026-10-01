@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { Chunk, Effect, Fiber, Layer, Stream } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { definePlugin, Events, makeCore } from "@lemma/core";
-import { Notice, Paths, SessionAppended, SessionChanged, Sessions } from "@lemma/contracts";
+import { Notice, Paths, SessionAppended, SessionChanged, SessionRemoved, Sessions } from "@lemma/contracts";
 import type { EventData } from "@lemma/contracts";
 import sessions, { encodeCwd } from "../src/index.ts";
 
@@ -309,6 +309,91 @@ describe("sessions", () => {
       Effect.gen(function* () {
         const store = yield* Sessions;
         expect((yield* store.events(id)).map((event) => event.data)).toEqual([custom(1), custom(3), custom(5)]);
+      }),
+    );
+  });
+
+  it("pins and archives without moving the leaf or updatedAt, and keeps the marks across a restart", async () => {
+    const before = await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        const info = yield* store.create();
+        yield* store.append(info.id, custom(1));
+        const before = yield* store.get(info.id);
+        yield* Effect.sleep(5);
+        expect(yield* store.mark(info.id, { pinned: true })).toMatchObject({ pinned: true, leaf: before.leaf, updatedAt: before.updatedAt });
+        const archived = yield* store.mark(info.id, { archived: true });
+        expect(archived).toMatchObject({ pinned: true, archived: true, lastSeq: 1 });
+        expect(yield* store.mark(info.id, { pinned: false })).not.toHaveProperty("pinned");
+        return before;
+      }),
+    );
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        // Listing scans the file; opening it loads and validates every line.
+        const [listed] = yield* store.list();
+        expect(listed).toMatchObject({ archived: true, leaf: before.leaf, updatedAt: before.updatedAt });
+        expect(listed).not.toHaveProperty("pinned");
+        expect((yield* store.events(before.id)).length).toBe(1);
+        expect(yield* store.get(before.id)).toEqual(listed);
+        const next = yield* store.append(before.id, custom(2));
+        expect(next.parent).toBe(before.leaf);
+      }),
+    );
+  });
+
+  it("removes a session from disk and memory and publishes its removal", async () => {
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        const events = yield* Events;
+        const removed = yield* Effect.fork(Stream.runCollect(Stream.take(events.stream(SessionRemoved), 1)));
+        yield* Effect.yieldNow();
+        const keep = yield* store.create();
+        const gone = yield* store.create();
+        yield* store.append(gone.id, custom(1));
+        yield* store.remove(gone.id);
+        expect(Chunk.toReadonlyArray(yield* Fiber.join(removed))).toEqual([{ sessionId: gone.id }]);
+        expect((yield* store.list()).map((info) => info.id)).toEqual([keep.id]);
+        expect((yield* Effect.either(store.get(gone.id)))._tag).toBe("Left");
+        expect((yield* Effect.either(store.remove(gone.id)))._tag).toBe("Left");
+      }),
+    );
+    expect((await sessionFiles()).map(idOfFile)).toHaveLength(1);
+  });
+
+  it("fails writes queued behind a removal instead of recreating the file", async () => {
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        const { id } = yield* store.create();
+        const [removed, marked, appended] = yield* Effect.all(
+          [Effect.either(store.remove(id)), Effect.either(store.mark(id, { pinned: true })), Effect.either(store.append(id, custom(1)))],
+          { concurrency: "unbounded" },
+        );
+        expect([removed._tag, marked._tag, appended._tag]).toEqual(["Right", "Left", "Left"]);
+      }),
+    );
+    expect(await sessionFiles()).toEqual([]);
+  });
+
+  it("leaves a session intact when deleting its file fails", async () => {
+    const id = await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        const { id } = yield* store.create();
+        yield* store.append(id, custom(1));
+        vi.spyOn(fs, "rm").mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }));
+        expect((yield* Effect.either(store.remove(id)))._tag).toBe("Left");
+        yield* store.append(id, custom(2));
+        return id;
+      }),
+    );
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Sessions;
+        expect((yield* store.events(id)).map((event) => event.data)).toEqual([custom(1), custom(2)]);
       }),
     );
   });

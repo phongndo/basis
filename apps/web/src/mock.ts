@@ -702,6 +702,22 @@ export const createMockHost = (): Host => {
         append(sessionId, { type: "title", title });
         return sessions.get(sessionId)!.info;
       },
+      mark: async (sessionId, marks) => {
+        const s = sessions.get(sessionId);
+        if (!s) throw notFound(sessionId);
+        const { pinned: _pinned, archived: _archived, ...rest } = s.info;
+        const pinned = marks.pinned ?? s.info.pinned === true;
+        const archived = marks.archived ?? s.info.archived === true;
+        s.info = { ...rest, ...(pinned ? { pinned } : {}), ...(archived ? { archived } : {}) };
+        emit({ type: "session-changed", info: s.info });
+        return s.info;
+      },
+      remove: async (sessionId) => {
+        if (!sessions.has(sessionId)) throw notFound(sessionId);
+        if (running.has(sessionId)) throw new Error("A turn is running in this session; stop it before deleting");
+        sessions.delete(sessionId);
+        emit({ type: "session-removed", sessionId });
+      },
     },
     agent: {
       prompt: async (sessionId, content, options) => {

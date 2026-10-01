@@ -7,6 +7,7 @@ import {
   PluginsChanged,
   SessionAppended,
   SessionChanged,
+  SessionRemoved,
   ToolOutput,
   TurnEnded,
   TurnStarted,
@@ -58,6 +59,7 @@ export const makeHub = (owner: Context.Tag.Service<PluginContext>, open: () => I
     yield* forward(TurnEnded, (e) => ({ type: "turn-ended", sessionId: e.sessionId, turnId: e.turnId, usage: e.usage, reason: e.reason }));
     yield* forward(SessionAppended, (e) => ({ type: "session-appended", sessionId: e.sessionId, event: e.event }), SUBSCRIBER_BUFFER);
     yield* forward(SessionChanged, (e) => ({ type: "session-changed", info: e.info }));
+    yield* forward(SessionRemoved, (e) => ({ type: "session-removed", sessionId: e.sessionId }));
     yield* forward(Notice, (notice) => ({ type: "notice", notice }));
     yield* forward(PluginsChanged, (e) => ({ type: "plugins-changed", plugins: e.plugins.map(toPluginStatus) }));
     yield* forward(CommandsChanged, (e) => ({ type: "commands-changed", commands: e.commands }));

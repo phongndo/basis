@@ -56,6 +56,8 @@ const describe = (line: Line): string => {
       return `${JSON.stringify(event.chunk.length > 80 ? `${event.chunk.slice(0, 80)}…` : event.chunk)} · call ${event.toolCallId}`;
     case "session-appended":
       return `#${event.event.seq} ${event.event.data.type} ${event.event.id}`;
+    case "session-removed":
+      return "deleted";
     case "session-changed":
       return `lastSeq ${event.info.lastSeq}${event.info.title === undefined ? "" : ` "${event.info.title}"`}`;
     case "turn-started":

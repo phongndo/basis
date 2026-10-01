@@ -120,6 +120,9 @@ export const SessionInfo = Schema.Struct({
   leaf: Schema.optional(Schema.String),
   /** `seq` of the last event in the file (0 when empty). */
   lastSeq: Schema.Number,
+  /** Set by `mark`; present only when true. How clients file the session, not part of its history. */
+  pinned: Schema.optional(Schema.Boolean),
+  archived: Schema.optional(Schema.Boolean),
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
@@ -132,6 +135,13 @@ export class SessionError extends Data.TaggedError("SessionError")<{
 
 export const SessionAppended = Event.make<{ readonly sessionId: string; readonly event: SessionEvent }>("lemma/session.appended");
 export const SessionChanged = Event.make<{ readonly info: SessionInfo }>("lemma/session.changed");
+export const SessionRemoved = Event.make<{ readonly sessionId: string }>("lemma/session.removed");
+
+/** A change to how a session is filed; an absent field keeps its value. */
+export interface SessionMarks {
+  readonly pinned?: boolean;
+  readonly archived?: boolean;
+}
 
 export class Sessions extends Context.Tag("lemma/Sessions")<
   Sessions,
@@ -151,5 +161,9 @@ export class Sessions extends Context.Tag("lemma/Sessions")<
     readonly branch: (sessionId: string, options?: { readonly leaf?: string }) => Effect.Effect<readonly SessionEvent[], SessionError>;
     /** Point the leaf at an existing event; later appends branch from there. */
     readonly checkout: (sessionId: string, eventId: string) => Effect.Effect<SessionInfo, SessionError>;
+    /** Pins or archives it. Neither moves the leaf nor `updatedAt`: filing a session is not activity in it. */
+    readonly mark: (sessionId: string, marks: SessionMarks) => Effect.Effect<SessionInfo, SessionError>;
+    /** Deletes it from disk, for good. */
+    readonly remove: (sessionId: string) => Effect.Effect<void, SessionError>;
   }
 >() {}

@@ -306,6 +306,8 @@ const eventLine = (event: HostEvent): string => {
       return `${event.sessionId} appended #${event.event.seq} ${event.event.data.type}`;
     case "session-changed":
       return `${event.info.id} changed${event.info.title === undefined ? "" : ` "${event.info.title}"`}`;
+    case "session-removed":
+      return `${event.sessionId} deleted`;
     case "turn-started":
       return `${event.sessionId} turn started ${event.turnId}`;
     case "turn-ended":

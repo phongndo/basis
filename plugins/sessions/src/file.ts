@@ -4,7 +4,7 @@ import { Effect, Either } from "effect";
 import { SessionError } from "@lemma/contracts";
 import type { SessionEvent, SessionInfo } from "@lemma/contracts";
 import { decodeLine, encodeLine } from "./format.ts";
-import type { Header, Line } from "./format.ts";
+import type { Header, Line, Marks } from "./format.ts";
 
 export const errorCode = (cause: unknown): string | undefined =>
   typeof cause === "object" && cause !== null && typeof (cause as { code?: unknown }).code === "string" ? (cause as { code: string }).code : undefined;
@@ -28,12 +28,26 @@ function splitComplete(buffer: Buffer): { readonly lines: string[]; readonly val
   return { lines, validBytes: end };
 }
 
+/** Where a session is filed: the latest value of each mark. */
+export interface FiledAs {
+  readonly pinned: boolean;
+  readonly archived: boolean;
+}
+
+export const unfiled: FiledAs = { pinned: false, archived: false };
+
+export const applyMarks = (filed: FiledAs, marks: Pick<Marks, "pinned" | "archived">): FiledAs => ({
+  pinned: marks.pinned ?? filed.pinned,
+  archived: marks.archived ?? filed.archived,
+});
+
 export interface Loaded {
   readonly header: Header;
   readonly events: SessionEvent[];
   readonly byId: Map<string, SessionEvent>;
   readonly leaf: string | undefined;
   readonly title: string | undefined;
+  readonly marks: FiledAs;
   readonly updatedAt: number;
   /** Length of the file's complete lines; a longer file has a torn tail to cut before appending. */
   readonly validBytes: number;
@@ -58,11 +72,16 @@ export function load(file: string, sessionId: string): Effect.Effect<Loaded, Ses
         const byId = new Map<string, SessionEvent>();
         let leaf: string | undefined;
         let title: string | undefined;
+        let marks = unfiled;
         let updatedAt = header.createdAt;
         for (let i = 1; i < lines.length; i++) {
           const decoded = decodeLine(lines[i]!, false);
           if (Either.isLeft(decoded)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: ${decoded.left}`));
           const line = decoded.right as Exclude<Line, Header>;
+          if ("type" in line && line.type === "marks") {
+            marks = applyMarks(marks, line);
+            continue;
+          }
           if ("type" in line) {
             if (!byId.has(line.leaf)) return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: checkout to unknown event ${line.leaf}`));
             leaf = line.leaf;
@@ -79,7 +98,7 @@ export function load(file: string, sessionId: string): Effect.Effect<Loaded, Ses
           if (line.data.type === "title") title = line.data.title;
           updatedAt = Math.max(updatedAt, line.at);
         }
-        return Effect.succeed({ header, events, byId, leaf, title, updatedAt, validBytes, size: buffer.length });
+        return Effect.succeed({ header, events, byId, leaf, title, marks, updatedAt, validBytes, size: buffer.length });
       }),
     ),
   );
@@ -100,10 +119,20 @@ export function scan(file: string, sessionId: string): Effect.Effect<SessionInfo
         const header = first.right as Header;
         let leaf: string | undefined;
         let title: string | undefined;
+        let marks = unfiled;
         let updatedAt = header.createdAt;
         let lastSeq = 0;
         for (let i = 1; i < lines.length; i++) {
-          let line: { type?: string; leaf?: string; id?: string; seq?: number; at?: number; data?: { type?: string; title?: string } };
+          let line: {
+            type?: string;
+            leaf?: string;
+            id?: string;
+            seq?: number;
+            at?: number;
+            data?: { type?: string; title?: string };
+            pinned?: boolean;
+            archived?: boolean;
+          };
           try {
             line = JSON.parse(lines[i]!);
           } catch {
@@ -111,6 +140,10 @@ export function scan(file: string, sessionId: string): Effect.Effect<SessionInfo
           }
           if (typeof line !== "object" || line === null || Array.isArray(line)) {
             return Effect.fail(corrupt(sessionId, file, `line ${i + 1}: not a record`));
+          }
+          if (line.type === "marks") {
+            marks = applyMarks(marks, line);
+            continue;
           }
           if (typeof line.at === "number") updatedAt = Math.max(updatedAt, line.at);
           if (line.type === "checkout") {
@@ -121,7 +154,7 @@ export function scan(file: string, sessionId: string): Effect.Effect<SessionInfo
           lastSeq = line.seq ?? lastSeq;
           if (line.data?.type === "title") title = line.data.title;
         }
-        return Effect.succeed(infoOf(header, { leaf, title, updatedAt, lastSeq }));
+        return Effect.succeed(infoOf(header, { leaf, title, marks, updatedAt, lastSeq }));
       }),
     ),
   );
@@ -129,7 +162,13 @@ export function scan(file: string, sessionId: string): Effect.Effect<SessionInfo
 
 export const infoOf = (
   header: Header,
-  state: { readonly leaf: string | undefined; readonly title: string | undefined; readonly updatedAt: number; readonly lastSeq: number },
+  state: {
+    readonly leaf: string | undefined;
+    readonly title: string | undefined;
+    readonly marks: FiledAs;
+    readonly updatedAt: number;
+    readonly lastSeq: number;
+  },
 ): SessionInfo => ({
   id: header.id,
   cwd: header.cwd,
@@ -138,6 +177,8 @@ export const infoOf = (
   ...(state.title === undefined ? {} : { title: state.title }),
   ...(state.leaf === undefined ? {} : { leaf: state.leaf }),
   lastSeq: state.lastSeq,
+  ...(state.marks.pinned ? { pinned: true } : {}),
+  ...(state.marks.archived ? { archived: true } : {}),
 });
 
 /**

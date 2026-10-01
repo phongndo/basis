@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { Context } from "effect";
-import { HostRpcs, InteractionOrigin } from "@lemma/contracts";
+import { HostError, HostRpcs, InteractionOrigin } from "@lemma/contracts";
 import type { Agent, Commands, ConfigureReport, HostControl, Llm, Paths, ReloadResult, Sessions, Workspace } from "@lemma/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
@@ -34,6 +34,17 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Session.Checkout": ({ sessionId, eventId }) => sessions.checkout(sessionId, eventId).pipe(Effect.mapError(toHostError)),
     "Session.SetTitle": ({ sessionId, title }) =>
       sessions.append(sessionId, { type: "title", title }).pipe(Effect.zipRight(sessions.get(sessionId)), Effect.mapError(toHostError)),
+    "Session.Mark": ({ sessionId, pinned, archived }) =>
+      sessions
+        .mark(sessionId, { ...(pinned === undefined ? {} : { pinned }), ...(archived === undefined ? {} : { archived }) })
+        .pipe(Effect.mapError(toHostError)),
+    "Session.Delete": ({ sessionId }) =>
+      Effect.gen(function* () {
+        if ((yield* agent.running).includes(sessionId)) {
+          return yield* new HostError({ code: "Busy", subject: sessionId, message: "A turn is running in this session; stop it before deleting" });
+        }
+        yield* sessions.remove(sessionId).pipe(Effect.mapError(toHostError));
+      }),
 
     // The agent owns the turn's lifetime; this call only waits for it.
     "Agent.Prompt": ({ sessionId, content, options }) => agent.prompt(sessionId, content, options).pipe(Effect.mapError(toHostError)),

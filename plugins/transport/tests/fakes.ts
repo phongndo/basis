@@ -17,6 +17,7 @@ import {
   SessionAppended,
   SessionChanged,
   SessionError,
+  SessionRemoved,
   Sessions,
   TurnEnded,
   TurnStarted,
@@ -101,6 +102,22 @@ export const fakeSessions = definePlugin({
             }
             session.info = { ...session.info, leaf: eventId };
             return session.info;
+          }),
+        mark: (sessionId, marks) =>
+          Effect.gen(function* () {
+            const session = yield* find(sessionId);
+            const { pinned: _pinned, archived: _archived, ...rest } = session.info;
+            const pinned = marks.pinned ?? session.info.pinned === true;
+            const archived = marks.archived ?? session.info.archived === true;
+            session.info = { ...rest, ...(pinned ? { pinned } : {}), ...(archived ? { archived } : {}) };
+            yield* events.publish(SessionChanged, { info: session.info });
+            return session.info;
+          }),
+        remove: (sessionId) =>
+          Effect.gen(function* () {
+            yield* find(sessionId);
+            store.delete(sessionId);
+            yield* events.publish(SessionRemoved, { sessionId });
           }),
       };
     }),

@@ -20,6 +20,7 @@ import type {
   ReloadResult,
   SessionEvent,
   SessionInfo,
+  SessionMarks,
   TurnOptions,
   UiComposition,
   WorkspaceStatus,
@@ -55,6 +56,9 @@ export interface Host {
     readonly events: (sessionId: string, after?: number) => Promise<readonly SessionEvent[]>;
     readonly checkout: (sessionId: string, eventId: string) => Promise<SessionInfo>;
     readonly setTitle: (sessionId: string, title: string) => Promise<SessionInfo>;
+    readonly mark: (sessionId: string, marks: SessionMarks) => Promise<SessionInfo>;
+    /** Deletes it for good; rejects `Busy` while a turn runs in it. */
+    readonly remove: (sessionId: string) => Promise<void>;
   };
   readonly agent: {
     /** Resolves when the turn ends. */
@@ -215,6 +219,8 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
       events: (sessionId, after) => call(rpc.Session.Events(after === undefined ? { sessionId } : { sessionId, after })),
       checkout: (sessionId, eventId) => call(rpc.Session.Checkout({ sessionId, eventId })),
       setTitle: (sessionId, title) => call(rpc.Session.SetTitle({ sessionId, title })),
+      mark: (sessionId, marks) => call(rpc.Session.Mark({ sessionId, ...marks })),
+      remove: (sessionId) => unit(rpc.Session.Delete({ sessionId })),
     },
     agent: {
       prompt: (sessionId, content, turn) => unit(rpc.Agent.Prompt(turn === undefined ? { sessionId, content } : { sessionId, content, options: turn })),

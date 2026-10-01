@@ -173,6 +173,13 @@ describe("against a running host", () => {
   test("run sends a prompt and prints the reply; --follow --json streams events and ends with the result", async () => {
     const session = (await invoke(["session", "new", "--cwd", home], home)).out;
     expect(await invoke(["session", "title", session, "CLI", "test"], home)).toMatchObject({ code: ExitCode.ok, out: `${session}  CLI test` });
+    expect(await invoke(["session", "pin", session], home)).toMatchObject({ code: ExitCode.ok, out: `${session}  pinned` });
+    expect(await invoke(["session", "archive", session], home)).toMatchObject({ code: ExitCode.ok, out: `${session}  archived` });
+    expect((await invoke(["session", "list", "--all"], home)).out).toContain("CLI test [pinned] [archived]");
+    expect(await invoke(["session", "unarchive", session], home)).toMatchObject({ code: ExitCode.ok, out: `${session}  unarchived` });
+    const doomed = (await invoke(["session", "new", "--cwd", home], home)).out;
+    expect(await invoke(["session", "delete", doomed], home)).toMatchObject({ code: ExitCode.ok, out: `${doomed}  deleted` });
+    expect((await invoke(["session", "list", "--all"], home)).out).not.toContain(doomed);
 
     const plain = await invoke(["run", session, "check", "the", "shell", "--model", "mock/scripted"], home);
     expect(plain.code).toBe(ExitCode.ok);
