@@ -14,13 +14,11 @@ import xai from "../assets/providers/xai_light.svg?url";
 import xaiDark from "../assets/providers/xai_dark.svg?url";
 import cerebras from "../assets/providers/cerebras-dark.svg?url";
 import cerebrasDark from "../assets/providers/cerebras.svg?url";
-import together from "../assets/providers/togetherai_light.svg?url";
-import togetherDark from "../assets/providers/togetherai_dark.svg?url";
+import together from "../assets/providers/lobehub-together-color.svg?url";
 import huggingface from "../assets/providers/hugging_face.svg?url";
 import meta from "../assets/providers/meta.svg?url";
 import kimi from "../assets/providers/kimi-icon.svg?url";
-import nvidia from "../assets/providers/nvidia-icon-light.svg?url";
-import nvidiaDark from "../assets/providers/nvidia-icon-dark.svg?url";
+import nvidia from "../assets/providers/simpleicons-nvidia.svg?url";
 import qwen from "../assets/providers/qwen_light.svg?url";
 import qwenDark from "../assets/providers/qwen_dark.svg?url";
 import vercel from "../assets/providers/vercel.svg?url";
@@ -35,14 +33,15 @@ import vertex from "../assets/providers/lobehub-vertexai-color.svg?url";
 import antgroup from "../assets/providers/lobehub-antgroup-color.svg?url";
 import moonshot from "../assets/providers/lobehub-moonshot.svg?raw";
 import opencode from "../assets/providers/lobehub-opencode.svg?raw";
-import xiaomi from "../assets/providers/lobehub-xiaomimimo.svg?raw";
+import xiaomi from "../assets/providers/simpleicons-xiaomi.svg?url";
+import earendil from "../assets/providers/earendil.svg?raw";
 import zai from "../assets/providers/lobehub-zai.svg?raw";
 import baseten from "../assets/providers/lobehub-baseten.svg?raw";
 
 /**
  * How the Providers page presents the host's providers: each brand's logo, a
  * line saying what it is for, and where to get a key. The host knows none of
- * this; a provider missing here (a custom one, or Radius) shows its initial.
+ * this; a provider missing here (a custom one) shows its initial.
  * The logos are files in `assets/providers`; its README says where they are from.
  */
 export interface ProviderBrand {
@@ -78,7 +77,7 @@ const brands: Readonly<Record<string, ProviderBrand>> = {
   baseten: { logo: { mono: baseten } },
   cerebras: { logo: { light: cerebras, dark: cerebrasDark } },
   fireworks: { logo: { light: fireworks }, keyUrl: "https://fireworks.ai/account/api-keys" },
-  together: { logo: { light: together, dark: togetherDark }, keyUrl: "https://api.together.ai/settings/api-keys" },
+  together: { logo: { light: together }, keyUrl: "https://api.together.ai/settings/api-keys" },
   deepseek: { logo: { light: deepseek }, keyUrl: "https://platform.deepseek.com/api_keys" },
   mistral: { logo: { light: mistral }, keyUrl: "https://console.mistral.ai/api-keys" },
   groq: { logo: { light: groq }, keyUrl: "https://console.groq.com/keys" },
@@ -90,14 +89,16 @@ const brands: Readonly<Record<string, ProviderBrand>> = {
   moonshotai: { logo: { mono: moonshot } },
   "moonshotai-cn": { logo: { mono: moonshot } },
   "kimi-coding": { logo: { light: kimi }, keywords: "moonshot" },
-  nvidia: { logo: { light: nvidia, dark: nvidiaDark } },
+  nvidia: { logo: { light: nvidia } },
   "qwen-token-plan": { logo: { light: qwen, dark: qwenDark } },
   "qwen-token-plan-cn": { logo: { light: qwen, dark: qwenDark } },
   "qwen-token-plan-individual": { logo: { light: qwen, dark: qwenDark } },
-  xiaomi: { logo: { mono: xiaomi } },
-  "xiaomi-token-plan-ams": { logo: { mono: xiaomi } },
-  "xiaomi-token-plan-cn": { logo: { mono: xiaomi } },
-  "xiaomi-token-plan-sgp": { logo: { mono: xiaomi } },
+  // Radius is Earendil's gateway: its maker's mark.
+  radius: { logo: { mono: earendil } },
+  xiaomi: { logo: { light: xiaomi } },
+  "xiaomi-token-plan-ams": { logo: { light: xiaomi } },
+  "xiaomi-token-plan-cn": { logo: { light: xiaomi } },
+  "xiaomi-token-plan-sgp": { logo: { light: xiaomi } },
   "vercel-ai-gateway": { logo: { light: vercel, dark: vercelDark } },
   "cloudflare-ai-gateway": { logo: { light: cloudflare } },
   "cloudflare-workers-ai": { logo: { light: cloudflare } },
