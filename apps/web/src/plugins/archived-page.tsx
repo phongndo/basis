@@ -1,18 +1,18 @@
 import type { SessionInfo } from "@lemma/contracts";
 import { relativeTime, tildePath } from "../model/format.ts";
-import { sessionTitle } from "../model/sessions.ts";
-import { Actions, Client, Sessions, Settings, SettingsGroups, SettingsSections, Slots } from "../ui/contracts.ts";
-import type { ClientService, SessionsService, SettingsService } from "../ui/contracts.ts";
+import { sessionTitle } from "../model/threads.ts";
+import { Actions, Client, Threads, Settings, SettingsGroups, SettingsSections, Slots } from "../ui/contracts.ts";
+import type { ClientService, ThreadsService, SettingsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { ArchiveIcon } from "../ui/parts.tsx";
 import styles from "./archived-page.css?inline";
 
 const SECTION = "archived";
 
-function ArchivedRow(props: { client: ClientService; sessions: SessionsService; settings: SettingsService; session: SessionInfo }) {
+function ArchivedRow(props: { client: ClientService; threads: ThreadsService; settings: SettingsService; session: SessionInfo }) {
   const open = () => {
     props.settings.open(undefined);
-    void props.sessions.select(props.session.id);
+    void props.threads.select(props.session.id);
   };
   return (
     <div class="setting-row archived-row">
@@ -25,10 +25,10 @@ function ArchivedRow(props: { client: ClientService; sessions: SessionsService; 
         </div>
       </div>
       <div class="setting-control">
-        <button class="button small" onClick={() => void props.sessions.mark(props.session.id, { archived: false })}>
+        <button class="button small" onClick={() => void props.threads.mark(props.session.id, { archived: false })}>
           Unarchive
         </button>
-        <button class="button small archived-delete" onClick={() => void props.sessions.remove(props.session.id)}>
+        <button class="button small archived-delete" onClick={() => void props.threads.remove(props.session.id)}>
           Delete
         </button>
       </div>
@@ -36,14 +36,14 @@ function ArchivedRow(props: { client: ClientService; sessions: SessionsService; 
   );
 }
 
-/** Archived sessions, as a settings section: open, unarchive, or delete each. */
+/** Archived threads, as a settings section: open, unarchive, or delete each. */
 export default defineUiPlugin({
   id: "archived-page",
   styles,
-  requires: { client: Client, sessions: Sessions, settings: Settings, slots: Slots },
-  setup: ({ client, sessions, settings, slots }, plugin) => {
+  requires: { client: Client, threads: Threads, settings: Settings, slots: Slots },
+  setup: ({ client, threads, settings, slots }, plugin) => {
     const archived = () =>
-      sessions
+      threads
         .list()
         .filter((session) => session.archived === true)
         .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -53,7 +53,7 @@ export default defineUiPlugin({
         order: 45,
         title: "Archived",
         icon: ArchiveIcon,
-        empty: () => <p class="settings-empty">No archived sessions. Archive one from its menu in the sidebar.</p>,
+        empty: () => <p class="settings-empty">No archived threads. Archive one from its menu in the sidebar.</p>,
       }),
     );
     plugin.onCleanup(
@@ -63,7 +63,7 @@ export default defineUiPlugin({
         entries: () =>
           archived().map((session) => ({
             text: `archived ${sessionTitle(session)} ${session.cwd}`,
-            view: () => <ArchivedRow client={client} sessions={sessions} settings={settings} session={session} />,
+            view: () => <ArchivedRow client={client} threads={threads} settings={settings} session={session} />,
           })),
       }),
     );
@@ -71,8 +71,8 @@ export default defineUiPlugin({
       slots.add(Actions, {
         id: "archived-page.open",
         order: 10,
-        title: "Archived sessions",
-        category: "Sessions",
+        title: "Archived threads",
+        category: "Thread",
         keywords: ["archive", "hidden", "restore"],
         icon: ArchiveIcon,
         run: () => settings.open(SECTION),

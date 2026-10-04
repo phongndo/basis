@@ -53,7 +53,7 @@ keys. Settings › Keyboard (`mod+/`) records them and writes the `keymap`
 plugin's `bindings`, one line per action, which a file edit changes as well:
 
 ```jsonc
-{ "ui": { "keymap": { "config": { "bindings": ["shell.toggle-sidebar = mod+shift+y", "session.view.trajectory ="] } } } }
+{ "ui": { "keymap": { "config": { "bindings": ["shell.toggle-sidebar = mod+shift+y", "thread.view.trajectory ="] } } } }
 ```
 
 Nothing after `=` unbinds an action; the composer's send key is the
@@ -69,7 +69,7 @@ slots. [`ui/contracts.ts`](src/ui/contracts.ts) lists them all; the bundled
 plugins use nothing else.
 
 - **Capabilities** are services with one provider: the host's state
-  (`Sessions`, `Models`, `Workspace`, `HostPlugins`, `Commands`,
+  (`Threads`, `Models`, `Workspace`, `HostPlugins`, `Commands`,
   `Interactions`, the `Client` connection) and screen state (`Dialogs`,
   `Settings`, `Layout`). Replacing a provider restarts its dependents with the
   new one.
@@ -79,8 +79,8 @@ plugins use nothing else.
   shortcuts), `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews` (a
   tool's summary and body, in the chat and the trajectory), `CodeBlocks` (how
   fenced code renders: `highlight` and `diagrams` fill it), `PaletteSources`
-  (what the palette searches), `SessionHeader`, `SidebarActions`,
-  `SessionActions` and `ProjectActions` (the sidebar's ⋯ menus),
+  (what the palette searches), `ThreadHeader`, `SidebarActions`,
+  `ThreadActions` and `ProjectActions` (the sidebar's ⋯ menus),
   `ComposerActions`, `WorkspaceBarItems`, `PluginTabs` (the Plugins page
   inspector), `TrajectoryTabs` and `TrajectoryActions`. The bundled plugins add
   their own buttons, tabs, and sources through these same slots. Take over a
@@ -121,12 +121,12 @@ Solid's JSX without a compiler.
 
 ```js
 // ~/.lemma/ui/tool-count.js
-export default ({ defineUiPlugin, contracts: { Slots, Sessions, SidebarFooter }, html }) =>
+export default ({ defineUiPlugin, contracts: { Slots, Threads, SidebarFooter }, html }) =>
   defineUiPlugin({
     id: "tool-count",
-    requires: { slots: Slots, sessions: Sessions },
-    setup: ({ slots, sessions }, plugin) => {
-      const calls = () => sessions.branch().filter((event) => event.data.type === "message" && event.data.message.role === "toolResult").length;
+    requires: { slots: Slots, threads: Threads },
+    setup: ({ slots, threads }, plugin) => {
+      const calls = () => threads.branch().filter((event) => event.data.type === "message" && event.data.message.role === "toolResult").length;
       plugin.onCleanup(slots.add(SidebarFooter, { id: "tool-count", order: 50, component: () => html`<span class="muted small">${calls} tool calls</span>` }));
     },
   });

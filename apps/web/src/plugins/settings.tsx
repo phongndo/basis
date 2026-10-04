@@ -3,7 +3,7 @@ import { Dynamic } from "solid-js/web";
 import { formatKeys } from "../lib/keys.ts";
 import { filterGroups } from "../model/settings.ts";
 import type { EntryGroup } from "../model/settings.ts";
-import { Actions, Layers, SectionIds, Sessions, Settings, SettingsGroups, SettingsSections, SidebarFooter, Slots } from "../ui/contracts.ts";
+import { Actions, Layers, SectionIds, Threads, Settings, SettingsGroups, SettingsSections, SidebarFooter, Slots } from "../ui/contracts.ts";
 import type { SettingsEntry, SettingsSection } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem, SlotsService } from "../ui/slots.ts";
@@ -213,9 +213,9 @@ function Groups(props: { groups: readonly EntryGroup<SettingsEntry>[] }) {
 export default defineUiPlugin({
   id: "settings",
   styles,
-  requires: { slots: Slots, sessions: Sessions },
+  requires: { slots: Slots, threads: Threads },
   provides: { settings: Settings },
-  setup: ({ slots, sessions }, plugin) => {
+  setup: ({ slots, threads }, plugin) => {
     const [section, setSection] = createSignal<string>();
     const [visits, setVisits] = createSignal(0);
     const [focus, setFocus] = createSignal<() => void>();
@@ -223,7 +223,7 @@ export default defineUiPlugin({
       setSection(next);
       setVisits((count) => count + 1);
     };
-    plugin.onCleanup(sessions.onSelect(() => open(undefined)));
+    plugin.onCleanup(threads.onSelect(() => open(undefined)));
 
     const add = (remove: () => void) => plugin.onCleanup(remove);
     add(slots.add(SettingsSections, { id: SectionIds.general, order: 0, title: "General", icon: SlidersIcon }));

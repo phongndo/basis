@@ -12,14 +12,14 @@ import {
   Layers,
   Notify,
   ProjectActions,
-  Sessions,
+  Threads,
   Settings,
   SettingsGroups,
   SettingsSections,
   Slots,
   Workspace,
 } from "../ui/contracts.ts";
-import type { ClientService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import type { ClientService, ThreadsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { CheckIcon, ChevronDownIcon, CopyIcon, Dialog, FolderIcon, FolderPlusIcon, GearIcon, Popover, Segmented, SettingRow, TrashIcon } from "../ui/parts.tsx";
 import styles from "./projects-page.css?inline";
@@ -27,20 +27,20 @@ import styles from "./projects-page.css?inline";
 const SECTION = "projects";
 const DELETE_DIALOG = "projects-page.delete";
 
-const threads = (n: number) => `${n} thread${n === 1 ? "" : "s"}`;
+const threadCount = (n: number) => `${n} thread${n === 1 ? "" : "s"}`;
 
 /** A project's threads, archived ones included. */
-const threadsIn = (sessions: SessionsService, cwd: string): SessionInfo[] => sessions.list().filter((session) => session.cwd === cwd);
+const threadsIn = (threads: ThreadsService, cwd: string): SessionInfo[] => threads.list().filter((session) => session.cwd === cwd);
 
 /** Asks before deleting a project's threads, saying what goes and what stays. */
-function DeleteProjectDialog(props: { client: ClientService; sessions: SessionsService; workspace: WorkspaceService; cwd: string; close: () => void }) {
-  const { sessions, workspace } = props;
-  const inProject = () => threadsIn(sessions, props.cwd);
+function DeleteProjectDialog(props: { client: ClientService; threads: ThreadsService; workspace: WorkspaceService; cwd: string; close: () => void }) {
+  const { threads, workspace } = props;
+  const inProject = () => threadsIn(threads, props.cwd);
   const archived = () => inProject().filter((session) => session.archived === true).length;
-  const running = () => inProject().filter((session) => sessions.running().includes(session.id)).length;
+  const running = () => inProject().filter((session) => threads.running().includes(session.id)).length;
   const remove = () => {
     // A running thread cannot be deleted; it is left, and keeps the project listed.
-    for (const session of inProject()) if (!sessions.running().includes(session.id)) void sessions.remove(session.id);
+    for (const session of inProject()) if (!threads.running().includes(session.id)) void threads.remove(session.id);
     if (running() === 0) workspace.remove(props.cwd);
     props.close();
   };
@@ -55,21 +55,21 @@ function DeleteProjectDialog(props: { client: ClientService; sessions: SessionsS
             Cancel
           </button>
           <button class="button button-danger" onClick={remove}>
-            {inProject().length === 0 ? "Delete project" : `Delete ${threads(inProject().length - running())}`}
+            {inProject().length === 0 ? "Delete project" : `Delete ${threadCount(inProject().length - running())}`}
           </button>
         </>
       }
     >
       <p class="dialog-detail">
         <Show when={inProject().length > 0} fallback={<>It has no threads; it leaves your projects until you start a thread in it or add it again.</>}>
-          This permanently deletes {threads(inProject().length)} in <code>{tildePath(props.cwd, props.client.info()?.home)}</code>
+          This permanently deletes {threadCount(inProject().length)} in <code>{tildePath(props.cwd, props.client.info()?.home)}</code>
           {archived() > 0 ? `, ${archived()} of them archived` : ""}, and removes the project from your list. It cannot be undone.
         </Show>
       </p>
       <p class="dialog-detail muted">The project's files on disk are not touched.</p>
       <Show when={running() > 0}>
         <p class="dialog-detail delete-project-running">
-          {threads(running())} still running {running() === 1 ? "is" : "are"} kept; stop {running() === 1 ? "it" : "them"} to delete the project.
+          {threadCount(running())} still running {running() === 1 ? "is" : "are"} kept; stop {running() === 1 ? "it" : "them"} to delete the project.
         </p>
       </Show>
     </Dialog>
@@ -80,8 +80,8 @@ function DeleteProjectDialog(props: { client: ClientService; sessions: SessionsS
 export default defineUiPlugin({
   id: "projects-page",
   styles,
-  requires: { client: Client, sessions: Sessions, workspace: Workspace, settings: Settings, dialogs: Dialogs, notify: Notify, slots: Slots },
-  setup: ({ client, sessions, workspace, settings, dialogs, notify, slots }, plugin) => {
+  requires: { client: Client, threads: Threads, workspace: Workspace, settings: Settings, dialogs: Dialogs, notify: Notify, slots: Slots },
+  setup: ({ client, threads, workspace, settings, dialogs, notify, slots }, plugin) => {
     const [chosen, setChosen] = createSignal<string | undefined>();
     /** The project the page shows: the one chosen, while it exists, else the first. */
     const current = createMemo(() => {
@@ -263,14 +263,14 @@ export default defineUiPlugin({
       {
         text: "project delete remove forget threads",
         view: () => {
-          const count = () => threadsIn(sessions, cwd).length;
+          const count = () => threadsIn(threads, cwd).length;
           return (
             <SettingRow
               title="Delete project"
               description={
                 count() === 0
                   ? "Removes it from your projects. Files on disk are not touched."
-                  : `Deletes its ${threads(count())} for good, archived ones included, and removes it from your projects. Files on disk are not touched.`
+                  : `Deletes its ${threadCount(count())} for good, archived ones included, and removes it from your projects. Files on disk are not touched.`
               }
             >
               <button class="button small button-danger" onClick={() => askDelete(cwd)}>
@@ -299,7 +299,7 @@ export default defineUiPlugin({
         id: DELETE_DIALOG,
         component: () => (
           <Show when={dialogs.current() === DELETE_DIALOG && deleting()}>
-            {(cwd) => <DeleteProjectDialog client={client} sessions={sessions} workspace={workspace} cwd={cwd()} close={() => dialogs.open(undefined)} />}
+            {(cwd) => <DeleteProjectDialog client={client} threads={threads} workspace={workspace} cwd={cwd()} close={() => dialogs.open(undefined)} />}
           </Show>
         ),
       }),

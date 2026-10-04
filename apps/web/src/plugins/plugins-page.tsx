@@ -24,14 +24,14 @@ import {
   HostPlugins,
   Notify,
   PluginTabs,
-  Sessions,
+  Threads,
   Settings,
   SettingsGroups,
   SettingsSections,
   Slots,
   UiPlugins,
 } from "../ui/contracts.ts";
-import type { ClientService, PluginTab, PluginsService, SessionsService, UiPluginsService } from "../ui/contracts.ts";
+import type { ClientService, PluginTab, PluginsService, ThreadsService, UiPluginsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchIcon, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
@@ -84,7 +84,7 @@ const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-dig
 /** Everything the inspector's parts share. */
 interface Inspector {
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly ui: UiPluginsService;
   readonly slots: SlotsService;
   readonly services: Readonly<Record<PluginKind, PluginsService>>;
@@ -468,8 +468,8 @@ function Faults(props: { plugin: PluginStatus }) {
   );
 }
 
-function HostFacts(props: { client: ClientService; sessions: SessionsService; ui: UiPluginsService }) {
-  const running = () => props.sessions.running();
+function HostFacts(props: { client: ClientService; threads: ThreadsService; ui: UiPluginsService }) {
+  const running = () => props.threads.running();
   const files = () => props.ui.files();
   return (
     <Show when={props.client.info()}>
@@ -525,7 +525,7 @@ function Summary(props: { inspector: Inspector; entries: readonly KindedPlugin[]
           ],
         ]}
       />
-      <HostFacts client={props.inspector.client} sessions={props.inspector.sessions} ui={props.inspector.ui} />
+      <HostFacts client={props.inspector.client} threads={props.inspector.threads} ui={props.inspector.ui} />
     </div>
   );
 }
@@ -681,8 +681,8 @@ function PluginsInspector(props: { inspector: Inspector; filter: () => string; s
 export default defineUiPlugin({
   id: "plugins-page",
   styles,
-  requires: { client: Client, sessions: Sessions, notify: Notify, settings: Settings, slots: Slots, host: HostPlugins, ui: UiPlugins },
-  setup: ({ client, sessions, notify, settings, slots, host, ui }, plugin) => {
+  requires: { client: Client, threads: Threads, notify: Notify, settings: Settings, slots: Slots, host: HostPlugins, ui: UiPlugins },
+  setup: ({ client, threads, notify, settings, slots, host, ui }, plugin) => {
     // Survive the list refreshing and the section closing, like the trajectory's selection.
     const [selected, setSelected] = createSignal<Selection>();
     const [tab, setTab] = createSignal<Tab>("plugins.overview");
@@ -702,7 +702,7 @@ export default defineUiPlugin({
 
     const inspector: Inspector = {
       client,
-      sessions,
+      threads,
       ui,
       slots,
       services,

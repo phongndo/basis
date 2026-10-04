@@ -4,7 +4,7 @@ import { load, loadJson, save } from "../lib/storage.ts";
 import { branchSlug } from "../model/format.ts";
 import { knownProjects, patchProjectSettings, projectName } from "../model/prefs.ts";
 import type { ProjectSettings } from "../model/prefs.ts";
-import { Client, Notify, Sessions, Workspace } from "../ui/contracts.ts";
+import { Client, Notify, Threads, Workspace } from "../ui/contracts.ts";
 import type { WorktreeDraft } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 
@@ -20,9 +20,9 @@ const HIDDEN_KEY = "lemma.hiddenProjects";
  */
 export default defineUiPlugin({
   id: "workspace",
-  requires: { client: Client, notify: Notify, sessions: Sessions },
+  requires: { client: Client, notify: Notify, threads: Threads },
   provides: { workspace: Workspace },
-  setup: ({ client, notify, sessions }, plugin) => {
+  setup: ({ client, notify, threads }, plugin) => {
     const api = client.host.workspace;
     const [added, setAdded] = createSignal<readonly string[]>(loadJson(PROJECTS_KEY, []));
     const [status, setStatus] = createSignal<WorkspaceStatus>();
@@ -35,7 +35,7 @@ export default defineUiPlugin({
       const home = client.info()?.home;
       return home === undefined ? undefined : `${home.replace(/\/+$/, "")}/scratch`;
     });
-    const workingDir = createMemo(() => sessions.active()?.cwd ?? sessions.pendingCwd() ?? standaloneDir());
+    const workingDir = createMemo(() => threads.active()?.cwd ?? threads.pendingCwd() ?? standaloneDir());
     const isStandalone = (cwd: string | undefined) => cwd !== undefined && cwd === standaloneDir();
     // Removed projects stay out of the list until a thread starts in them again (or they are added again).
     const [hidden, setHidden] = createSignal<readonly string[]>(loadJson(HIDDEN_KEY, []));
@@ -52,15 +52,15 @@ export default defineUiPlugin({
         if (dir === undefined) return;
         try {
           if (!(await api.status(dir)).exists) await api.createDirectory(dir);
-          if (!onlyIfIdle) sessions.newChat(dir);
-          else if (sessions.activeId() === undefined && sessions.pendingCwd() === undefined) sessions.startIn(dir);
+          if (!onlyIfIdle) threads.newThread(dir);
+          else if (threads.activeId() === undefined && threads.pendingCwd() === undefined) threads.startIn(dir);
         } catch (error) {
           notify.report(error, "Could not start a thread without a project");
         }
       })().finally(() => {
         startingStandalone = undefined;
       }));
-    const projects = createMemo(() => knownProjects(sessions.list(), added(), { hidden: hidden(), standalone: standaloneDir() }));
+    const projects = createMemo(() => knownProjects(threads.list(), added(), { hidden: hidden(), standalone: standaloneDir() }));
     const setWorktreeBase = (base: string | undefined) =>
       setWorktreeDraft((draft) => (base === undefined ? { enabled: draft.enabled } : { enabled: draft.enabled, base }));
 
@@ -87,14 +87,14 @@ export default defineUiPlugin({
     // A turn may have committed or switched branches.
     createEffect(
       on(
-        () => sessions.running().length,
+        () => threads.running().length,
         () => void refresh(),
         { defer: true },
       ),
     );
     // A new thread with no project picked starts in none: the host's own directory is not a default project.
     createEffect(() => {
-      if (client.connected() && standaloneDir() !== undefined && sessions.activeId() === undefined && sessions.pendingCwd() === undefined)
+      if (client.connected() && standaloneDir() !== undefined && threads.activeId() === undefined && threads.pendingCwd() === undefined)
         void newStandalone(true);
     });
     const onFocus = () => void refresh();
@@ -141,7 +141,7 @@ export default defineUiPlugin({
               return false;
             }
             add(found.path);
-            sessions.newChat(found.path);
+            threads.newThread(found.path);
             return true;
           } catch (error) {
             notify.report(error, "Could not open the folder");

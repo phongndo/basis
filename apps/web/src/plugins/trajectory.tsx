@@ -19,8 +19,8 @@ import {
 } from "@lemma/contracts";
 import type { AssistantRecord, LedgerRecord, LedgerSort, LedgerSpan, SystemRecord, Timing, ToolRecord, TrajectoryRequest } from "@lemma/contracts";
 import { formatCost, formatDuration, formatTokens } from "../model/format.ts";
-import { Notify, Sessions, Slots, ToolViews, TrajectoryActions, TrajectoryTabs, Views } from "../ui/contracts.ts";
-import type { NotifyService, SessionsService } from "../ui/contracts.ts";
+import { Notify, Threads, Slots, ToolViews, TrajectoryActions, TrajectoryTabs, Views } from "../ui/contracts.ts";
+import type { NotifyService, ThreadsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { CopyIcon, Markdown, TrajectoryIcon, XIcon } from "../ui/parts.tsx";
@@ -36,7 +36,7 @@ import styles from "./trajectory.css?inline";
  */
 
 interface TrajectoryDeps {
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly notify: NotifyService;
   readonly slots: SlotsService;
 }
@@ -105,7 +105,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     return now;
   };
 
-  const statusOf = (record: LedgerRecord) => recordStatus(record, deps.sessions.busy());
+  const statusOf = (record: LedgerRecord) => recordStatus(record, deps.threads.busy());
 
   const typeMatches = (record: LedgerRecord) => {
     const filter = typeFilter();
@@ -230,7 +230,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
           Equal widths
         </label>
         <Show when={zoom().start > 0 || zoom().end < 1}>
-          <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole session (or double-click the overview)">
+          <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole thread (or double-click the overview)">
             Reset zoom
           </button>
         </Show>
@@ -534,7 +534,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
       const span = props.ledgerSpans.get(record.id);
       return span !== undefined && (span.end ?? props.now) >= r.from && span.start <= r.to;
     };
-    const sorted = createMemo(() => sortRecords(props.visible, sort().key, sort().desc, deps.sessions.busy()));
+    const sorted = createMemo(() => sortRecords(props.visible, sort().key, sort().desc, deps.threads.busy()));
     // Group rows open each turn, in time order only; a sorted table is flat, as in DevTools.
     const rows = createMemo(() => {
       const out: Row[] = [];
@@ -740,7 +740,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
         out.push({
           label: "Copy exact request",
           run: () => {
-            const rebuilt = rebuildRequest(deps.sessions.branch(), request.eventId);
+            const rebuilt = rebuildRequest(deps.threads.branch(), request.eventId);
             if (rebuilt !== undefined) void copy(json(rebuilt));
           },
         });
@@ -757,7 +757,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
       out.push({ label: `Filter: turn:${record.turn.index}`, run: () => setQuery(`turn:${record.turn.index}`) });
       // Records of model calls and tool runs are log events; the next prompt can continue from one of them.
       if (record.kind === "assistant" || record.kind === "tool") {
-        out.push({ label: "Branch from here", run: () => void deps.sessions.checkout(record.id) });
+        out.push({ label: "Branch from here", run: () => void deps.threads.checkout(record.id) });
       }
       // Then what plugins add.
       for (const action of deps.slots.list(TrajectoryActions)) {
@@ -1081,7 +1081,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
               aria-label="Copy exact request"
               data-tip="Copy exact request"
               onClick={() => {
-                const rebuilt = rebuildRequest(deps.sessions.branch(), request.eventId);
+                const rebuilt = rebuildRequest(deps.threads.branch(), request.eventId);
                 if (rebuilt !== undefined) void copy(json(rebuilt));
               }}
             >
@@ -1413,8 +1413,8 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
   // ------------------------------------------------------------------ view
 
   function Trajectory(): JSX.Element {
-    const records = createMemo(() => ledger(projectTrajectory(deps.sessions.branch())));
-    const now = useNow(deps.sessions.busy);
+    const records = createMemo(() => ledger(projectTrajectory(deps.threads.branch())));
+    const now = useNow(deps.threads.busy);
     const allSpans = createMemo(() => ledgerSpans(records()));
     const spanById = createMemo(() => new Map(allSpans().map((span) => [span.record.id, span])));
     const scale = createMemo(() => timeScale(allSpans(), now()));
@@ -1425,7 +1425,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 
     createEffect(
       on(
-        () => deps.sessions.activeId(),
+        () => deps.threads.activeId(),
         () => {
           select(undefined);
           setRange(undefined);
@@ -1475,7 +1475,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
             <Show
               when={records().length > 0}
               fallback={
-                <p class="trj-empty">{deps.sessions.activeId() === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>
+                <p class="trj-empty">{deps.threads.activeId() === undefined ? "Start a chat to see its trajectory." : "No records on this branch yet."}</p>
               }
             >
               <Table records={records()} visible={visible()} scale={scale()} ledgerSpans={spanById()} now={now()} compact={selection() !== undefined} />
@@ -1496,10 +1496,10 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 export default defineUiPlugin({
   id: "trajectory",
   styles,
-  requires: { sessions: Sessions, notify: Notify, slots: Slots },
-  setup: ({ sessions, notify, slots }, plugin) => {
+  requires: { threads: Threads, notify: Notify, slots: Slots },
+  setup: ({ threads, notify, slots }, plugin) => {
     plugin.onCleanup(
-      slots.add(Views, { id: "trajectory", title: "Trajectory", icon: TrajectoryIcon, component: createTrajectory({ sessions, notify, slots }) }),
+      slots.add(Views, { id: "trajectory", title: "Trajectory", icon: TrajectoryIcon, component: createTrajectory({ threads, notify, slots }) }),
     );
   },
 });

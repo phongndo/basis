@@ -4,8 +4,8 @@ import { branchOf } from "@lemma/contracts";
 import type { HostEvent, PromptContent, SessionEvent, SessionInfo, SessionMarks, TurnOptions } from "@lemma/contracts";
 import { appendOutput, applyDelta, dropOutput, emptyLive, endTurn, reconcileLive, settleStep } from "../model/live.ts";
 import type { LiveState } from "../model/live.ts";
-import { resolveLeaf, trackTurn, upsertSession } from "../model/sessions.ts";
-import { Client, Notify, Sessions } from "../ui/contracts.ts";
+import { resolveLeaf, trackTurn, upsertSession } from "../model/threads.ts";
+import { Client, Notify, Threads } from "../ui/contracts.ts";
 import type { LogState } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 
@@ -20,14 +20,14 @@ const hashSession = (): string | undefined => {
 };
 
 /**
- * Sessions and the active one's log: the list, which is open, its events and
- * streaming drafts, which sessions are running, and sending prompts. The URL
+ * Threads and the active one's log: the list, which is open, its events and
+ * streaming drafts, which threads are running, and sending prompts. The URL
  * hash names the open session, so a reload returns to it.
  */
 export default defineUiPlugin({
-  id: "sessions",
+  id: "threads",
   requires: { client: Client, notify: Notify },
-  provides: { sessions: Sessions },
+  provides: { threads: Threads },
   setup: ({ client, notify }, plugin) => {
     const host = client.host;
     const [list, setList] = createSignal<readonly SessionInfo[]>([]);
@@ -64,11 +64,11 @@ export default defineUiPlugin({
       const next = update(current);
       if (next !== current) setLive({ ...live(), [sessionId]: next });
     };
-    const upsert = (info: SessionInfo) => setList((sessions) => upsertSession(sessions, info));
+    const upsert = (info: SessionInfo) => setList((threads) => upsertSession(threads, info));
     /** Drops a deleted session, leaving it first if it is open. */
     const forget = (sessionId: string) => {
       if (activeId() === sessionId) void select(undefined);
-      setList((sessions) => sessions.filter((session) => session.id !== sessionId));
+      setList((threads) => threads.filter((session) => session.id !== sessionId));
     };
 
     const closeLog = () => {
@@ -105,7 +105,7 @@ export default defineUiPlugin({
     plugin.onCleanup(
       client.onConnect(() => {
         const tasks = [
-          host.session.list().then((sessions) => batch(() => (setList(sessions), setLoaded(true)))),
+          host.session.list().then((threads) => batch(() => (setList(threads), setLoaded(true)))),
           host.agent.running().then(setRunning),
           ...(sessionLog === undefined ? [] : [sessionLog.sync()]),
         ];
@@ -248,7 +248,7 @@ export default defineUiPlugin({
     };
 
     return {
-      sessions: {
+      threads: {
         list,
         loaded,
         activeId,
@@ -264,7 +264,7 @@ export default defineUiPlugin({
           selectListeners.add(listener);
           return () => selectListeners.delete(listener);
         },
-        newChat: (cwd?: string) => {
+        newThread: (cwd?: string) => {
           setPendingCwd(cwd);
           void select(undefined);
         },

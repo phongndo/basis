@@ -6,15 +6,15 @@ import { copyText } from "../lib/clipboard.ts";
 import { formatKeys } from "../lib/keys.ts";
 import { loadJson, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
-import { fileSessions, sessionTitle } from "../model/sessions.ts";
+import { fileSessions, sessionTitle } from "../model/threads.ts";
 import {
   ActionIds,
   Actions,
   Client,
   Notify,
   ProjectActions,
-  SessionActions,
-  Sessions,
+  ThreadActions,
+  Threads,
   SidebarActions,
   SidebarFooter,
   SidebarRegion,
@@ -22,7 +22,7 @@ import {
   Slots,
   Workspace,
 } from "../ui/contracts.ts";
-import type { Action, ClientService, MenuAction, SessionAction, SessionsService, SidebarRowProps, WorkspaceService } from "../ui/contracts.ts";
+import type { Action, ClientService, MenuAction, ThreadAction, ThreadsService, SidebarRowProps, WorkspaceService } from "../ui/contracts.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { defineUiPlugin } from "../ui/define.ts";
@@ -50,7 +50,7 @@ import styles from "./sidebar.css?inline";
 
 interface Deps {
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly slots: SlotsService;
   readonly workspace: WorkspaceService;
   readonly now: () => number;
@@ -135,7 +135,7 @@ function SessionRow(props: SidebarRowProps) {
           </button>
           <Show when={props.actions.length > 0}>
             <Popover
-              label="Session actions"
+              label="Thread actions"
               tip="More"
               trigger={<MoreIcon />}
               triggerClass="icon-button session-more"
@@ -151,7 +151,7 @@ function SessionRow(props: SidebarRowProps) {
       <input
         class="session-rename"
         value={props.session.title ?? ""}
-        aria-label="Session title"
+        aria-label="Thread title"
         ref={(el) =>
           queueMicrotask(() => {
             el.focus();
@@ -177,7 +177,7 @@ const COLLAPSED_KEY = "lemma.sidebar.collapsed";
 const PINNED = ":pinned";
 
 function Sidebar(props: { deps: Deps; onPick: () => void }) {
-  const { client, sessions, slots, workspace } = props.deps;
+  const { client, threads, slots, workspace } = props.deps;
   const [query, setQuery] = createSignal("");
   // Sections folded shut, by project directory (or PINNED); kept across reloads. A search shows every match regardless.
   const [collapsed, setCollapsed] = createSignal(new Set(loadJson<string[]>(COLLAPSED_KEY, [])));
@@ -193,7 +193,7 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
     const matches = (session: SessionInfo) => needle === "" || sessionTitle(session).toLowerCase().includes(needle);
     const scope = props.deps.scope();
     const inScope = (session: SessionInfo) => scope === undefined || session.cwd === scope;
-    const { pinned, groups } = fileSessions(sessions.list());
+    const { pinned, groups } = fileSessions(threads.list());
     return {
       pinned: pinned.filter((session) => inScope(session) && matches(session)),
       groups: groups
@@ -211,7 +211,7 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
     props.deps.newChatIn(cwd);
     props.onPick();
   };
-  const sessionActions = (session: SessionInfo) => slots.list(SessionActions).filter((action) => action.when?.(session) ?? true);
+  const sessionActions = (session: SessionInfo) => slots.list(ThreadActions).filter((action) => action.when?.(session) ?? true);
   const projectActions = (cwd: string) => slots.list(ProjectActions).filter((action) => action.when?.(cwd) ?? true);
   const onKey = (event: KeyboardEvent) => {
     // Arrow keys move between session rows.
@@ -229,14 +229,14 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
           <li>
             <SidebarRow
               session={session}
-              active={sessions.activeId() === session.id}
-              running={sessions.running().includes(session.id)}
+              active={threads.activeId() === session.id}
+              running={threads.running().includes(session.id)}
               now={props.deps.now()}
               select={() => {
-                void sessions.select(session.id);
+                void threads.select(session.id);
                 props.onPick();
               }}
-              rename={(title) => void sessions.rename(session.id, title)}
+              rename={(title) => void threads.rename(session.id, title)}
               actions={sessionActions(session)}
             />
           </li>
@@ -245,14 +245,14 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
     </ul>
   );
   return (
-    <nav class="sidebar" aria-label="Sessions" onKeyDown={onKey}>
+    <nav class="sidebar" aria-label="Threads" onKeyDown={onKey}>
       <div class="sidebar-head">
         <label class="sidebar-search">
           <SearchIcon />
           <input
             type="search"
             placeholder="Search"
-            aria-label="Search sessions"
+            aria-label="Search threads"
             value={query()}
             onInput={(event) => setQuery(event.currentTarget.value)}
             onKeyDown={(event) => {
@@ -274,11 +274,11 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
         </div>
       </div>
       <div class="session-groups">
-        <Show when={sessions.loaded() && sessions.list().length === 0}>
-          <p class="sidebar-empty">No sessions yet. Your conversations will appear here.</p>
+        <Show when={threads.loaded() && threads.list().length === 0}>
+          <p class="sidebar-empty">No threads yet. Your conversations will appear here.</p>
         </Show>
-        <Show when={sessions.list().length > 0 && !shown()}>
-          <p class="sidebar-empty">{query().trim() === "" ? "Every session is archived." : "No matching sessions."}</p>
+        <Show when={threads.list().length > 0 && !shown()}>
+          <p class="sidebar-empty">{query().trim() === "" ? "Every thread is archived." : "No matching threads."}</p>
         </Show>
         <Show when={filed().pinned.length > 0}>
           <section class="session-group">
@@ -330,7 +330,7 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
                 </Show>
                 <button
                   class="icon-button group-button"
-                  classList={{ active: sessions.activeId() === undefined && sessions.pendingCwd() === group.cwd }}
+                  classList={{ active: threads.activeId() === undefined && threads.pendingCwd() === group.cwd }}
                   aria-label={standalone(group.cwd) ? "New thread in no project" : `New thread in ${group.cwd}`}
                   data-tip={standalone(group.cwd) ? "New thread in no project" : `New thread in ${tildePath(group.cwd, home())}`}
                   onClick={() => {
@@ -355,61 +355,61 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
   );
 }
 
-/** Sessions by project, pinned ones first, with search, new-chat buttons, and a menu for each session and project. Its foot is a slot (settings, connection). */
+/** Threads by project, pinned ones first, with search, new-chat buttons, and a menu for each session and project. Its foot is a slot (settings, connection). */
 export default defineUiPlugin({
   id: "sidebar",
   styles,
-  requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
+  requires: { client: Client, threads: Threads, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (use, plugin) => {
     // Relative times refresh once a minute.
     const [now, setNow] = createSignal(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     plugin.onCleanup(() => window.clearInterval(timer));
-    const { client, sessions, workspace, notify, slots } = use;
-    const newChatIn = (cwd?: string) => sessions.newChat(cwd);
+    const { client, threads, workspace, notify, slots } = use;
+    const newChatIn = (cwd?: string) => threads.newThread(cwd);
     /** Projects with threads, which the list can be narrowed to; a chosen one that loses its last thread lets go. */
-    const scopes = createMemo(() => fileSessions(sessions.list()).groups.map((group) => group.cwd));
+    const scopes = createMemo(() => fileSessions(threads.list()).groups.map((group) => group.cwd));
     const [chosenScope, setScope] = createSignal<string | undefined>();
     const scope = () => {
       const chosen = chosenScope();
       return chosen !== undefined && scopes().includes(chosen) ? chosen : undefined;
     };
     const scopeName = (cwd: string) => (workspace.isStandalone(cwd) ? "No project" : workspace.projectName(cwd));
-    const deps: Deps = { client, sessions, slots, workspace, now, newChatIn, scope };
+    const deps: Deps = { client, threads, slots, workspace, now, newChatIn, scope };
     plugin.onCleanup(slots.add(SidebarRegion, { id: "sidebar", component: (props) => <Sidebar deps={deps} onPick={props.onPick} /> }));
     plugin.onCleanup(slots.add(SidebarRowPart, { id: "sidebar.row", order: DEFAULT_PART_ORDER, component: SessionRow }));
 
     // Its menus' items go through the slots other plugins add theirs to.
-    const sessionAction = (id: string, order: number, action: SessionAction) => plugin.onCleanup(slots.add(SessionActions, { id, order, ...action }));
+    const sessionAction = (id: string, order: number, action: ThreadAction) => plugin.onCleanup(slots.add(ThreadActions, { id, order, ...action }));
     sessionAction("sidebar.rename", 10, { label: () => "Rename", icon: PencilIcon, run: (_, row) => row.rename() });
     sessionAction("sidebar.pin", 20, {
       label: (session) => (session.pinned === true ? "Unpin" : "Pin"),
       icon: PinIcon,
-      run: (session) => void sessions.mark(session.id, { pinned: session.pinned !== true }),
+      run: (session) => void threads.mark(session.id, { pinned: session.pinned !== true }),
     });
     sessionAction("sidebar.archive", 30, {
       label: (session) => (session.archived === true ? "Unarchive" : "Archive"),
       icon: ArchiveIcon,
-      run: (session) => void sessions.mark(session.id, { archived: session.archived !== true }),
+      run: (session) => void threads.mark(session.id, { archived: session.archived !== true }),
     });
     sessionAction("sidebar.delete", 40, {
       label: () => "Delete",
       icon: TrashIcon,
       danger: true,
       section: true,
-      run: (session) => void sessions.remove(session.id),
+      run: (session) => void threads.remove(session.id),
     });
 
     // The open thread, from the keyboard and the palette; Settings › Keyboard rebinds these.
-    const open = () => sessions.active();
+    const open = () => threads.active();
     const threadAction = (id: string, order: number, action: Omit<Action, "category" | "when"> & { readonly when?: () => boolean }) =>
       plugin.onCleanup(slots.add(Actions, { id, order, category: "Thread", ...action, when: () => open() !== undefined && (action.when?.() ?? true) }));
     /** The thread `step` rows away from the open one in the sidebar's order (pinned first, then by project), wrapping. */
     const neighbor = (step: number) => {
-      const { pinned, groups } = fileSessions(sessions.list());
+      const { pinned, groups } = fileSessions(threads.list());
       const order = [...pinned, ...groups.flatMap((group) => group.sessions)];
       if (order.length === 0) return undefined;
-      const at = order.findIndex((session) => session.id === sessions.activeId());
+      const at = order.findIndex((session) => session.id === threads.activeId());
       return order[at === -1 ? 0 : (at + step + order.length) % order.length];
     };
     plugin.onCleanup(
@@ -422,7 +422,7 @@ export default defineUiPlugin({
         whileTyping: true,
         run: () => {
           const next = neighbor(1);
-          if (next !== undefined) void sessions.select(next.id);
+          if (next !== undefined) void threads.select(next.id);
         },
       }),
     );
@@ -436,7 +436,7 @@ export default defineUiPlugin({
         whileTyping: true,
         run: () => {
           const previous = neighbor(-1);
-          if (previous !== undefined) void sessions.select(previous.id);
+          if (previous !== undefined) void threads.select(previous.id);
         },
       }),
     );
@@ -446,7 +446,7 @@ export default defineUiPlugin({
       keys: "mod+alt+p",
       run: () => {
         const session = open();
-        if (session !== undefined) void sessions.mark(session.id, { pinned: session.pinned !== true });
+        if (session !== undefined) void threads.mark(session.id, { pinned: session.pinned !== true });
       },
     });
     threadAction("sidebar.archive-thread", 24, {
@@ -456,7 +456,7 @@ export default defineUiPlugin({
       when: () => open()?.archived !== true,
       run: () => {
         const session = open();
-        if (session !== undefined) void sessions.mark(session.id, { archived: true });
+        if (session !== undefined) void threads.mark(session.id, { archived: true });
       },
     });
     threadAction("sidebar.delete-thread", 25, {
@@ -464,7 +464,7 @@ export default defineUiPlugin({
       icon: TrashIcon,
       run: () => {
         const session = open();
-        if (session !== undefined) void sessions.remove(session.id);
+        if (session !== undefined) void threads.remove(session.id);
       },
     });
 
@@ -562,7 +562,7 @@ export default defineUiPlugin({
     action("sidebar.new-chat", 30, (props) => (
       <button
         class="icon-button"
-        classList={{ active: sessions.activeId() === undefined }}
+        classList={{ active: threads.activeId() === undefined }}
         data-tip="New thread"
         aria-label="New thread"
         onClick={() => {

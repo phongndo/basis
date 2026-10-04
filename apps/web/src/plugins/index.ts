@@ -23,8 +23,8 @@ import palette from "./palette.tsx";
 import pluginsPage from "./plugins-page.tsx";
 import projectsPage from "./projects-page.tsx";
 import providers from "./providers.tsx";
-import sessionView from "./session-view.tsx";
-import sessions from "./sessions.ts";
+import threadView from "./thread-view.tsx";
+import threads from "./threads.ts";
 import settings from "./settings.tsx";
 import shell from "./shell.tsx";
 import sidebar from "./sidebar.tsx";
@@ -46,7 +46,7 @@ export const bundled: readonly Plugin[] = [
   kit,
   notify,
   toasts,
-  sessions,
+  threads,
   models,
   workspace,
   hostPlugins,
@@ -57,7 +57,7 @@ export const bundled: readonly Plugin[] = [
   appearance,
   shell,
   sidebar,
-  sessionView,
+  threadView,
   chat,
   highlight,
   diagrams,

@@ -8,8 +8,8 @@ import { load, save } from "../lib/storage.ts";
 import { relativeTime, tildePath } from "../model/format.ts";
 import { highlight, parseQuery, rank, remember } from "../model/palette.ts";
 import type { Searchable } from "../model/palette.ts";
-import { sessionTitle } from "../model/sessions.ts";
-import { ActionIds, Actions, Client, Commands, Dialogs, Interactions, Layers, PaletteSources, Sessions, Slots, UiPlugins, Workspace } from "../ui/contracts.ts";
+import { sessionTitle } from "../model/threads.ts";
+import { ActionIds, Actions, Client, Commands, Dialogs, Interactions, Layers, PaletteSources, Threads, Slots, UiPlugins, Workspace } from "../ui/contracts.ts";
 import type {
   ClientService,
   CommandsService,
@@ -17,7 +17,7 @@ import type {
   InteractionsService,
   PaletteItem,
   PaletteSource,
-  SessionsService,
+  ThreadsService,
   WorkspaceService,
 } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
@@ -29,7 +29,7 @@ const DIALOG = "palette";
 
 interface Deps {
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly workspace: WorkspaceService;
   readonly commands: CommandsService;
   readonly interactions: InteractionsService;
@@ -116,7 +116,7 @@ function Highlighted(props: { text: string; matches: readonly number[] }) {
 
 /**
  * Cmd+K (Ctrl+K on Windows and Linux): search everything the app can do or
- * open. Every plugin's actions, the host's commands, sessions, and projects
+ * open. Every plugin's actions, the host's commands, threads, and projects
  * share one ranked list; `>`, `@`, and `#` narrow it. While open, the palette
  * shows the host's questions in place of the question dialog, so a command
  * that asks (which branch? what name?) continues here.
@@ -234,7 +234,7 @@ function Palette(props: { deps: Deps }) {
     const item = (entry: { item: Item; matches: readonly number[] }): Row => ({ type: "item", ...entry, index: index++ });
     if (text.trim() !== "") return rank(pool(prefix), text, recent()).slice(0, RESULTS).map(item);
     if (prefix !== undefined) return pool(prefix).map((entry) => item({ item: entry, matches: [] }));
-    // Browsing: recent choices, then each source in order (commands, the latest sessions, projects, and what plugins add).
+    // Browsing: recent choices, then each source in order (commands, the latest threads, projects, and what plugins add).
     const all = pool(undefined);
     const byKey = new Map(all.map((entry) => [entry.key, entry]));
     const recentItems = recent()
@@ -347,7 +347,7 @@ function Palette(props: { deps: Deps }) {
     if (question?.type === "ask") return question.placeholder ?? "Type an answer";
     if (question !== undefined) return "Filter";
     if (running() !== undefined) return `Running ${running()!.title.replace(/…$/, "")}…`;
-    return "Search commands, sessions, and projects";
+    return "Search commands, threads, and projects";
   };
   const heading = () => {
     const question = asking()?.question;
@@ -391,7 +391,7 @@ function Palette(props: { deps: Deps }) {
               aria-expanded="true"
               aria-controls={listId}
               aria-activedescendant={activeId()}
-              aria-label={asking()?.question.title ?? "Search commands, sessions, and projects"}
+              aria-label={asking()?.question.title ?? "Search commands, threads, and projects"}
               autocomplete="off"
               autocapitalize="off"
               spellcheck={false}
@@ -492,13 +492,13 @@ function Palette(props: { deps: Deps }) {
   );
 }
 
-/** Search and run everything: plugins' actions, the host's commands, sessions, projects. */
+/** Search and run everything: plugins' actions, the host's commands, threads, projects. */
 export default defineUiPlugin({
   id: "palette",
   styles,
   requires: {
     client: Client,
-    sessions: Sessions,
+    threads: Threads,
     workspace: Workspace,
     commands: Commands,
     interactions: Interactions,
@@ -507,7 +507,7 @@ export default defineUiPlugin({
     slots: Slots,
   },
   setup: (services, plugin) => {
-    const { client, sessions, workspace, commands, dialogs, interactions, uiPlugins, slots } = services;
+    const { client, threads, workspace, commands, dialogs, interactions, uiPlugins, slots } = services;
     let requested: string | undefined;
     const deps: Deps = {
       ...services,
@@ -553,22 +553,22 @@ export default defineUiPlugin({
         })),
       ],
     });
-    source("palette.sessions", 10, {
-      label: "sessions",
-      heading: "Sessions",
+    source("palette.threads", 10, {
+      label: "threads",
+      heading: "Threads",
       prefix: "@",
       browse: SESSIONS_BROWSED,
       items: () =>
-        [...sessions.list()]
+        [...threads.list()]
           .sort((a, b) => b.updatedAt - a.updatedAt)
           .map((session) => ({
             key: `session:${session.id}`,
             title: sessionTitle(session),
             detail: `${workspace.projectName(session.cwd)} · ${relativeTime(session.updatedAt)}`,
             keywords: [workspace.projectName(session.cwd), basename(session.cwd), session.id],
-            current: session.id === sessions.activeId(),
+            current: session.id === threads.activeId(),
             icon: ChatIcon,
-            run: () => void sessions.select(session.id),
+            run: () => void threads.select(session.id),
           })),
     });
     source("palette.projects", 20, {
@@ -582,7 +582,7 @@ export default defineUiPlugin({
           detail: tildePath(path, client.info()?.home),
           keywords: [path, basename(path)],
           icon: FolderIcon,
-          run: () => sessions.newChat(path),
+          run: () => threads.newThread(path),
         }));
       },
     });

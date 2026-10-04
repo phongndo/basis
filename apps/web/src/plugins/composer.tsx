@@ -14,11 +14,11 @@ import {
   ComposerRegion,
   Models,
   Notify,
-  Sessions,
+  Threads,
   Slots,
   Workspace,
 } from "../ui/contracts.ts";
-import type { ClientService, ComposerActionProps, ModelsService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import type { ClientService, ComposerActionProps, ModelsService, NotifyService, ThreadsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import { ChatIcon, ImageIcon, SendIcon, StopIcon, XIcon } from "../ui/parts.tsx";
@@ -50,19 +50,19 @@ export const ComposerConfig = Schema.Struct({
 interface Deps {
   readonly config: typeof ComposerConfig.Type;
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly models: ModelsService;
   readonly workspace: WorkspaceService;
   readonly notify: NotifyService;
   readonly slots: SlotsService;
-  /** Unsent text per session (and for the new-chat state) survives switching sessions. */
+  /** Unsent text per session (and for the new-chat state) survives switching threads. */
   readonly drafts: Map<string, string>;
   readonly setFocus: (focus: (() => void) | undefined) => void;
 }
 
 function Composer(props: { deps: Deps }) {
-  const { client, sessions, models, workspace, notify, slots, drafts } = props.deps;
-  const draftKey = () => sessions.activeId() ?? "";
+  const { client, threads, models, workspace, notify, slots, drafts } = props.deps;
+  const draftKey = () => threads.activeId() ?? "";
   const [text, setText] = createSignal(drafts.get(draftKey()) ?? "");
   const [images, setImages] = createSignal<readonly ImageContent[]>([]);
   const [dragging, setDragging] = createSignal(false);
@@ -71,7 +71,7 @@ function Composer(props: { deps: Deps }) {
 
   createEffect(
     on(
-      sessions.activeId,
+      threads.activeId,
       () => {
         setText(drafts.get(draftKey()) ?? "");
         setImages([]);
@@ -96,7 +96,7 @@ function Composer(props: { deps: Deps }) {
   });
   onCleanup(() => props.deps.setFocus(undefined));
 
-  const canSend = () => client.connected() && !sessions.busy() && !sending() && (text().trim() !== "" || images().length > 0);
+  const canSend = () => client.connected() && !threads.busy() && !sending() && (text().trim() !== "" || images().length > 0);
   const acceptsImages = () => models.selected()?.input.includes("image") ?? true;
 
   const submit = async () => {
@@ -109,8 +109,8 @@ function Composer(props: { deps: Deps }) {
     let ok = false;
     try {
       // A new chat may start in its own worktree, named from the prompt.
-      const cwd = sessions.activeId() === undefined ? await workspace.newChatDir(sent.text) : undefined;
-      ok = await sessions.send(content, { turn: models.turnOptions(), cwd });
+      const cwd = threads.activeId() === undefined ? await workspace.newChatDir(sent.text) : undefined;
+      ok = await threads.send(content, { turn: models.turnOptions(), cwd });
     } catch (error) {
       notify.report(error, "Could not create a session");
     }
@@ -166,9 +166,9 @@ function Composer(props: { deps: Deps }) {
     if (event.key === "Enter" && sends && !event.shiftKey && !event.isComposing && !event.altKey) {
       event.preventDefault();
       void submit();
-    } else if (event.key === "Escape" && sessions.busy()) {
+    } else if (event.key === "Escape" && threads.busy()) {
       event.preventDefault();
-      sessions.cancel();
+      threads.cancel();
     }
   };
 
@@ -187,8 +187,8 @@ function Composer(props: { deps: Deps }) {
 
   const placeholder = () => {
     if (!client.connected()) return "Waiting for the host…";
-    if (sessions.busy()) return "Working…";
-    return sessions.activeId() === undefined ? "Ask anything, or describe a task" : "Reply…";
+    if (threads.busy()) return "Working…";
+    return threads.activeId() === undefined ? "Ask anything, or describe a task" : "Reply…";
   };
 
   return (
@@ -196,7 +196,7 @@ function Composer(props: { deps: Deps }) {
       <For each={slots.list(ComposerNotices)}>{(notice) => <Dynamic component={notice.component} />}</For>
       <form
         class="composer"
-        classList={{ dragging: dragging(), busy: sessions.busy() }}
+        classList={{ dragging: dragging(), busy: threads.busy() }}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -256,14 +256,14 @@ function Composer(props: { deps: Deps }) {
           <div class="composer-actions">
             <For each={slots.list(ComposerActions)}>{(action) => <Dynamic component={action.component} addFiles={addFiles} insert={insert} />}</For>
             <Show
-              when={sessions.busy()}
+              when={threads.busy()}
               fallback={
                 <button type="submit" class="send" disabled={!canSend()} aria-label="Send" data-tip="Send">
                   <SendIcon />
                 </button>
               }
             >
-              <button type="button" class="send stop" aria-label="Stop" data-tip="Stop" onClick={() => sessions.cancel()}>
+              <button type="button" class="send stop" aria-label="Stop" data-tip="Stop" onClick={() => threads.cancel()}>
                 <StopIcon />
               </button>
             </Show>
@@ -303,7 +303,7 @@ export default defineUiPlugin({
   id: "composer",
   styles,
   config: ComposerConfig,
-  requires: { client: Client, sessions: Sessions, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
+  requires: { client: Client, threads: Threads, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (use, plugin) => {
     const [focus, setFocus] = createSignal<() => void>();
     const deps: Deps = { ...use, config: plugin.config, drafts: new Map(), setFocus: (next) => setFocus(() => next) };

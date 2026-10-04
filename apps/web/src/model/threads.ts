@@ -59,7 +59,7 @@ export const resolveLeaf = (events: readonly SessionEvent[], leaf: string | unde
   return branchOf(events, newest.id).some((event) => event.id === leaf) ? newest.id : leaf;
 };
 
-export const sessionTitle = (session: SessionInfo | undefined): string => session?.title?.trim() || "New session";
+export const sessionTitle = (session: SessionInfo | undefined): string => session?.title?.trim() || "New thread";
 
 export interface TurnTracking {
   /** Sessions with a turn in progress. */

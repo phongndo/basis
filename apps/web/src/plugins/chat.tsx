@@ -19,7 +19,7 @@ import {
   ChatWorkingPart,
   ChatWorkPart,
   Client,
-  Sessions,
+  Threads,
   Slots,
   ToolViews,
   Views,
@@ -32,7 +32,7 @@ import type {
   ChatWorkingProps,
   ChatWorkProps,
   ClientService,
-  SessionsService,
+  ThreadsService,
 } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
@@ -74,7 +74,7 @@ export const ChatConfig = Schema.Struct({
 
 interface Chat {
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly slots: SlotsService;
   readonly config: typeof ChatConfig.Type;
   readonly isOpen: (key: string, fallback: boolean) => boolean;
@@ -210,7 +210,7 @@ function ToolCard(props: {
   const defaultOpen = () => props.chat.config.expandTools;
   /** The last lines a running tool printed; its result replaces them. */
   const output = createMemo(() => {
-    const text = props.chat.sessions.live().output.get(props.id)?.replace(/\n+$/, "");
+    const text = props.chat.threads.live().output.get(props.id)?.replace(/\n+$/, "");
     return text === undefined || text === "" ? undefined : text.split("\n").slice(-LIVE_LINES).join("\n");
   });
   // Measured from when the call appeared here: close enough to show that a slow command is still going.
@@ -236,12 +236,12 @@ function ToolCard(props: {
  * The default `chat.tool` part: one quiet line (status, name, summary,
  * diffstat, time) that opens to the tool's `ToolViews` body, else the chat's.
  */
-const toolView = (deps: { readonly client: ClientService; readonly sessions: SessionsService; readonly slots: SlotsService }) =>
+const toolView = (deps: { readonly client: ClientService; readonly threads: ThreadsService; readonly slots: SlotsService }) =>
   function ToolView(props: ChatToolProps) {
-    const { client, sessions, slots } = deps;
+    const { client, threads, slots } = deps;
     const context = () => {
       const info = client.info();
-      return info === undefined ? {} : { cwd: sessions.active()?.cwd ?? info.cwd, home: info.home };
+      return info === undefined ? {} : { cwd: threads.active()?.cwd ?? info.cwd, home: info.home };
     };
     /** A plugin's view of this tool, when one fills the slot for it. */
     const custom = () => slots.get(ToolViews, props.name);
@@ -397,7 +397,7 @@ function Blocks(props: { chat: Chat; blocks: readonly Block[]; turnEnded: boolea
               const toolState = (): ToolState => {
                 const result = b().result;
                 if (result !== undefined) return result.isError ? "error" : "ok";
-                return props.turnEnded || !props.chat.sessions.busy() ? "interrupted" : "running";
+                return props.turnEnded || !props.chat.threads.busy() ? "interrupted" : "running";
               };
               return <ToolCard chat={props.chat} id={b().call.id} name={b().call.name} args={b().call.arguments} result={b().result} state={toolState()} />;
             }}
@@ -681,9 +681,9 @@ function Draft(props: { chat: Chat; draft: StepDraft }) {
 
 /** The chat transcript for the active session. */
 function Transcript(props: { chat: Chat; turns: readonly TurnView[] }) {
-  const { sessions, pending } = props.chat;
-  const drafts = () => sessions.live().drafts;
-  const working = () => sessions.busy() && drafts().every((draft) => draft.finished) && pending().size === 0;
+  const { threads, pending } = props.chat;
+  const drafts = () => threads.live().drafts;
+  const working = () => threads.busy() && drafts().every((draft) => draft.finished) && pending().size === 0;
   const turnStarted = () => {
     const last = props.turns.at(-1);
     return last !== undefined && last.end === undefined ? last.startedAt : undefined;
@@ -764,7 +764,7 @@ function PromptRail(props: { marks: readonly PromptMark[]; current: string | und
 }
 
 function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
-  const sessions = props.chat.sessions;
+  const threads = props.chat.threads;
   let scroller!: HTMLDivElement;
   let content!: HTMLDivElement;
   const [stuck, setStuck] = createSignal(true);
@@ -836,7 +836,7 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
     });
   });
   createEffect(
-    on(sessions.activeId, () => {
+    on(threads.activeId, () => {
       setStuck(true);
       queueMicrotask(() => toBottom());
     }),
@@ -848,21 +848,21 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
       <div class="scroller" ref={scroller} onScroll={onScroll}>
         <div class="content" ref={content}>
           <Switch>
-            <Match when={sessions.activeId() !== undefined && !sessions.log().loaded}>
+            <Match when={threads.activeId() !== undefined && !threads.log().loaded}>
               <div class="loading">
                 <Spinner /> Loading session…
               </div>
             </Match>
-            <Match when={empty() && !sessions.busy()}>
+            <Match when={empty() && !threads.busy()}>
               <div class="empty-state">
-                <h2>{sessions.activeId() === undefined ? "What are we working on?" : "This session is empty"}</h2>
+                <h2>{threads.activeId() === undefined ? "What are we working on?" : "This session is empty"}</h2>
                 <p class="muted">The agent can read, edit, and run commands in the project below.</p>
               </div>
             </Match>
           </Switch>
           <Transcript chat={props.chat} turns={props.turns()} />
-          <Show when={sessions.log().error}>
-            <div class="callout callout-error">Could not load the full session: {sessions.log().error}</div>
+          <Show when={threads.log().error}>
+            <div class="callout callout-error">Could not load the full session: {threads.log().error}</div>
           </Show>
         </div>
         <Show when={!stuck()}>
@@ -893,30 +893,30 @@ export default defineUiPlugin({
   id: "chat",
   styles,
   config: ChatConfig,
-  requires: { client: Client, sessions: Sessions, slots: Slots },
-  setup: ({ client, sessions, slots }, plugin) => {
+  requires: { client: Client, threads: Threads, slots: Slots },
+  setup: ({ client, threads, slots }, plugin) => {
     // Expanded/collapsed choices survive re-renders and session switches while the plugin runs.
     const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map());
     let projector = createProjector();
     let projectedFor: string | undefined;
     const transcript = createMemo(() => {
-      if (projectedFor !== sessions.activeId()) {
+      if (projectedFor !== threads.activeId()) {
         projector = createProjector();
-        projectedFor = sessions.activeId();
+        projectedFor = threads.activeId();
       }
-      return projector(sessions.branch());
+      return projector(threads.branch());
     });
     const pending = createMemo(() => pendingToolCalls(transcript()));
     const [now, setNow] = createSignal(Date.now());
     createEffect(() => {
-      if (!sessions.busy()) return;
+      if (!threads.busy()) return;
       setNow(Date.now());
       const timer = setInterval(() => setNow(Date.now()), 1000);
       onCleanup(() => clearInterval(timer));
     });
     const chat: Chat = {
       client,
-      sessions,
+      threads,
       slots,
       config: plugin.config,
       isOpen: (key, fallback) => expanded().get(key) ?? fallback,
@@ -929,7 +929,7 @@ export default defineUiPlugin({
       plugin.onCleanup(slots.add(slot, { id: `chat.${slot.name.slice("part.chat.".length)}`, order: DEFAULT_PART_ORDER, component }));
     part(ChatUserPart, UserView);
     part(ChatThinkingPart, ThinkingView);
-    part(ChatToolPart, toolView({ client, sessions, slots }));
+    part(ChatToolPart, toolView({ client, threads, slots }));
     part(ChatWorkPart, WorkView);
     part(ChatWorkingPart, WorkingView);
     part(ChatTurnFooterPart, TurnFooter);

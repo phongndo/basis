@@ -9,13 +9,13 @@ import {
   ComposerFooter,
   Notify,
   SectionIds,
-  Sessions,
+  Threads,
   SettingsGroups,
   Slots,
   Workspace,
   WorkspaceBarItems,
 } from "../ui/contracts.ts";
-import type { ClientService, NotifyService, SessionsService, WorkspaceService } from "../ui/contracts.ts";
+import type { ClientService, NotifyService, ThreadsService, WorkspaceService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
 import {
@@ -38,7 +38,7 @@ const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || 
 
 interface Deps {
   readonly client: ClientService;
-  readonly sessions: SessionsService;
+  readonly threads: ThreadsService;
   readonly workspace: WorkspaceService;
   readonly notify: NotifyService;
   readonly slots: SlotsService;
@@ -65,8 +65,8 @@ function WorkspaceBar(props: { deps: Deps }) {
 
 /** Local checkout or a new worktree; fixed once the chat exists. */
 function ModePicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]> }) {
-  const { sessions, workspace } = props.deps;
-  const isNew = () => sessions.activeId() === undefined;
+  const { threads, workspace } = props.deps;
+  const isNew = () => threads.activeId() === undefined;
   const worktree = () => workspace.worktree().enabled;
   const workingDir = workspace.workingDir;
   const setNewWorktree = workspace.setWorktree;
@@ -148,8 +148,8 @@ function ModePicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]
 }
 
 function ProjectPicker(props: { deps: Deps }) {
-  const { sessions, workspace, slots } = props.deps;
-  const isNew = () => sessions.activeId() === undefined;
+  const { threads, workspace, slots } = props.deps;
+  const isNew = () => threads.activeId() === undefined;
   const projects = workspace.projects;
   const current = () => workspace.workingDir() ?? "";
   const addProject = () => slots.get(Actions, ActionIds.addProject);
@@ -199,7 +199,7 @@ function ProjectPicker(props: { deps: Deps }) {
                   role="menuitemradio"
                   aria-checked={path === current()}
                   onClick={() => {
-                    sessions.newChat(path);
+                    threads.newThread(path);
                     close();
                   }}
                 >
@@ -260,13 +260,13 @@ function ProjectPicker(props: { deps: Deps }) {
 }
 
 function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git"]>; onChanged: (status: WorkspaceStatus) => void }) {
-  const { sessions, workspace, notify } = props.deps;
+  const { threads, workspace, notify } = props.deps;
   const workingDir = workspace.workingDir;
   const [branches, setBranches] = createSignal<readonly GitBranch[]>([]);
   const [query, setQuery] = createSignal("");
   const [switching, setSwitching] = createSignal(false);
   // Switching branches under a running turn would change files the agent is editing.
-  const busyHere = () => sessions.running().some((id) => sessions.list().find((session) => session.id === id)?.cwd === workingDir());
+  const busyHere = () => threads.running().some((id) => threads.list().find((session) => session.id === id)?.cwd === workingDir());
 
   const load = async () => {
     setQuery("");
@@ -283,7 +283,7 @@ function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git
     return needle === "" ? branches() : branches().filter((branch) => branch.name.toLowerCase().includes(needle));
   });
   /** A new chat headed for a new worktree: the menu picks the branch it starts from instead of switching. */
-  const baseMode = () => sessions.activeId() === undefined && workspace.worktree().enabled;
+  const baseMode = () => threads.activeId() === undefined && workspace.worktree().enabled;
   const base = () => workspace.worktree().base ?? props.git.branch ?? undefined;
   const canCreate = () => {
     if (baseMode()) return false;
@@ -321,7 +321,7 @@ function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git
     if (branch.worktree !== undefined) {
       close();
       // git keeps a branch in one worktree at a time; go to where it is instead.
-      if (sessions.activeId() === undefined) sessions.newChat(branch.worktree);
+      if (threads.activeId() === undefined) threads.newThread(branch.worktree);
       else notify.toast({ level: "info", message: `${branch.name} is checked out in the worktree at ${branch.worktree}` });
       return;
     }
@@ -437,7 +437,7 @@ function BranchPicker(props: { deps: Deps; git: NonNullable<WorkspaceStatus["git
 export default defineUiPlugin({
   id: "workspace-bar",
   styles,
-  requires: { client: Client, sessions: Sessions, workspace: Workspace, notify: Notify, slots: Slots },
+  requires: { client: Client, threads: Threads, workspace: Workspace, notify: Notify, slots: Slots },
   setup: (deps, plugin) => {
     plugin.onCleanup(deps.slots.add(ComposerFooter, { id: "workspace-bar", component: () => <WorkspaceBar deps={deps} /> }));
     // Its own pickers go through the slot other plugins add theirs to.

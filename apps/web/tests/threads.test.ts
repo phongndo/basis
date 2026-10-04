@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEvent, SessionInfo } from "@lemma/contracts";
-import { fileSessions, groupSessions, resolveLeaf, trackTurn, upsertSession } from "../src/model/sessions.ts";
+import { fileSessions, groupSessions, resolveLeaf, trackTurn, upsertSession } from "../src/model/threads.ts";
 
 const info = (id: string, cwd: string, updatedAt: number, lastSeq = 0): SessionInfo => ({ id, cwd, createdAt: 0, updatedAt, lastSeq });
 const ev = (id: string, parent: string | null, seq: number): SessionEvent => ({ seq, id, parent, at: seq, data: { type: "title", title: id } });

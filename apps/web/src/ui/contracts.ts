@@ -113,7 +113,7 @@ export interface LogState {
   readonly error?: string;
 }
 
-export interface SessionsService {
+export interface ThreadsService {
   readonly list: Accessor<readonly SessionInfo[]>;
   readonly loaded: Accessor<boolean>;
   readonly activeId: Accessor<string | undefined>;
@@ -123,7 +123,7 @@ export interface SessionsService {
   readonly log: Accessor<LogState>;
   /** The active session's streaming drafts. */
   readonly live: Accessor<LiveState>;
-  /** Sessions with a turn running. */
+  /** Threads with a turn running. */
   readonly running: Accessor<readonly string[]>;
   /** The active session has a turn running. */
   readonly busy: Accessor<boolean>;
@@ -132,8 +132,8 @@ export interface SessionsService {
   readonly select: (sessionId: string | undefined) => Promise<void>;
   /** Called on every `select`, including of the open session: what "going to a chat" means to other plugins. */
   readonly onSelect: (listener: (sessionId: string | undefined) => void) => () => void;
-  /** A new chat, created by its first prompt, in `cwd` or the host's directory. */
-  readonly newChat: (cwd?: string) => void;
+  /** A new thread, created by its first prompt, in `cwd` or the host's directory. */
+  readonly newThread: (cwd?: string) => void;
   /** Sets where the next new thread starts without going to it (no `select`): a default, not a choice. */
   readonly startIn: (cwd: string | undefined) => void;
   readonly rename: (sessionId: string, title: string) => Promise<void>;
@@ -147,7 +147,7 @@ export interface SessionsService {
   /** Moves the active session's leaf: the next prompt branches from `eventId`. */
   readonly checkout: (eventId: string) => Promise<void>;
 }
-export class Sessions extends Context.Tag("lemma-ui/Sessions")<Sessions, SessionsService>() {}
+export class Threads extends Context.Tag("lemma-ui/Threads")<Threads, ThreadsService>() {}
 
 export interface ModelsService {
   readonly providers: Accessor<readonly ProviderInfo[]>;
@@ -194,9 +194,9 @@ export interface WorktreeDraft {
 
 export interface WorkspaceService {
   readonly api: Host["workspace"];
-  /** The host's directory, then projects by the recency of their sessions, then ones added by hand. */
+  /** The host's directory, then projects by the recency of their threads, then ones added by hand. */
   readonly projects: Accessor<readonly string[]>;
-  /** Added by hand (remembered), so they are offered before they have sessions. */
+  /** Added by hand (remembered), so they are offered before they have threads. */
   readonly added: Accessor<readonly string[]>;
   readonly add: (path: string) => void;
   /** Stops listing a project, the host's directory included, until a thread starts in it or it is added again. */
@@ -335,18 +335,18 @@ export interface MenuAction<Subject, Control = undefined> {
 }
 
 /** What a session's menu item can do to its row. */
-export interface SessionRowControl {
+export interface ThreadRowControl {
   /** Edits the title in place. */
   readonly rename: () => void;
 }
 /** An item in a session's menu in the sidebar (its row's ⋯ button, or a right-click). Rename, pin, archive, and delete are the sidebar's defaults. */
-export type SessionAction = MenuAction<SessionInfo, SessionRowControl>;
-export const SessionActions = defineSlot<SessionAction>("session.actions");
+export type ThreadAction = MenuAction<SessionInfo, ThreadRowControl>;
+export const ThreadActions = defineSlot<ThreadAction>("thread.actions");
 /** An item in a project's menu in the sidebar, by the project's directory. New thread and copy path are the sidebar's defaults; project settings and delete, the projects page's. */
 export type ProjectAction = MenuAction<string>;
 export const ProjectActions = defineSlot<ProjectAction>("project.actions");
 
-export interface SessionView {
+export interface ThreadView {
   readonly title: string;
   readonly icon: Component;
   readonly component: Component;
@@ -354,7 +354,7 @@ export interface SessionView {
   readonly composer?: boolean;
 }
 /** The main area's views of a session over the same log: chat, trajectory. The first is where a new chat opens. */
-export const Views = defineSlot<SessionView>("views");
+export const Views = defineSlot<ThreadView>("views");
 
 export const ComposerRegion = defineSlot<Region>("composer");
 
@@ -369,11 +369,11 @@ export interface ComposerActionProps {
 export const ComposerActions = defineSlot<Region<ComposerActionProps>>("composer.actions");
 
 /** An item in the session's header bar, at its start (after the sidebar toggle) or its end. */
-export interface SessionHeaderItem extends Region {
+export interface ThreadHeaderItem extends Region {
   readonly side: "start" | "end";
 }
 /** The session's header: the sidebar toggle, title, running chip, and view tabs are its default items. */
-export const SessionHeader = defineSlot<SessionHeaderItem>("session.header");
+export const ThreadHeader = defineSlot<ThreadHeaderItem>("thread.header");
 /** Above the composer box: the connection notice, the provider callout. */
 export const ComposerNotices = defineSlot<Region>("composer.notices");
 /** The composer's toolbar, left of its buttons: the model and reasoning pickers. */
@@ -515,7 +515,7 @@ export const Actions = defineSlot<Action>("actions");
 
 /** Something the palette lists and runs. */
 export interface PaletteItem {
-  /** Stable across sessions, for remembering recent choices; prefix it with your source's id. */
+  /** Stable across threads, for remembering recent choices; prefix it with your source's id. */
   readonly key: string;
   readonly title: string;
   /** Shown before the title, as in `Git: Switch branch…`. */
@@ -538,9 +538,9 @@ export interface PaletteItem {
   readonly run: (value?: string) => unknown;
 }
 
-/** Where the palette's items come from: its commands, sessions, and projects are sources, and a plugin adds its own. */
+/** Where the palette's items come from: its commands, threads, and projects are sources, and a plugin adds its own. */
 export interface PaletteSource {
-  /** What it holds, for the palette's hints: `commands`, `sessions`. */
+  /** What it holds, for the palette's hints: `commands`, `threads`. */
   readonly label: string;
   /** Its heading while browsing; without one its items lead. */
   readonly heading?: string;
@@ -785,8 +785,8 @@ export interface SidebarRowProps {
   readonly now: number;
   readonly select: () => void;
   readonly rename: (title: string) => void;
-  /** Its menu: the `SessionActions` that apply to it, in order. */
-  readonly actions: readonly SessionAction[];
+  /** Its menu: the `ThreadActions` that apply to it, in order. */
+  readonly actions: readonly ThreadAction[];
 }
 /** A session in the sidebar's list. Arrow keys move between elements marked `data-session-row`. */
 export const SidebarRowPart = definePart<SidebarRowProps>("sidebar.row");
