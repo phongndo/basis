@@ -45,10 +45,10 @@ try {
     await page.click(".work-head");
     await shot(page, `${theme}-03-work-open`);
     await page.click(".work-head");
-    await page.keyboard.press("Control+k");
+    await page.keyboard.press("ControlOrMeta+k");
     await shot(page, `${theme}-04-palette`);
     await page.keyboard.press("Escape");
-    await page.keyboard.press("Control+,");
+    await page.keyboard.press("ControlOrMeta+,");
     await page.waitForSelector(".settings");
     await shot(page, `${theme}-05-settings-general`);
     for (const [index, section] of ["Appearance", "Providers", "Plugins", "Projects"].entries()) {

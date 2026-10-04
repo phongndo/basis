@@ -170,7 +170,7 @@ try {
     });
     ((window as any).removals ??= []).push(remove);
   });
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   await page.fill(".palette-input input", "!");
   await page.waitForSelector(".palette-row >> text=Check item one", { timeout: 5_000 }).catch(() => assert.fail("a palette source's items do not show"));
   // Escape clears the search, then closes.
