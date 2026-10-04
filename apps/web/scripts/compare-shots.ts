@@ -20,7 +20,8 @@ const dataUrl = (path: string) => `data:image/png;base64,${readFileSync(path).to
 let changed = 0;
 try {
   for (const name of readdirSync(before)
-    .filter((file) => file.endsWith(".png"))
+    // A folder compared before holds its diffs too.
+    .filter((file) => file.endsWith(".png") && !file.endsWith(".diff.png"))
     .sort()) {
     const result = await page.evaluate(
       async ({ a, b }) => {
