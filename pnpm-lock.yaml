@@ -195,6 +195,12 @@ importers:
       '@lemma/plugin-host':
         specifier: workspace:*
         version: link:../../plugins/host
+      '@lemma/router':
+        specifier: workspace:*
+        version: link:../../packages/router
+      '@lemma/router-solid':
+        specifier: workspace:*
+        version: link:../../packages/router-solid
       dompurify:
         specifier: 3.4.16
         version: 3.4.16
@@ -300,6 +306,9 @@ importers:
       '@lemma/core':
         specifier: workspace:*
         version: link:../core
+      '@lemma/router':
+        specifier: workspace:*
+        version: link:../router
       effect:
         specifier: 3.22.2
         version: 3.22.2

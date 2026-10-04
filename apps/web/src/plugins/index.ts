@@ -19,10 +19,12 @@ import kit from "./kit.tsx";
 import modelPicker from "./model-picker.tsx";
 import models from "./models.ts";
 import notify from "./notify.ts";
+import pages from "./pages.tsx";
 import palette from "./palette.tsx";
 import pluginsPage from "./plugins-page.tsx";
 import projectsPage from "./projects-page.tsx";
 import providers from "./providers.tsx";
+import router from "./router.ts";
 import threadView from "./thread-view.tsx";
 import threads from "./threads.ts";
 import settings from "./settings.tsx";
@@ -43,6 +45,7 @@ import workspace from "./workspace.ts";
  */
 export const bundled: readonly Plugin[] = [
   slots,
+  router,
   kit,
   notify,
   toasts,
@@ -56,6 +59,7 @@ export const bundled: readonly Plugin[] = [
   keymap,
   appearance,
   shell,
+  pages,
   sidebar,
   threadView,
   chat,

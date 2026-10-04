@@ -14,6 +14,7 @@ import {
   ComposerRegion,
   Models,
   Notify,
+  Router,
   Threads,
   Slots,
   Workspace,
@@ -47,6 +48,13 @@ export const ComposerConfig = Schema.Struct({
   }),
 });
 
+/** A prompt being written. */
+interface Draft {
+  readonly text: string;
+  readonly images: readonly ImageContent[];
+}
+const unsent = (draft: Draft) => draft.text.trim() !== "" || draft.images.length > 0;
+
 interface Deps {
   readonly config: typeof ComposerConfig.Type;
   readonly client: ClientService;
@@ -55,16 +63,20 @@ interface Deps {
   readonly workspace: WorkspaceService;
   readonly notify: NotifyService;
   readonly slots: SlotsService;
-  /** Unsent text per session (and for the new-chat state) survives switching threads. */
-  readonly drafts: Map<string, string>;
+  /**
+   * Unsent prompts per thread (and for a new thread): they survive switching threads and the composer leaving the
+   * page, as it does while settings show.
+   */
+  readonly drafts: Map<string, Draft>;
   readonly setFocus: (focus: (() => void) | undefined) => void;
 }
 
 function Composer(props: { deps: Deps }) {
   const { client, threads, models, workspace, notify, slots, drafts } = props.deps;
   const draftKey = () => threads.activeId() ?? "";
-  const [text, setText] = createSignal(drafts.get(draftKey()) ?? "");
-  const [images, setImages] = createSignal<readonly ImageContent[]>([]);
+  const saved = drafts.get(draftKey());
+  const [text, setText] = createSignal(saved?.text ?? "");
+  const [images, setImages] = createSignal<readonly ImageContent[]>(saved?.images ?? []);
   const [dragging, setDragging] = createSignal(false);
   const [sending, setSending] = createSignal(false);
   let input!: HTMLTextAreaElement;
@@ -73,8 +85,9 @@ function Composer(props: { deps: Deps }) {
     on(
       threads.activeId,
       () => {
-        setText(drafts.get(draftKey()) ?? "");
-        setImages([]);
+        const draft = drafts.get(draftKey());
+        setText(draft?.text ?? "");
+        setImages(draft?.images ?? []);
         queueMicrotask(() => {
           resize();
           input.focus();
@@ -83,6 +96,8 @@ function Composer(props: { deps: Deps }) {
       { defer: true },
     ),
   );
+  // Every edit is kept with its thread, for when the composer shows it again.
+  createEffect(on([text, images], ([text, images]) => drafts.set(draftKey(), { text, images }), { defer: true }));
 
   const resize = () => {
     input.style.height = "auto";
@@ -121,7 +136,7 @@ function Composer(props: { deps: Deps }) {
       setImages([]);
     } else {
       // Refused: the prompt returns to the composer, which may now show the session `send` created.
-      drafts.set(draftKey(), sent.text);
+      drafts.set(draftKey(), sent);
       setText(sent.text);
       setImages(sent.images);
     }
@@ -133,7 +148,6 @@ function Composer(props: { deps: Deps }) {
     const end = input.selectionEnd ?? start;
     const next = text().slice(0, start) + value + text().slice(end);
     setText(next);
-    drafts.set(draftKey(), next);
     queueMicrotask(() => {
       input.focus();
       input.setSelectionRange(start + value.length, start + value.length);
@@ -243,7 +257,6 @@ function Composer(props: { deps: Deps }) {
           spellcheck={true}
           onInput={(event) => {
             setText(event.currentTarget.value);
-            drafts.set(draftKey(), event.currentTarget.value);
             resize();
           }}
           onKeyDown={onKeyDown}
@@ -303,10 +316,17 @@ export default defineUiPlugin({
   id: "composer",
   styles,
   config: ComposerConfig,
-  requires: { client: Client, threads: Threads, models: Models, workspace: Workspace, notify: Notify, slots: Slots },
+  requires: { client: Client, threads: Threads, models: Models, workspace: Workspace, notify: Notify, slots: Slots, router: Router },
   setup: (use, plugin) => {
     const [focus, setFocus] = createSignal<() => void>();
-    const deps: Deps = { ...use, config: plugin.config, drafts: new Map(), setFocus: (next) => setFocus(() => next) };
+    const drafts = new Map<string, Draft>();
+    const deps: Deps = { ...use, config: plugin.config, drafts, setFocus: (next) => setFocus(() => next) };
+    // An unsent prompt in any thread, shown or not: closing or reloading the tab asks first. Switching threads keeps drafts, so only an unload does.
+    plugin.onCleanup(
+      use.router.block((transition) => transition.action !== "unload" || ![...drafts.values()].some(unsent), {
+        label: "composer: an unsent prompt asks before the tab closes",
+      }),
+    );
     plugin.onCleanup(use.slots.add(ComposerRegion, { id: "composer", component: () => <Composer deps={deps} /> }));
     // Its own button goes through the slot other plugins add theirs to.
     plugin.onCleanup(use.slots.add(ComposerActions, { id: "composer.attach", order: 100, component: AttachImages }));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { chromium, firefox, webkit } from "playwright";
 import type { Page } from "playwright";
 import { createServer } from "vite";
 
@@ -20,8 +20,17 @@ import { createServer } from "vite";
  * 5. A plugin's stylesheet leaves when it stops and returns once when it starts.
  * 6. What a plugin adds to the places the defaults use (header, sidebar and
  *    composer buttons, workspace bar, palette sources, inspector tabs) shows.
+ * 7. The address names the page: settings sections and their state, threads
+ *    and their views survive a reload and back and forward; a page whose
+ *    plugin is off says so and returns with it; a plugin adds a page; a page
+ *    that throws fails alone; routes in conflict are reported; a hovered
+ *    thread link preloads; a deleted thread's address leaves for a new
+ *    thread; an unsent prompt outlives settings and makes leaving the page ask.
  *
  * Run it in the browser shell: `nix develop .#browser -c pnpm --filter @lemma/web ui:check`.
+ * `LEMMA_BROWSER=firefox` or `webkit` runs it in Playwright's builds of those
+ * (`pnpm exec playwright install firefox webkit`; `PLAYWRIGHT_BROWSERS_PATH`
+ * puts them elsewhere): history timing differs between engines.
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,8 +39,11 @@ await server.listen();
 const address = server.httpServer?.address();
 assert(address !== null && typeof address === "object", "the dev server has no address");
 const url = `http://127.0.0.1:${address.port}`;
-const executablePath = process.env.LEMMA_CHROMIUM;
-const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+// `LEMMA_BROWSER=firefox` or `webkit` runs it in Playwright's builds of those (`playwright install firefox webkit`).
+const engine = { chromium, firefox, webkit }[process.env.LEMMA_BROWSER ?? "chromium"];
+assert(engine !== undefined, `LEMMA_BROWSER is chromium, firefox, or webkit, not "${process.env.LEMMA_BROWSER}"`);
+const executablePath = engine === chromium ? process.env.LEMMA_CHROMIUM : undefined;
+const browser = await engine.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 
 const errors: string[] = [];
 const expectNoErrors = (when: string) => {
@@ -109,9 +121,18 @@ try {
   assert.deepEqual(off, [], "plugins not back on after the round trip");
 
   // 4. A replaced part renders instead of the default, everywhere, and the default returns.
+  // The mock host starts with no provider set up, so settings may be the page (the providers' welcome): leave it.
+  await page.evaluate(async () => {
+    const { Settings } = await import("/src/ui/contracts.ts" as string);
+    (await (window as any).lemma.service(Settings)).open(undefined);
+  });
   await page.fill("textarea", "hello");
+  // The new thread's page becomes the thread's mid-send, keeping its composer (a refused prompt's text returns to it).
+  await page.evaluate(() => ((document.querySelector("textarea") as any).checkMark = true));
   await page.keyboard.press("Enter");
   await page.waitForSelector(".turn-footer", { timeout: 20_000 });
+  assert(page.url().includes("/threads/"), "the first prompt did not move to the thread's address");
+  assert.equal(await page.evaluate(() => (document.querySelector("textarea") as any).checkMark), true, "the first prompt remounted the composer");
   assert((await page.locator(".turn .md").count()) > 0, "the default markdown part renders");
   await page.evaluate(async () => {
     const { MarkdownPart } = await import("/src/ui/contracts.ts" as string);
@@ -194,8 +215,288 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".check-marker").length === 0);
   expectNoErrors("adding to the extension slots");
 
+  // 7. The address names what shows: a settings section and its state, a thread and its view. Reloads, back and forward,
+  // and links return to them; a page whose plugin is off says so and comes back with it; a plugin adds a page of its own.
+  const where = () => page.evaluate(() => `${location.pathname}${location.search}`);
+  const selected = await page.evaluate(() => {
+    const row = document.querySelector(".inspector-table [aria-selected=true] .plugin-id");
+    return row?.textContent ?? undefined;
+  });
+  assert(selected !== undefined, "no plugin is selected on the Plugins page");
+  assert.match(await where(), new RegExp(`^/settings/plugins\\?mock=.*plugin=${selected}`), "the selected plugin is not in the address");
+  await page.reload();
+  await page
+    .waitForSelector(`.inspector-table [aria-selected=true] >> text=${selected}`, { timeout: 10_000 })
+    .catch(() => assert.fail("a reload loses the selected plugin"));
+  // Closing settings returns to the thread they were opened over.
+  await page.keyboard.press("Escape");
+  await page
+    .waitForFunction(() => location.pathname.startsWith("/threads/"), undefined, { timeout: 5_000 })
+    .catch(async () => assert.fail(`closing settings went to ${await where()}`));
+  // A seeded thread (the mock host forgets threads made since it started when the page reloads), opened from its row.
+  const created = (await where()).split("/")[2]!.split("?")[0]!;
+  const seeded: string = await page.evaluate(async (created) => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    const threads = await (window as any).lemma.service(Threads);
+    return threads.list().find((session: any) => session.id !== created && session.lastSeq > 0 && session.archived !== true).id;
+  }, created);
+  await page.click(`.session-open[href^="/threads/${seeded}"]`);
+  await page.waitForFunction((id) => location.pathname === `/threads/${id}`, seeded);
+  const thread = await where();
+  await page.reload();
+  await page.waitForSelector(".turn", { timeout: 10_000 }).catch(() => assert.fail("a reload does not reopen the thread"));
+  // A saved position out of reach (the window grew) ends at the nearest, and scrolling is remembered again after.
+  await page.evaluate(async () => {
+    const { Router } = await import("/src/ui/contracts.ts" as string);
+    (await (window as any).lemma.service(Router)).entry("chat.scroll").set(1_000_000);
+  });
+  await page.reload();
+  await page.waitForSelector(".turn");
+  await page.waitForTimeout(300);
+  // The seeded thread may not scroll at all, so the reader's scroll is an event, not a move.
+  await page.evaluate(() => document.querySelector(".chat-view .scroller")!.dispatchEvent(new Event("scroll")));
+  await page.waitForTimeout(200);
+  assert.notEqual(
+    await page.evaluate(async () => {
+      const { Router } = await import("/src/ui/contracts.ts" as string);
+      return (await (window as any).lemma.service(Router)).entry("chat.scroll").get();
+    }),
+    1_000_000,
+    "an unreachable saved position kept the chat from remembering scrolls",
+  );
+  // A view is in the address, and back returns to the one before.
+  await page.click(".view-tab[aria-label=Trajectory]");
+  await page.waitForFunction(() => location.pathname.endsWith("/trajectory"));
+  await page.goBack();
+  await page.waitForFunction((path) => `${location.pathname}${location.search}` === path, thread);
+  await page.waitForSelector(".turn");
+  // Settings reloaded, then another section: closing still returns to the thread.
+  await page.keyboard.press("ControlOrMeta+,");
+  await page.waitForFunction(() => location.pathname.startsWith("/settings"));
+  await page.reload();
+  await page.click(".settings-nav-item >> text=Plugins");
+  await page.waitForFunction(() => location.pathname === "/settings/plugins");
+  await page.keyboard.press("Escape");
+  await page
+    .waitForFunction((path) => `${location.pathname}${location.search}` === path, thread, { timeout: 5_000 })
+    .catch(async () => assert.fail(`closing settings after a reload went to ${await where()}`));
+  // An archived thread opened from settings: settings close and the thread opens, rather than the close undoing the open.
+  const archive = (archived: boolean) =>
+    page.evaluate(
+      async ({ id, archived }) => {
+        const { Threads } = await import("/src/ui/contracts.ts" as string);
+        await (await (window as any).lemma.service(Threads)).mark(id, { archived });
+      },
+      { id: seeded, archived },
+    );
+  await archive(true);
+  // Opened from a new thread, so where each step lands is unambiguous.
+  await page.evaluate(async () => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    void (await (window as any).lemma.service(Threads)).select(undefined);
+  });
+  await page.waitForFunction(() => location.pathname === "/");
+  await page.evaluate(async () => {
+    const { Settings } = await import("/src/ui/contracts.ts" as string);
+    (await (window as any).lemma.service(Settings)).open("archived");
+  });
+  await page.waitForFunction(() => location.pathname === "/settings/archived");
+  await page.click(
+    `.archived-row:has-text("${await page.evaluate(async (id) => {
+      const { Threads } = await import("/src/ui/contracts.ts" as string);
+      const { sessionTitle } = await import("/src/model/threads.ts" as string);
+      return sessionTitle((await (window as any).lemma.service(Threads)).list().find((session: any) => session.id === id));
+    }, seeded)}") .archived-title`,
+  );
+  // Closing settings goes back, which lands later; the thread's own navigation waits for it, in every engine (unheld,
+  // Chromium and WebKit apply the back after it and end on "/", and Firefox keeps settings behind the thread).
+  await page.waitForTimeout(500);
+  assert.equal(new URL(page.url()).pathname, `/threads/${seeded}`, "opening an archived thread did not end on it");
+  await page.goBack();
+  await page
+    .waitForFunction(() => location.pathname === "/", undefined, { timeout: 5_000 })
+    .catch(async () => assert.fail(`back from an archived thread went to ${await where()}, not where settings were opened from`));
+  await page.goForward();
+  await page.waitForFunction((id) => location.pathname === `/threads/${id}`, seeded);
+  await archive(false);
+  await page.waitForSelector(".turn");
+  // The thread page's plugin off: the address stays and says so; back on, the thread returns.
+  await switchTo("thread-view", false);
+  await page.waitForSelector(".page-missing >> text=This page is off");
+  assert.equal(await where(), thread, "turning the page's plugin off moved the address");
+  await switchTo("thread-view", true);
+  await page.waitForSelector(".turn");
+  // An address from before threads had paths becomes the thread's own; one no page has says so.
+  const id = thread.split("/")[2]!.split("?")[0]!;
+  await page.goto(`${url}/?mock#${id}`);
+  await page
+    .waitForFunction((path) => `${location.pathname}${location.search}` === path, thread, { timeout: 10_000 })
+    .catch(async () => assert.fail(`/#${id} went to ${await where()}`));
+  // The open thread deleted while settings show over it: settings stay.
+  await page.evaluate(async () => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    void (await (window as any).lemma.service(Threads)).select(undefined);
+  });
+  await page.fill("textarea", "doomed");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => location.pathname.startsWith("/threads/"));
+  // Its prompt settled, so its draft is gone (a prompt still sending keeps it, and leaving the page would ask).
+  await page.waitForSelector(".turn-footer", { timeout: 20_000 });
+  const doomed = new URL(page.url()).pathname.split("/")[2]!;
+  await page.keyboard.press("ControlOrMeta+,");
+  await page.waitForFunction(() => location.pathname.startsWith("/settings"));
+  await page.evaluate(async (id) => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    await (await (window as any).lemma.service(Threads)).remove(id);
+  }, doomed);
+  await page.waitForTimeout(200);
+  assert.match(new URL(page.url()).pathname, /^\/settings/, "deleting the thread under settings closed them");
+  // Closing them returns to the deleted thread's address, which leaves for a new thread.
+  await page.keyboard.press("Escape");
+  await page
+    .waitForFunction(() => location.pathname === "/", undefined, { timeout: 5_000 })
+    .catch(async () => assert.fail(`closing settings over a deleted thread went to ${await where()}`));
+  // Resting on a thread's row fetches its log; opening it uses that rather than fetching again.
+  await page.evaluate(async () => {
+    const { Client } = await import("/src/ui/contracts.ts" as string);
+    const session = (await (window as any).lemma.service(Client)).host.session;
+    const events = session.events.bind(session);
+    const fetched: unknown[] = ((window as any).fetched = []);
+    session.events = (id: string, after?: number) => (fetched.push([id, after ?? null]), events(id, after));
+  });
+  const row = page.locator(`.session-open[href^="/threads/${seeded}"]`);
+  await row.hover();
+  await page
+    .waitForFunction((id) => (window as any).fetched.some(([fetched, after]: any) => fetched === id && after === null), seeded, { timeout: 2_000 })
+    .catch(() => assert.fail("resting on a thread's row did not preload it"));
+  await row.click();
+  await page.waitForSelector(".turn");
+  assert.equal(
+    await page.evaluate((id) => (window as any).fetched.filter(([fetched, after]: any) => fetched === id && after === null).length, seeded),
+    1,
+    "opening a preloaded thread fetched its log again",
+  );
+  // Unsent text: closing or reloading the tab asks first, while settings show too; sent or cleared, it does not.
+  const unloadAsks = () =>
+    page.evaluate(() => {
+      const event = new Event("beforeunload", { cancelable: true });
+      dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  const settings = (section: string | undefined) =>
+    page.evaluate(async (section) => {
+      const { Settings } = await import("/src/ui/contracts.ts" as string);
+      (await (window as any).lemma.service(Settings)).open(section);
+    }, section);
+  await page.fill("textarea", "half a thought");
+  assert.equal(await unloadAsks(), true, "unsent text did not make leaving the page ask");
+  // An attached image stays with the prompt while settings show in the composer's place.
+  const pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  await page.setInputFiles('.composer input[type="file"]', { name: "pixel.png", mimeType: "image/png", buffer: Buffer.from(pixel, "base64") });
+  await page.waitForSelector(".attachment");
+  await settings("general");
+  await page.waitForFunction(() => location.pathname.startsWith("/settings"));
+  assert.equal(await unloadAsks(), true, "unsent text did not make leaving the page ask while settings show");
+  await settings(undefined);
+  await page.waitForSelector(".attachment", { timeout: 5_000 }).catch(() => assert.fail("closing settings lost the attached image"));
+  assert.equal(await page.inputValue("textarea"), "half a thought", "closing settings lost the unsent text");
+  await page.click(".attachment-remove");
+  await page.fill("textarea", "");
+  assert.equal(await unloadAsks(), false, "an empty composer made leaving the page ask");
+  await page.goto(`${url}/nowhere?mock`);
+  await page.waitForSelector(".page-missing >> text=No page here");
+  // A plugin's own route and page, reached by an ordinary link without reloading.
+  await page.goto(`${url}/?mock`);
+  await settled(page);
+  await page.evaluate(async () => {
+    const { api } = await import("/src/ui/api.ts" as string);
+    // A fresh mock host has no provider set up, so the providers' welcome may be the page.
+    (await (window as any).lemma.service(api.contracts.Settings)).open(undefined);
+    const { Pages, Router, SidebarFooter } = api.contracts;
+    const lemma = (window as any).lemma;
+    const router = await lemma.service(Router);
+    const Note = api.defineRoute("check.note", { path: "/notes/:id" });
+    const page = () => {
+      const element = document.createElement("div");
+      element.className = "check-page";
+      element.textContent = `note ${router.matchOf(Note)?.params.id}`;
+      return element;
+    };
+    const link = () => {
+      const element = document.createElement("a");
+      element.className = "check-link";
+      element.href = router.href(Note, { id: "7" });
+      element.textContent = "note";
+      return element;
+    };
+    (window as any).removals = [
+      lemma.slots().add(Pages, { id: "check.note", route: Note, component: page }),
+      lemma.slots().add(SidebarFooter, { id: "check.link", order: 1_000, component: link }),
+    ];
+    (window as any).stayed = true;
+  });
+  await page.click(".check-link");
+  await page.waitForSelector(".check-page >> text=note 7");
+  assert.equal(await where(), "/notes/7?mock=", "the link did not keep ?mock");
+  assert.equal(await page.evaluate(() => (window as any).stayed), true, "following the link reloaded the page");
+  await page.evaluate(() => {
+    for (const remove of (window as any).removals) remove();
+  });
+  await page.waitForSelector(".page-missing >> text=No page here");
+  expectNoErrors("navigating");
+  // A page that throws fails alone and says so; a route matching another's addresses is reported; reading one route's
+  // match runs again only when that route's match changes.
+  await page.evaluate(async () => {
+    const { api } = await import("/src/ui/api.ts" as string);
+    const { Pages, Router } = api.contracts;
+    const lemma = (window as any).lemma;
+    const router = await lemma.service(Router);
+    const Broken = api.defineRoute("check.broken", { path: "/broken/:id" });
+    const Twin = api.defineRoute("check.twin", { path: "/broken/:key" });
+    const check = window as any;
+    check.reruns = 0;
+    api.solid.createRoot((dispose: () => void) => {
+      check.disposeCount = dispose;
+      api.solid.createEffect(() => {
+        router.matchOf(Broken);
+        check.reruns++;
+      });
+    });
+    check.removals = [
+      lemma.slots().add(Pages, {
+        id: "check.broken",
+        route: Broken,
+        component: () => {
+          throw new Error("check boom");
+        },
+      }),
+      lemma.slots().add(Pages, { id: "check.twin", route: Twin, component: () => document.createElement("div") }),
+    ];
+    router.navigate(Broken, { id: "1" });
+  });
+  await page.waitForSelector(".page-missing >> text=This page failed");
+  await page.waitForSelector(".page-missing >> text=check boom");
+  await page.waitForSelector(".toast >> text=match the same addresses");
+  assert(await page.locator(".sidebar").isVisible(), "a failing page took the sidebar with it");
+  const reruns = async (navigate: string) =>
+    page.evaluate(async (target) => {
+      history.pushState(null, "", target);
+      dispatchEvent(new PopStateEvent("popstate"));
+      await new Promise((done) => setTimeout(done, 50));
+      return (window as any).reruns;
+    }, navigate);
+  assert.equal(await reruns("/broken/2?mock"), 3, "the route's own change did not rerun its reader");
+  assert.equal(await reruns("/nowhere?mock"), 4, "leaving the route did not rerun its reader");
+  assert.equal(await reruns("/elsewhere?mock"), 4, "an unrelated navigation reran a route's reader");
+  await page.evaluate(() => {
+    const check = window as any;
+    check.disposeCount();
+    for (const remove of check.removals) remove();
+  });
+  errors.splice(0);
+
   console.log(
-    `UI check: booted; every part provided; ${toggled.length - locked.length} plugins turned off and on, ${locked.length} locked ones kept on (${locked.join(", ")}); a part replaced and restored; six extension slots render what a plugin adds.`,
+    `UI check: booted; every part provided; ${toggled.length - locked.length} plugins turned off and on, ${locked.length} locked ones kept on (${locked.join(", ")}); a part replaced and restored; six extension slots render what a plugin adds; addresses survive reloads, back, and their page's plugin going off; a plugin adds a page.`,
   );
 } finally {
   await browser.close();

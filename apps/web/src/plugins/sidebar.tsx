@@ -118,11 +118,17 @@ function SessionRow(props: SidebarRowProps) {
             openMenu?.();
           }}
         >
-          <button
+          <a
             class="session-open"
+            href={props.href}
             data-session-row
             aria-current={props.active ? "page" : undefined}
-            onClick={() => props.select()}
+            onClick={(event) => {
+              // A plain click opens it here; with a modifier, the browser opens the link elsewhere.
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              props.select();
+            }}
             onDblClick={() => setEditing(true)}
           >
             <Show when={props.running}>
@@ -132,7 +138,7 @@ function SessionRow(props: SidebarRowProps) {
               {sessionTitle(props.session)}
             </span>
             <span class="session-time">{relativeTime(props.session.updatedAt, props.now)}</span>
-          </button>
+          </a>
           <Show when={props.actions.length > 0}>
             <Popover
               label="Thread actions"
@@ -232,6 +238,7 @@ function Sidebar(props: { deps: Deps; onPick: () => void }) {
               active={threads.activeId() === session.id}
               running={threads.running().includes(session.id)}
               now={props.deps.now()}
+              href={threads.href(session.id)}
               select={() => {
                 void threads.select(session.id);
                 props.onPick();

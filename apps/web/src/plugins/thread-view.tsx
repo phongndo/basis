@@ -1,9 +1,25 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { isRoute } from "@lemma/router";
 import { tildePath } from "../model/format.ts";
 import { sessionTitle } from "../model/threads.ts";
-import { Actions, Client, ComposerRegion, Layout, MainRegion, Notify, ThreadHeader, Threads, Slots, Views, Workspace } from "../ui/contracts.ts";
+import {
+  Actions,
+  Client,
+  ComposerRegion,
+  Layout,
+  NewThreadRoute,
+  Notify,
+  Pages,
+  Router,
+  ThreadHeader,
+  ThreadRoute,
+  Threads,
+  Slots,
+  Views,
+  Workspace,
+} from "../ui/contracts.ts";
 import type { Action } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem } from "../ui/slots.ts";
@@ -12,28 +28,33 @@ import { copyText } from "../lib/clipboard.ts";
 import styles from "./thread-view.css?inline";
 
 /**
- * The main area for one session: a header, the chosen view (chat,
- * trajectory, or any other plugin's), and the composer under views that want
- * it. Views are siblings over the same session log; the choice carries over
- * when switching threads, and a new chat opens in the first.
+ * The page for one thread (and for a new one): a header, the chosen view
+ * (chat, trajectory, or any other plugin's), and the composer under views
+ * that want it. Views are siblings over the same log; the address names the
+ * view (`/threads/<id>/trajectory`, the first when absent), the choice
+ * carries over when switching threads, and a new thread opens in the first.
  */
 export default defineUiPlugin({
   id: "thread-view",
   styles,
-  requires: { client: Client, threads: Threads, workspace: Workspace, slots: Slots, layout: Layout, notify: Notify },
-  setup: ({ client, threads, workspace, slots, layout, notify }, plugin) => {
-    const [chosen, setChosen] = createSignal<string>();
+  requires: { client: Client, threads: Threads, workspace: Workspace, slots: Slots, layout: Layout, notify: Notify, router: Router },
+  setup: ({ client, threads, workspace, slots, layout, notify, router }, plugin) => {
     const views = () => slots.list(Views);
-    /** The chosen view while it exists; a new chat always shows the first. */
+    /** The view the address names while it exists (its plugin may be off: the address is left as it is), else the first. */
     const view = createMemo(() => {
       const all = views();
-      return (threads.activeId() === undefined ? undefined : all.find((candidate) => candidate.id === chosen())) ?? all[0];
+      const named = router.matchOf(ThreadRoute)?.params.view;
+      return (threads.activeId() === undefined ? undefined : all.find((candidate) => candidate.id === named)) ?? all[0];
     });
-    plugin.onCleanup(
-      threads.onSelect((sessionId) => {
-        if (sessionId === undefined) setChosen(undefined);
-      }),
-    );
+    const setChosen = (id: string) => {
+      const sessionId = threads.activeId();
+      if (sessionId !== undefined) router.navigate(threads.href(sessionId, id === views()[0]?.id ? undefined : id));
+    };
+    /** The address names a thread the host does not have. */
+    const unknown = () => {
+      const named = router.matchOf(ThreadRoute)?.params.id;
+      return named !== undefined && threads.loaded() && threads.activeId() === undefined ? named : undefined;
+    };
 
     const add = (...actions: SlotItem<Action>[]) => {
       for (const action of actions) plugin.onCleanup(slots.add(Actions, action));
@@ -140,7 +161,7 @@ export default defineUiPlugin({
               );
             }}
           </Show>
-          <h1>{threads.activeId() === undefined ? "New thread" : sessionTitle(threads.active())}</h1>
+          <h1>{unknown() !== undefined ? "No thread here" : threads.activeId() === undefined ? "New thread" : sessionTitle(threads.active())}</h1>
         </div>
       );
     });
@@ -180,10 +201,24 @@ export default defineUiPlugin({
             <span class="spacer" />
             <For each={slots.list(ThreadHeader).filter((item) => item.side === "end")}>{(item) => <Dynamic component={item.component} />}</For>
           </header>
-          <Show when={view()} keyed fallback={<div class="scroller" />}>
-            {(item) => <Dynamic component={item.component} />}
+          <Show
+            when={unknown()}
+            fallback={
+              <Show when={view()} keyed fallback={<div class="scroller" />}>
+                {(item) => <Dynamic component={item.component} />}
+              </Show>
+            }
+          >
+            {(id) => (
+              <div class="thread-unknown">
+                <h2>No thread here</h2>
+                <p class="muted">
+                  The host has no thread <code>{id()}</code>: it may have been deleted. <a href={router.href(NewThreadRoute, {})}>Start a new thread</a>
+                </p>
+              </div>
+            )}
           </Show>
-          <Show when={view()?.composer === true}>
+          <Show when={unknown() === undefined && view()?.composer === true}>
             <Show when={slots.first(ComposerRegion)} keyed>
               {(composer) => <Dynamic component={composer.component} />}
             </Show>
@@ -191,6 +226,16 @@ export default defineUiPlugin({
         </main>
       );
     }
-    plugin.onCleanup(slots.add(MainRegion, { id: "thread-view", component: Main }));
+    plugin.onCleanup(slots.add(Pages, { id: "thread-view.new", route: NewThreadRoute, component: Main }));
+    plugin.onCleanup(
+      slots.add(Pages, {
+        id: "thread-view",
+        route: ThreadRoute,
+        component: Main,
+        preload: (match) => {
+          if (isRoute(match, ThreadRoute)) threads.preload(match.params.id);
+        },
+      }),
+    );
   },
 });

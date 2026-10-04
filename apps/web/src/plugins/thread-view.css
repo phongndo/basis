@@ -90,3 +90,16 @@
     padding: 0 8px 0 max(8px, var(--titlebar-inset, 0px));
   }
 }
+
+.thread-unknown {
+  flex: 1;
+  min-height: 0;
+  padding: 18vh 24px 24px;
+  text-align: center;
+}
+
+.thread-unknown h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}

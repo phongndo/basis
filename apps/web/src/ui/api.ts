@@ -4,6 +4,7 @@ import html from "solid-js/html";
 import * as store from "solid-js/store";
 import * as web from "solid-js/web";
 import { definePlugin, Event, Hook } from "@lemma/core";
+import { defineRoute, isRoute } from "@lemma/router";
 import { ConfigForm as DefaultConfigForm } from "../components/config-form.tsx";
 import { Dialog as DefaultDialog } from "../components/dialog.tsx";
 import { DefaultIcon, icons as defaultIcons } from "../components/icons.tsx";
@@ -31,6 +32,10 @@ import { DEFAULT_PART_ORDER, definePart, defineSlot } from "./slots.ts";
 export const api = {
   defineUiPlugin,
   defineSlot,
+  /** A route of the plugin's own (`/notes/:id`), for a `Pages` item; links to it are `router.href(route, params)`. */
+  defineRoute,
+  /** Narrows `router.match()` to a route, with its typed params and search. */
+  isRoute,
   /** A new part, for a plugin's own replaceable pieces; `parts.partView` draws one. */
   definePart,
   /** The order bundled parts are added at: add with a lower one to replace a part. */
@@ -75,7 +80,8 @@ export const api = {
   core: { definePlugin, Event, Hook },
   /**
    * Enough of Effect Schema to declare a config, which the Plugins page turns
-   * into a form. Only these members, so the rest of Schema stays out of the app.
+   * into a form, and a route's params and search. Only these members, so the
+   * rest of Schema stays out of the app.
    */
   Schema: {
     Array: Schema.Array,
@@ -83,6 +89,8 @@ export const api = {
     Int: Schema.Int,
     Literal: Schema.Literal,
     Number: Schema.Number,
+    NumberFromString: Schema.NumberFromString,
+    Record: Schema.Record,
     String: Schema.String,
     Struct: Schema.Struct,
     between: Schema.between,

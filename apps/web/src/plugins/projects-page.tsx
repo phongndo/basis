@@ -82,7 +82,9 @@ export default defineUiPlugin({
   styles,
   requires: { client: Client, threads: Threads, workspace: Workspace, settings: Settings, dialogs: Dialogs, notify: Notify, slots: Slots },
   setup: ({ client, threads, workspace, settings, dialogs, notify, slots }, plugin) => {
-    const [chosen, setChosen] = createSignal<string | undefined>();
+    /** The project chosen, in the address (`?project=<directory>`). */
+    const chosen = () => (settings.section() === SECTION ? settings.params().project : undefined);
+    const setChosen = (cwd: string) => settings.setParams({ project: cwd });
     /** The project the page shows: the one chosen, while it exists, else the first. */
     const current = createMemo(() => {
       const pick = chosen();
@@ -288,10 +290,7 @@ export default defineUiPlugin({
         order: 30,
         label: () => "Project settings",
         icon: GearIcon,
-        run: (cwd) => {
-          setChosen(cwd);
-          settings.open(SECTION);
-        },
+        run: (cwd) => settings.open(SECTION, { project: cwd }),
       }),
     );
     plugin.onCleanup(

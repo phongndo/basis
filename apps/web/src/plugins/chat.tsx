@@ -1,4 +1,4 @@
-import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Index, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import type { Component, JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { Schema } from "effect";
@@ -19,6 +19,7 @@ import {
   ChatWorkingPart,
   ChatWorkPart,
   Client,
+  Router,
   Threads,
   Slots,
   ToolViews,
@@ -32,6 +33,7 @@ import type {
   ChatWorkingProps,
   ChatWorkProps,
   ClientService,
+  RouterService,
   ThreadsService,
 } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
@@ -75,6 +77,7 @@ export const ChatConfig = Schema.Struct({
 interface Chat {
   readonly client: ClientService;
   readonly threads: ThreadsService;
+  readonly router: RouterService;
   readonly slots: SlotsService;
   readonly config: typeof ChatConfig.Type;
   readonly isOpen: (key: string, fallback: boolean) => boolean;
@@ -83,6 +86,9 @@ interface Chat {
   /** The time, ticking each second while a turn runs, for elapsed-time labels. */
   readonly now: () => number;
 }
+
+/** The chat's scroll position, kept with each history entry. */
+const SCROLL_STATE = "chat.scroll";
 
 const imageSrc = (image: ImageContent) => `data:${image.mimeType};base64,${image.data}`;
 
@@ -795,6 +801,19 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
   };
   const toBottom = (smooth = false) => scroller.scrollTo({ top: scroller.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   let lastTop = 0;
+  /** Where the reader was in this history entry (back or forward returns there), or undefined at the bottom. */
+  const remembered = () => props.chat.router.entry<number | undefined>(SCROLL_STATE);
+  /** A position to return to once the transcript is tall enough to hold it. */
+  let restoring: number | undefined;
+  /** `settled`: the log is loaded and drawn, so a position still out of reach (a taller or wider window) is as near as it gets. */
+  const restore = (settled = false) => {
+    const reach = scroller.scrollHeight - scroller.clientHeight;
+    if (restoring === undefined || (!settled && reach < restoring)) return;
+    scroller.scrollTop = lastTop = Math.min(restoring, reach);
+    restoring = undefined;
+    setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80);
+  };
+  let saving = 0;
   const onScroll = () => {
     // Stop following only when the reader scrolls up: output that grows faster than it is followed moves the bottom away too.
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
@@ -802,6 +821,9 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
     else if (scroller.scrollTop < lastTop) setStuck(false);
     lastTop = scroller.scrollTop;
     locateSoon();
+    if (restoring !== undefined) return;
+    cancelAnimationFrame(saving);
+    saving = requestAnimationFrame(() => remembered().set(stuck() ? undefined : scroller.scrollTop));
   };
 
   /** A disclosure the reader just opened or closed: it stays where it was on screen rather than the view jumping to the bottom. */
@@ -823,7 +845,8 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
         scroller.scrollTop += held.element.getBoundingClientRect().top - held.top;
         lastTop = scroller.scrollTop;
         setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80);
-      } else if (stuck()) toBottom();
+      } else if (restoring !== undefined) restore();
+      else if (stuck()) toBottom();
       locateSoon();
     });
     observer.observe(content);
@@ -833,14 +856,24 @@ function ChatView(props: { chat: Chat; turns: () => readonly TurnView[] }) {
       observer.disconnect();
       content.removeEventListener("click", noteToggle, true);
       cancelAnimationFrame(locating);
+      cancelAnimationFrame(saving);
     });
   });
   createEffect(
     on(threads.activeId, () => {
-      setStuck(true);
-      queueMicrotask(() => toBottom());
+      restoring = untrack(() => remembered().get());
+      setStuck(restoring === undefined);
+      queueMicrotask(() => (restoring === undefined ? toBottom() : restore()));
     }),
   );
+  let settling = 0;
+  createEffect(() => {
+    cancelAnimationFrame(settling);
+    if (!threads.log().loaded) return;
+    // Two frames: the loaded transcript is laid out (and the resize observer has had its turn) before the wait ends.
+    settling = requestAnimationFrame(() => (settling = requestAnimationFrame(() => restore(true))));
+  });
+  onCleanup(() => cancelAnimationFrame(settling));
 
   const empty = () => props.turns().length === 0;
   return (
@@ -893,8 +926,8 @@ export default defineUiPlugin({
   id: "chat",
   styles,
   config: ChatConfig,
-  requires: { client: Client, threads: Threads, slots: Slots },
-  setup: ({ client, threads, slots }, plugin) => {
+  requires: { client: Client, threads: Threads, router: Router, slots: Slots },
+  setup: ({ client, threads, router, slots }, plugin) => {
     // Expanded/collapsed choices survive re-renders and session switches while the plugin runs.
     const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map());
     let projector = createProjector();
@@ -917,6 +950,7 @@ export default defineUiPlugin({
     const chat: Chat = {
       client,
       threads,
+      router,
       slots,
       config: plugin.config,
       isOpen: (key, fallback) => expanded().get(key) ?? fallback,

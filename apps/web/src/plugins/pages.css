@@ -1,0 +1,27 @@
+.page-missing {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  padding: 18vh 24px 24px;
+  text-align: center;
+}
+
+.page-missing-body {
+  max-width: 440px;
+}
+
+.page-missing h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin-bottom: 8px;
+}
+
+.page-missing p {
+  margin: 8px 0;
+}
+
+.page-missing a.button {
+  text-decoration: none;
+}

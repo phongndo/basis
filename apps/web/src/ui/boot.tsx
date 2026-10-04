@@ -29,6 +29,8 @@ const PINNED: Readonly<Record<string, string>> = {
   [APP_ID]: "Runs the web app's plugins; with it off, nothing could turn them back on",
   "plugins-page": "Where plugins are turned back on; replace it with a UI file instead of turning it off",
   shell: "Draws the frame every other view shows in, settings included; replace it with a UI file instead of turning it off",
+  router: "Turns the page's address into what it shows; the threads and settings follow it",
+  pages: "Shows the page the address names, settings included; replace it with a UI file instead of turning it off",
 };
 const EMPTY: UiComposition = { plugins: {}, enabledIn: {}, configIn: {}, files: [] };
 /** How long the first paint waits for the host's `ui` rows before starting with the defaults. */

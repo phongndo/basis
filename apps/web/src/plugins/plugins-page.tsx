@@ -38,6 +38,7 @@ import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchField, Spinner, Tog
 import styles from "./plugins-page.css?inline";
 
 const SECTION = "plugins";
+const DEFAULT_TAB = "plugins.overview";
 const KIND_LABEL: Readonly<Record<PluginKind, string>> = { host: "host", web: "web app" };
 
 /** A tab's id in the `plugins.tabs` slot. */
@@ -664,10 +665,21 @@ export default defineUiPlugin({
   styles,
   requires: { client: Client, threads: Threads, notify: Notify, settings: Settings, slots: Slots, host: HostPlugins, ui: UiPlugins },
   setup: ({ client, threads, notify, settings, slots, host, ui }, plugin) => {
-    // Survive the list refreshing and the section closing, like the trajectory's selection.
-    const [selected, setSelected] = createSignal<Selection>();
-    const [tab, setTab] = createSignal<Tab>("plugins.overview");
-    const [filter, setFilter] = createSignal("");
+    // In the address (`?plugin=agent&kind=host&tab=…&filter=…`): a link, a reload, and back and forward return to them, and
+    // settings reopen the section as it was left.
+    const params = () => (settings.section() === SECTION ? settings.params() : {});
+    const selected = createMemo<Selection | undefined>(
+      () => {
+        const { plugin: id, kind } = params();
+        return id === undefined ? undefined : { kind: kind === "web" ? "web" : "host", id };
+      },
+      undefined,
+      { equals: (a, b) => a?.kind === b?.kind && a?.id === b?.id },
+    );
+    const tab = (): Tab => params().tab ?? DEFAULT_TAB;
+    const setTab = (next: Tab) => settings.setParams({ tab: next === DEFAULT_TAB ? undefined : next });
+    const filter = () => params().filter ?? "";
+    const setFilter = (next: string) => settings.setParams({ filter: next });
     const [confirming, setConfirming] = createSignal<Confirmation>();
     const [busy, setBusy] = createSignal<string>();
     const services: Readonly<Record<PluginKind, PluginsService>> = { host, web: ui };
@@ -689,7 +701,7 @@ export default defineUiPlugin({
       services,
       selected,
       select: (next) => {
-        setSelected(next);
+        settings.setParams({ plugin: next?.id, kind: next?.kind });
         setConfirming(undefined);
       },
       tab,
@@ -831,13 +843,7 @@ export default defineUiPlugin({
             services[kind].list().map((target) => ({
               text: `plugin ${kind === "web" ? "web app interface" : "host"} ${pluginText(target)}`,
               view: () => (
-                <button
-                  class="setting-row inspector-result"
-                  onClick={() => {
-                    inspector.select({ kind, id: target.id });
-                    settings.open(SECTION);
-                  }}
-                >
+                <button class="setting-row inspector-result" onClick={() => settings.open(SECTION, { plugin: target.id, kind })}>
                   <span class={`state-dot state-${target.state}`} />
                   <span class="plugin-id">{target.id}</span>
                   <span class="muted small">{KIND_LABEL[kind]}</span>

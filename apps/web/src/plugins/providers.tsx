@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import type { JSX } from "solid-js";
 import { Schema } from "effect";
 import type { AuthType, InteractionRequest, ProviderInfo } from "@lemma/contracts";
@@ -23,6 +23,8 @@ import {
   Models,
   Notify,
   ProviderRowPart,
+  NewThreadRoute,
+  Router,
   Settings,
   SettingsGroups,
   SettingsSections,
@@ -496,8 +498,9 @@ export default defineUiPlugin({
     interactions: Interactions,
     notify: Notify,
     uiPlugins: UiPlugins,
+    router: Router,
   },
-  setup: ({ models, settings, slots, interactions, notify, uiPlugins }, plugin) => {
+  setup: ({ models, settings, slots, interactions, notify, uiPlugins, router }, plugin) => {
     const moving = Object.entries(plugin.config.logos ?? {});
     let moved = moving.length === 0;
     createEffect(() => {
@@ -520,7 +523,8 @@ export default defineUiPlugin({
     createEffect(() => {
       if (greeted || !models.providersLoaded()) return;
       greeted = true;
-      if (models.configured()) return;
+      // Only over a new thread: an address that names a page (a thread, a settings section) is what the reader asked for.
+      if (models.configured() || untrack(() => router.matchOf(NewThreadRoute)) === undefined) return;
       setWelcome(true);
       settings.open(SECTION);
     });

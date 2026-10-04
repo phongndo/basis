@@ -29,13 +29,27 @@ import type {
   UiFile,
   WorkspaceStatus,
 } from "@lemma/contracts";
+import { NewThreadRoute, SettingsRoute, ThreadRoute } from "@lemma/contracts";
+import type {
+  AnyRoute,
+  BlockOptions,
+  Explanation,
+  HistoryLocation,
+  Match,
+  Navigate,
+  ParamsOf,
+  RouterEvent,
+  RouterSnapshot,
+  SearchOf,
+  Transition,
+} from "@lemma/router";
 import type { CodeBlock } from "../lib/markdown.ts";
 import type { ToolSummary } from "../model/format.ts";
 import type { ProjectSettings } from "../model/prefs.ts";
 import type { LiveState } from "../model/live.ts";
 import type { ToolResultView, TurnView } from "../model/transcript.ts";
 import { definePart, defineSlot } from "./slots.ts";
-import type { Region, SlotsService } from "./slots.ts";
+import type { Region, SlotItem, SlotsService } from "./slots.ts";
 
 /*
  * The web app's contracts. Capabilities are services one plugin provides and
@@ -129,9 +143,12 @@ export interface ThreadsService {
   readonly busy: Accessor<boolean>;
   /** Where a new chat starts, when not in the host's directory. */
   readonly pendingCwd: Accessor<string | undefined>;
+  /** Goes to a thread (keeping the view shown), or to a new one; resolves once its log has loaded. */
   readonly select: (sessionId: string | undefined) => Promise<void>;
-  /** Called on every `select`, including of the open session: what "going to a chat" means to other plugins. */
-  readonly onSelect: (listener: (sessionId: string | undefined) => void) => () => void;
+  /** A thread's address, in `view` (a `Views` item's id) when not the first. */
+  readonly href: (sessionId: string, view?: string) => string;
+  /** Fetches a thread's log ahead of opening it (a link to it hovered), so it shows at once. */
+  readonly preload: (sessionId: string) => void;
   /** A new thread, created by its first prompt, in `cwd` or the host's directory. */
   readonly newThread: (cwd?: string) => void;
   /** Sets where the next new thread starts without going to it (no `select`): a default, not a choice. */
@@ -292,9 +309,18 @@ export interface DialogsService {
 export class Dialogs extends Context.Tag("lemma-ui/Dialogs")<Dialogs, DialogsService>() {}
 
 export interface SettingsService {
-  /** The open section's id; undefined while settings are closed. */
+  /** The open section's id; undefined while settings are not the page shown. */
   readonly section: Accessor<string | undefined>;
-  readonly open: (section: string | undefined) => void;
+  /**
+   * Goes to a section, with `params` for it (the Plugins page's `plugin`, say);
+   * without them, a section opens as it was last left. Undefined closes
+   * settings, returning to where they were opened from.
+   */
+  readonly open: (section: string | undefined, params?: Readonly<Record<string, string>>) => void;
+  /** The open section's own state in the address (`?plugin=agent&tab=faults`): strings by name. */
+  readonly params: Accessor<Readonly<Record<string, string>>>;
+  /** Changes some of them in place (no new history entry); undefined removes one. */
+  readonly setParams: (patch: Readonly<Record<string, string | undefined>>) => void;
 }
 export class Settings extends Context.Tag("lemma-ui/Settings")<Settings, SettingsService>() {}
 
@@ -304,6 +330,79 @@ export interface LayoutService {
   readonly closeDrawer: () => void;
 }
 export class Layout extends Context.Tag("lemma-ui/Layout")<Layout, LayoutService>() {}
+
+// ------------------------------------------------------------------ addresses
+
+/*
+ * The page's address names what it shows (`@lemma/router`). A route is an
+ * address and the Schemas its params and search decode through; a page is
+ * what a plugin shows at one. The app's routes are declared in
+ * `@lemma/contracts`, apart from any plugin, so a link to one works while
+ * nothing shows it: the page then says its plugin is off, and returns with
+ * it. A UI file declares its own with `api.defineRoute` and adds a `Pages`
+ * item for it.
+ */
+
+/** The app's own routes (`@lemma/contracts`). */
+export { NewThreadRoute, SettingsRoute, ThreadRoute };
+/** The app's own routes: known while nothing shows them. */
+export const KnownRoutes: readonly AnyRoute[] = [NewThreadRoute, ThreadRoute, SettingsRoute];
+
+/**
+ * What a plugin shows at a route: the main region's content while the address is there. The first item per route shows.
+ * Items with the same component keep one instance across their routes (a new thread becoming the thread, mid-send).
+ */
+export interface Page {
+  readonly route: AnyRoute;
+  readonly component: Component;
+  /**
+   * A link to this page is about to be followed (hovered or focused): start fetching what it will show, so it is there
+   * on arrival. `isRoute(match, route)` gives the typed params. Only warms: the page must work without it.
+   */
+  readonly preload?: (match: Extract<PageMatch, { readonly status: "matched" }>) => void;
+}
+export const Pages = defineSlot<Page>("pages");
+
+export type PageMatch = Match<SlotItem<Page>>;
+
+export interface RouterService {
+  /** Where the page is: path, search, and the history entry's `key` and `index`. */
+  readonly location: Accessor<HistoryLocation>;
+  /** What the location shows: a page, a route whose page's plugin is off (`unavailable`), or nothing (`unmatched`). */
+  readonly match: Accessor<PageMatch>;
+  /** What an address would show, without going there. */
+  readonly matchHref: (href: string) => PageMatch;
+  /** The params and search when the location is `route`, else undefined. Reactive: runs again only when `route`'s match changes. */
+  readonly matchOf: <R extends AnyRoute>(route: R) => { readonly params: ParamsOf<R>; readonly search: SearchOf<R> } | undefined;
+  /** `route`'s address for these values (keeping `?safe`). For `<a href>`: plain clicks on links to the app navigate in place. */
+  readonly href: <R extends AnyRoute>(route: R, params: ParamsOf<R>, search?: Partial<SearchOf<R>>) => string;
+  /**
+   * Goes to a route with its values (`navigate(ThreadRoute, { id })`), or to an address; false when a blocker refused or
+   * the values do not encode (reported as a toast, never thrown).
+   */
+  readonly navigate: Navigate;
+  readonly back: () => void;
+  readonly go: (delta: number) => void;
+  /**
+   * Asked before every navigation (back and forward too) and before the page unloads (`action: "unload"`: closing or
+   * reloading the tab, where false has the browser ask the user); false stops it. Returns the removal.
+   */
+  readonly block: (blocker: (transition: Transition) => boolean, options?: BlockOptions) => () => void;
+  /**
+   * State kept with the current history entry (a scroll position), under
+   * `name`: back or forward to the entry finds it again, a reload too.
+   */
+  readonly entry: <T>(name: string) => { readonly get: () => T | undefined; readonly set: (value: T) => void };
+  /** Why an address shows what it does: every route's verdict on it. */
+  readonly explain: (href: string) => Explanation;
+  /** The router now, as plain data: routes with who is registered at each, conflicts, blockers. Reactive. */
+  readonly inspect: Accessor<RouterSnapshot>;
+  /** What the router did lately (navigations, matches, refusals, failures), oldest first. Reactive. */
+  readonly journal: Accessor<readonly RouterEvent[]>;
+  /** The state kept with history entries, by entry key (see `entry`). Reactive. */
+  readonly entryStates: Accessor<Readonly<Record<string, Readonly<Record<string, unknown>>>>>;
+}
+export class Router extends Context.Tag("lemma-ui/Router")<Router, RouterService>() {}
 
 // ------------------------------------------------------------------ regions
 
@@ -798,6 +897,9 @@ export interface SidebarRowProps {
   readonly running: boolean;
   /** The time, ticking once a minute, for relative times. */
   readonly now: number;
+  /** Its address: the row is a link, so it opens in a new tab or window too. */
+  readonly href: string;
+  /** Opens it here; a row calls it for a plain click instead of following `href`. */
   readonly select: () => void;
   readonly rename: (title: string) => void;
   /** Its menu: the `ThreadActions` that apply to it, in order. */

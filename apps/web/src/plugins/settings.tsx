@@ -3,7 +3,19 @@ import { Dynamic } from "solid-js/web";
 import { formatKeys } from "../lib/keys.ts";
 import { filterGroups } from "../model/settings.ts";
 import type { EntryGroup } from "../model/settings.ts";
-import { Actions, Layers, SectionIds, Threads, Settings, SettingsGroups, SettingsSections, SidebarFooter, Slots } from "../ui/contracts.ts";
+import {
+  Actions,
+  NewThreadRoute,
+  Pages,
+  Router,
+  SectionIds,
+  Settings,
+  SettingsGroups,
+  SettingsRoute,
+  SettingsSections,
+  SidebarFooter,
+  Slots,
+} from "../ui/contracts.ts";
 import type { SettingsEntry, SettingsSection } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotItem, SlotsService } from "../ui/slots.ts";
@@ -206,35 +218,83 @@ function Groups(props: { groups: readonly EntryGroup<SettingsEntry>[] }) {
 }
 
 /**
- * Settings, covering the app while open. Plugins add sections and the
- * entries in them; the search runs across every section, and clearing it
- * returns to the section being browsed. Going to a chat closes it.
+ * Settings, a page covering the app: `/settings/<section>`, with the
+ * section's own state in the search (`?plugin=agent&tab=faults`). Plugins add
+ * sections and the entries in them; the search runs across every section,
+ * and clearing it returns to the section being browsed. Closing returns to
+ * where settings were opened from.
  */
 export default defineUiPlugin({
   id: "settings",
   styles,
-  requires: { slots: Slots, threads: Threads },
+  requires: { slots: Slots, router: Router },
   provides: { settings: Settings },
-  setup: ({ slots, threads }, plugin) => {
-    const [section, setSection] = createSignal<string>();
+  setup: ({ slots, router }, plugin) => {
     const [visits, setVisits] = createSignal(0);
     const [focus, setFocus] = createSignal<() => void>();
-    const open = (next: string | undefined) => {
-      setSection(next);
+    const here = () => router.matchOf(SettingsRoute);
+    const section = createMemo(() => {
+      const found = here();
+      return found === undefined ? undefined : (found.params.section ?? SectionIds.general);
+    });
+    const params = createMemo(() => here()?.search ?? {}, undefined, {
+      equals: (a, b) => Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([key, value]) => b[key] === value),
+    });
+    /** Each section's state as last left, so opening it again returns there. */
+    const left = new Map<string, Readonly<Record<string, string>>>();
+    createEffect(() => {
+      const open = section();
+      if (open !== undefined) left.set(open, params());
+    });
+    /**
+     * The last place outside settings: where closing them returns. Each
+     * settings entry keeps it with itself, so a reload, or back and forward
+     * into settings, still knows the way out.
+     */
+    type Outside = { readonly href: string; readonly index: number };
+    let outside: Outside | undefined;
+    const way = () => router.entry<Outside>("settings.return");
+    createEffect(() => {
+      const location = router.location();
+      if (section() === undefined) outside = { href: location.href, index: location.index };
+      // After a reload into settings only the entry knows the way out; the entries opened next keep it too.
+      else if (outside === undefined) outside = way().get();
+      else if (way().get() === undefined) way().set(outside);
+    });
+
+    const open = (next: string | undefined, nextParams?: Readonly<Record<string, string>>) => {
       setVisits((count) => count + 1);
+      if (next !== undefined) {
+        router.navigate(SettingsRoute, { section: next }, { search: nextParams ?? left.get(next) ?? {} });
+        return;
+      }
+      if (section() === undefined) return;
+      const at = router.location().index;
+      const back = way().get() ?? outside;
+      // Back through the settings pages to the entry they were opened from, when it is still behind them; else go there anew.
+      if (back !== undefined && back.index < at) router.go(back.index - at);
+      else if (back !== undefined) router.navigate(back.href);
+      else router.navigate(NewThreadRoute, {});
     };
-    plugin.onCleanup(threads.onSelect(() => open(undefined)));
+    const setParams = (patch: Readonly<Record<string, string | undefined>>) => {
+      const open = section();
+      if (open === undefined) return;
+      const next: Record<string, string> = { ...params() };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined || value === "") delete next[key];
+        else next[key] = value;
+      }
+      router.navigate(SettingsRoute, { section: open }, { search: next, replace: true });
+    };
 
     const add = (remove: () => void) => plugin.onCleanup(remove);
     add(slots.add(SettingsSections, { id: SectionIds.general, order: 0, title: "General", icon: SlidersIcon }));
     add(
-      slots.add(Layers, {
+      slots.add(Pages, {
         id: "settings",
-        order: -10,
+        route: SettingsRoute,
         component: () => (
-          <Show when={section() !== undefined}>
-            <SettingsView slots={slots} section={() => section() ?? "general"} visits={visits} open={open} setFocus={(next) => setFocus(() => next)} />
-          </Show>
+          <SettingsView slots={slots} section={() => section() ?? SectionIds.general} visits={visits} open={open} setFocus={(next) => setFocus(() => next)} />
         ),
       }),
     );
@@ -296,6 +356,6 @@ export default defineUiPlugin({
         ),
       }),
     );
-    return { settings: { section, open } };
+    return { settings: { section, open, params, setParams } };
   },
 });

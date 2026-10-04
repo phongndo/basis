@@ -138,6 +138,8 @@
   text-align: left;
   font: inherit;
   font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 /* The time gives way to the ⋯ menu while the row is hovered, focused, or its menu is open. */

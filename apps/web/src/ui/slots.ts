@@ -63,6 +63,8 @@ export interface SlotsService {
   readonly first: <T>(slot: Slot<T>) => SlotItem<T> | undefined;
   /** The item with this id. Reactive. */
   readonly get: <T>(slot: Slot<T>, id: string) => SlotItem<T> | undefined;
+  /** The id of the plugin that added the item with this id (to name it when the item fails). Reactive. */
+  readonly owner: <T>(slot: Slot<T>, id: string) => string | undefined;
   /** The same registry, adding as `contributor`'s. `defineUiPlugin` hands each plugin its own. */
   readonly as: (contributor: Contributor) => SlotsService;
 }
@@ -116,6 +118,7 @@ export function createSlots(
     list: items,
     first: (slot) => items(slot)[0],
     get: (slot, id) => items(slot).find((item) => item.id === id),
+    owner: (slot, id) => signal(slot)[0]().find((contribution) => (contribution.item as SlotItem<unknown>).id === id)?.pluginId,
     as: service,
   });
   return service(contributor);

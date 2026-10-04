@@ -1,16 +1,20 @@
-import { batch, createMemo, createSignal } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, on, untrack } from "solid-js";
 import { SessionLog, startPrompt } from "@lemma/client";
 import { branchOf } from "@lemma/contracts";
+import { isRoute } from "@lemma/router";
 import type { HostEvent, PromptContent, SessionEvent, SessionInfo, SessionMarks, TurnOptions } from "@lemma/contracts";
 import { appendOutput, applyDelta, dropOutput, emptyLive, endTurn, reconcileLive, settleStep } from "../model/live.ts";
 import type { LiveState } from "../model/live.ts";
 import { resolveLeaf, trackTurn, upsertSession } from "../model/threads.ts";
-import { Client, Notify, Threads } from "../ui/contracts.ts";
+import { Client, NewThreadRoute, Notify, Router, ThreadRoute, Threads } from "../ui/contracts.ts";
 import type { LogState } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 
-/** The session id in the page's address (`#<id>`), if any; a malformed one reads as none. */
-const hashSession = (): string | undefined => {
+/** How long a preloaded log stays fresh enough to open with (ms). */
+const PRELOAD_MS = 15_000;
+
+/** A thread's id in an address from before threads had paths (`/#<id>`), if any; a malformed one reads as none. */
+const hashThread = (): string | undefined => {
   try {
     const id = decodeURIComponent(window.location.hash.replace(/^#\/?/, ""));
     return id === "" ? undefined : id;
@@ -21,31 +25,40 @@ const hashSession = (): string | undefined => {
 
 /**
  * Threads and the active one's log: the list, which is open, its events and
- * streaming drafts, which threads are running, and sending prompts. The URL
- * hash names the open session, so a reload returns to it.
+ * streaming drafts, which threads are running, and sending prompts. The
+ * address names the open thread (`/threads/<id>`): the active thread follows
+ * it, so a link, back and forward, and a reload all open the thread they name.
  */
 export default defineUiPlugin({
   id: "threads",
-  requires: { client: Client, notify: Notify },
+  requires: { client: Client, notify: Notify, router: Router },
   provides: { threads: Threads },
-  setup: ({ client, notify }, plugin) => {
+  setup: ({ client, notify, router }, plugin) => {
     const host = client.host;
     const [list, setList] = createSignal<readonly SessionInfo[]>([]);
     const [loaded, setLoaded] = createSignal(false);
-    const [activeId, setActiveId] = createSignal<string>();
     const [running, setRunning] = createSignal<readonly string[]>([]);
     const [pendingCwd, setPendingCwd] = createSignal<string>();
     // Event arrays and streaming drafts change often and are replaced wholesale.
     const [events, setEvents] = createSignal<readonly SessionEvent[]>([], { equals: false });
     const [log, setLog] = createSignal<LogState>({ loaded: true, syncing: false });
     const [live, setLive] = createSignal<Readonly<Record<string, LiveState>>>({});
-    const selectListeners = new Set<(sessionId: string | undefined) => void>();
 
     let sessionLog: SessionLog | undefined;
     let stopLog: (() => void) | undefined;
     /** The last ended turn per session, so a late `turn-started` cannot mark it running again (see `trackTurn`). */
     let endedTurns: Readonly<Record<string, string>> = {};
-    let restored = false;
+    /** The thread the address names; another page (settings) keeps the one it was opened over. */
+    const routed = createMemo<string | undefined>((previous) => {
+      const match = router.match();
+      if (isRoute(match, ThreadRoute)) return match.params.id;
+      return isRoute(match, NewThreadRoute) ? undefined : previous;
+    }, undefined);
+    /** An id no thread has (yet: the list may still be loading) opens nothing; the thread view says so. */
+    const activeId = createMemo(() => {
+      const id = routed();
+      return id !== undefined && list().some((session) => session.id === id) ? id : undefined;
+    });
 
     const active = createMemo(() => list().find((session) => session.id === activeId()));
     const leaf = createMemo(() => resolveLeaf(events(), active()?.leaf, active()?.lastSeq));
@@ -65,9 +78,16 @@ export default defineUiPlugin({
       if (next !== current) setLive({ ...live(), [sessionId]: next });
     };
     const upsert = (info: SessionInfo) => setList((threads) => upsertSession(threads, info));
-    /** Drops a deleted session, leaving it first if it is open. */
+    /** Sessions deleted while the page is open. */
+    const [removed, setRemoved] = createSignal<ReadonlySet<string>>(new Set());
+    // A deleted session's address leaves for a new thread whenever the page shows it: at once, or on coming back to it
+    // (closing settings opened over it, back and forward).
+    createEffect(() => {
+      const id = router.matchOf(ThreadRoute)?.params.id;
+      if (id !== undefined && removed().has(id)) router.navigate(NewThreadRoute, {}, { replace: true });
+    });
     const forget = (sessionId: string) => {
-      if (activeId() === sessionId) void select(undefined);
+      setRemoved((ids) => new Set(ids).add(sessionId));
       setList((threads) => threads.filter((session) => session.id !== sessionId));
     };
 
@@ -79,18 +99,42 @@ export default defineUiPlugin({
     };
     plugin.onCleanup(closeLog);
 
-    const select = async (sessionId: string | undefined): Promise<void> => {
-      for (const listener of selectListeners) listener(sessionId);
-      if (sessionId === activeId() && (sessionId === undefined || sessionLog !== undefined)) return;
+    /** Logs fetched before their thread opened (a link to it hovered): opening one takes it instead of fetching. */
+    const preloaded = new Map<string, { readonly at: number; readonly events: Promise<readonly SessionEvent[]> }>();
+    const fresh = (found: { readonly at: number } | undefined) => found !== undefined && Date.now() - found.at < PRELOAD_MS;
+    const preload = (sessionId: string) => {
+      if (sessionId === activeId() || fresh(preloaded.get(sessionId))) return;
+      for (const [id, found] of preloaded) if (!fresh(found)) preloaded.delete(id);
+      const events = host.session.events(sessionId, undefined);
+      // A failed preload is only a missed head start: opening fetches again.
+      events.catch(() => preloaded.delete(sessionId));
+      preloaded.set(sessionId, { at: Date.now(), events });
+    };
+
+    /** Settles once the active thread's log has first synced. */
+    let opened: Promise<void> = Promise.resolve();
+    /** Loads the log of the thread the address names, replacing the last one's. */
+    const open = (sessionId: string | undefined) => {
       closeLog();
       batch(() => {
-        setActiveId(sessionId);
         setEvents([]);
         setLog({ loaded: sessionId === undefined, syncing: false });
       });
-      history.replaceState(history.state, "", sessionId === undefined ? `${location.pathname}${location.search}` : `#${encodeURIComponent(sessionId)}`);
-      if (sessionId === undefined) return;
-      const next = new SessionLog({ sessionId, fetch: (after) => host.session.events(sessionId, after) });
+      if (sessionId === undefined) {
+        opened = Promise.resolve();
+        return;
+      }
+      const warm = preloaded.get(sessionId);
+      preloaded.delete(sessionId);
+      let head = fresh(warm) ? warm!.events.catch(() => host.session.events(sessionId, undefined)) : undefined;
+      const next = new SessionLog({
+        sessionId,
+        fetch: (after) => {
+          const taken = after === undefined ? head : undefined;
+          head = undefined;
+          return taken ?? host.session.events(sessionId, after);
+        },
+      });
       sessionLog = next;
       stopLog = next.subscribe((snapshot) =>
         batch(() => {
@@ -99,8 +143,25 @@ export default defineUiPlugin({
           setLog({ loaded: snapshot.loaded, syncing: snapshot.syncing, ...(snapshot.error === undefined ? {} : { error: snapshot.error }) });
         }),
       );
-      await next.sync().catch((error) => notify.report(error, "Could not load the session"));
+      opened = next
+        .sync()
+        // A preloaded log may predate the thread's latest events; the list knows its last, and the log catches up to it.
+        .then(() => next.noteLastSeq(untrack(list).find((session) => session.id === sessionId)?.lastSeq ?? 0))
+        .catch((error) => notify.report(error, "Could not load the session"));
     };
+    createEffect(on(activeId, open));
+
+    const href = (sessionId: string, view?: string) => router.href(ThreadRoute, { id: sessionId, ...(view === undefined ? {} : { view }) });
+    const select = async (sessionId: string | undefined): Promise<void> => {
+      // Switching threads keeps the view shown; a new thread opens in the first.
+      const view = router.matchOf(ThreadRoute)?.params.view;
+      router.navigate(sessionId === undefined ? router.href(NewThreadRoute, {}) : href(sessionId, view));
+      await opened;
+    };
+
+    // An address from before threads had paths (`/#<id>`) becomes the thread's own.
+    const fromHash = router.location().pathname === "/" ? hashThread() : undefined;
+    if (fromHash !== undefined) router.navigate(href(fromHash), { replace: true });
 
     plugin.onCleanup(
       client.onConnect(() => {
@@ -112,23 +173,9 @@ export default defineUiPlugin({
         void Promise.allSettled(tasks).then((results) => {
           const failed = results.find((result) => result.status === "rejected");
           if (failed !== undefined) notify.report((failed as PromiseRejectedResult).reason, "Sync failed");
-          if (restored) return;
-          restored = true;
-          const fromHash = hashSession();
-          if (fromHash !== undefined && list().some((session) => session.id === fromHash)) void select(fromHash);
         });
       }),
     );
-
-    // The address names the open session (`select` keeps it current): a link, or an address edited by hand, opens the
-    // session it names, and an address without one a new chat. An id no session has is left alone.
-    const followHash = () => {
-      const fromHash = hashSession();
-      if (fromHash === undefined) void select(undefined);
-      else if (list().some((session) => session.id === fromHash)) void select(fromHash);
-    };
-    window.addEventListener("hashchange", followHash);
-    plugin.onCleanup(() => window.removeEventListener("hashchange", followHash));
 
     // Deltas and tool output arrive many times a frame; they are applied together, once per frame, in order. A hidden
     // tab gets no frames, so a long queue is applied at once instead.
@@ -260,10 +307,8 @@ export default defineUiPlugin({
         busy,
         pendingCwd,
         select,
-        onSelect: (listener: (sessionId: string | undefined) => void) => {
-          selectListeners.add(listener);
-          return () => selectListeners.delete(listener);
-        },
+        href,
+        preload,
         newThread: (cwd?: string) => {
           setPendingCwd(cwd);
           void select(undefined);

@@ -62,6 +62,43 @@ Nothing after `=` unbinds an action; the composer's send key is the
 Open the app with `?safe` to ignore rows and files: the way back from a
 customization that broke the page, including one that turned the settings off.
 
+## Addresses
+
+The page's address names what it shows, so links, reloads, and back and
+forward return to it. The routes are declared in
+[`@lemma/contracts`](../../packages/contracts/src/addresses.ts), apart from
+any plugin:
+
+| Address                                 | Shows                                                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `/`                                     | A new thread                                                                                                 |
+| `/threads/<id>`, `/threads/<id>/<view>` | A thread, in its first view or the one named (`trajectory`, or any `Views` item's id)                        |
+| `/settings/<section>?…`                 | A settings section; the search is the section's own state (`/settings/plugins?plugin=agent&kind=host&tab=…`) |
+
+`?safe` and `?mock` stay on every navigation. The `router` plugin
+([`@lemma/router`](../../packages/router/README.md), with
+[`@lemma/router-solid`](../../packages/router-solid/README.md)) follows the address and
+the `pages` plugin shows the `Pages` item for its route in the main region. A
+route whose page's plugin is off says so, at the same address, until the
+plugin returns. Any `<a href>` to the app navigates in place on a plain click.
+A plugin adds a page of its own with `api.defineRoute` and a `Pages` item:
+
+```js
+const Note = api.defineRoute("notes.note", { path: "/notes/:id" }); // params: { id: string }
+slots.add(Pages, { id: "notes.note", route: Note, component: NotePage });
+// <a href={router.href(Note, { id })}>, or router.navigate(Note, { id }); the page reads router.matchOf(Note)
+```
+
+`router.matchOf(route)` runs again only when that route's match changes, not on
+every navigation. A `Pages` item's optional `preload(match)` runs when a link to
+it is hovered or focused (thread rows fetch the thread's log, so it opens at
+once). A blocker (`router.block`) also hears `action: "unload"` before the tab
+closes or reloads: the composer refuses it while there is unsent text, so the
+browser asks first. A page that throws fails alone: the main region says so and
+names its plugin, and it is tried again on retry or the next navigation. Two
+plugins' routes in conflict (one id, or the same addresses with nothing to tell
+them apart) show a warning; the app still shows one of them.
+
 ## Writing a plugin
 
 A plugin requires capabilities, provides capabilities, and contributes to
@@ -70,13 +107,13 @@ plugins use nothing else.
 
 - **Capabilities** are services with one provider: the host's state
   (`Threads`, `Models`, `Workspace`, `HostPlugins`, `Commands`,
-  `Interactions`, the `Client` connection) and screen state (`Dialogs`,
-  `Settings`, `Layout`). Replacing a provider restarts its dependents with the
-  new one.
+  `Interactions`, the `Client` connection) and screen state (`Router`,
+  `Dialogs`, `Settings`, `Layout`). Replacing a provider restarts its
+  dependents with the new one.
 - **Slots** are places any number of plugins add to: regions of the screen
   (`Root`, `SidebarRegion`, `MainRegion`, `ComposerRegion`, `Layers`, …), where
-  the first item by `order` shows, and lists: `Actions` (the palette and
-  shortcuts), `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews` (a
+  the first item by `order` shows, and lists: `Pages` (what shows at a route),
+  `Actions` (the palette and shortcuts), `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews` (a
   tool's summary and body, in the chat and the trajectory), `CodeBlocks` (how
   fenced code renders: `highlight` and `diagrams` fill it), `PaletteSources`
   (what the palette searches), `ThreadHeader`, `SidebarActions`,
