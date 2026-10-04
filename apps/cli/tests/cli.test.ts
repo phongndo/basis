@@ -303,6 +303,20 @@ describe("against a running host", () => {
     expect(JSON.parse((await invoke(["plugins", "show", "nope", "--json"], home)).err).error.code).toBe("NotFound");
   });
 
+  test("kernel shows the host as its core runs it: capabilities, hook chains, registries, and events", async () => {
+    const capabilities = await invoke(["kernel"], home);
+    expect(capabilities.code).toBe(ExitCode.ok);
+    expect(capabilities.out).toMatch(/lemma\/Agent\s+agent \(active\)\s+transport/);
+    const hooks = JSON.parse((await invoke(["kernel", "hooks", "--json"], home)).out);
+    expect(hooks).toEqual(expect.arrayContaining([expect.objectContaining({ name: "lemma/interaction.request" })]));
+    const registries = (await invoke(["kernel", "registries"], home)).out;
+    expect(registries).toMatch(/lemma\/tools {2}\(\d+ items\)/);
+    expect(registries).toMatch(/\n {2}bash +1 +bash/);
+    expect((await invoke(["kernel", "events"], home)).out).toContain("lemma/session.appended");
+    expect((await invoke(["kernel", "nope"], home)).code).toBe(ExitCode.usage);
+    expect((await invoke(["kernel", "toString"], home)).code).toBe(ExitCode.usage);
+  });
+
   test("plugins config shows a plugin's fields and sets or unsets one in the file that sets its config", async () => {
     const userConfig = join(home, "config.jsonc");
     const original = await readFile(userConfig, "utf8");

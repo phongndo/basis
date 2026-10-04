@@ -1,6 +1,7 @@
 import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@lemma/contracts";
 import type {
   CommandInfo,
+  KernelView,
   DirectoryListing,
   GitBranch,
   HostInfo,
@@ -553,3 +554,43 @@ export const formatBranches = (branches: readonly GitBranch[]): string =>
 
 export const formatListing = (listing: DirectoryListing): string =>
   [listing.parent, ...listing.entries.map((entry) => `  ${entry.name}/${entry.git ? "  (git)" : ""}`), ...(listing.truncated ? ["  …"] : [])].join("\n");
+
+/** Each hook's chain, in the order its handlers run. */
+export const formatHooks = (kernel: KernelView): string =>
+  kernel.hooks.length === 0
+    ? "No hooks are intercepted."
+    : kernel.hooks
+        .map((hook) => `${hook.name}\n${pad(hook.handlers.map((handler, index) => [`  ${index + 1}.`, handler.plugin, `order ${handler.order}`]))}`)
+        .join("\n\n");
+
+/** Each registry and who contributes to it. */
+export const formatRegistries = (kernel: KernelView): string =>
+  kernel.registries.length === 0
+    ? "Nothing is contributed."
+    : kernel.registries
+        .map(
+          (registry) =>
+            `${registry.name}  (${registry.items} items)\n${pad(
+              registry.contributors.map((contributor) => [`  ${contributor.plugin}`, `${contributor.items}`, contributor.keys.join(", ")]),
+            )}`,
+        )
+        .join("\n\n");
+
+/** Each event and who observes it. */
+export const formatEvents = (kernel: KernelView): string =>
+  kernel.events.length === 0
+    ? "No events are observed."
+    : pad([["event", "observers"], ...kernel.events.map((event) => [event.name, event.observers.join(", ")])]);
+
+/** Each capability: who provides it, in what state, and who requires it. */
+export const formatCapabilities = (kernel: KernelView): string =>
+  pad([
+    ["capability", "provided by", "required by"],
+    ...kernel.capabilities.map((capability) => [
+      capability.key,
+      capability.providers.length === 0
+        ? "NOTHING"
+        : capability.providers.map((provider) => `${provider.plugin} (${provider.enabled ? provider.state : "off"})`).join(", "),
+      capability.users.join(", "),
+    ]),
+  ]);

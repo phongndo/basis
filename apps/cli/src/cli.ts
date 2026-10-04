@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import {
   branchOf,
   HostError,
+  kernelOf,
   parseConfigValue,
   LEDGER_SORTS,
   ledger,
@@ -37,6 +38,10 @@ import {
   formatTools,
   formatTrajectory,
   formatUi,
+  formatHooks,
+  formatRegistries,
+  formatEvents,
+  formatCapabilities,
 } from "./format.ts";
 import {
   answerCommand,
@@ -133,6 +138,10 @@ Workspace (the project directory; --path defaults to the current one)
   workspace browse [partial]     Complete a directory path, as the add-project dialog does
 
 Inspect (the web app's Trajectory view)
+  kernel [capabilities]          Each capability: who provides it, in what state, and who requires it
+  kernel hooks                   Each hook's chain, in the order its handlers run
+  kernel registries              Each registry and what each plugin contributes to it
+  kernel events                  Each event and who observes it
   inspect <id>                   Turns and steps: model, history, usage, timing, tools
   inspect <id> --records         Every record (prompt, system change, model call, tool run) as a table
     --filter <query>             is:error, is:running, kind:model, tool:bash, turn:2, req:5, text,
@@ -305,6 +314,20 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
       return extra(2) ?? logoutCommand(sub);
     case "workspace":
       return workspaceCommand(sub, positionals.slice(2), io, options);
+    case "kernel": {
+      const views = { hooks: formatHooks, registries: formatRegistries, events: formatEvents, capabilities: formatCapabilities } as const;
+      const view = sub ?? "capabilities";
+      if (!Object.hasOwn(views, view)) return usage(`kernel shows hooks, registries, events, or capabilities, not "${view}"`);
+      return (
+        extra(2) ??
+        (({ rpc }) =>
+          Effect.map(rpc.Host.Plugins(), (plugins) => {
+            const kernel = kernelOf(plugins);
+            const key = view as keyof typeof views;
+            return { json: kernel[key], text: views[key](kernel) };
+          }))
+      );
+    }
     case "inspect":
       if (sub === undefined) return usage("inspect needs a session id");
       return extra(2) ?? inspectCommand(sub, options);

@@ -1,0 +1,72 @@
+import type { PluginStatus } from "./rpc.ts";
+
+/*
+ * A composition as its kernel runs it, turned from per-plugin statuses (what
+ * each plugin provides, requires, intercepts, observes, and contributes) into
+ * per-thing views: each hook's chain in run order, each registry's
+ * contributors, each event's observers, each capability's provider and
+ * dependents. The same for the host and the web app: both run the core. What
+ * the devtools' kernel panels and `lemma kernel` show.
+ */
+
+export interface HookChain {
+  readonly name: string;
+  /** In run order: lower `order` first, then plugin id. */
+  readonly handlers: readonly { readonly plugin: string; readonly order: number }[];
+}
+
+export interface RegistryView {
+  readonly name: string;
+  readonly contributors: readonly { readonly plugin: string; readonly items: number; readonly keys: readonly string[] }[];
+  readonly items: number;
+}
+
+export interface EventView {
+  readonly name: string;
+  readonly observers: readonly string[];
+}
+
+export interface CapabilityView {
+  readonly key: string;
+  /** Usually one; several when an enabled one replaces others that are off. */
+  readonly providers: readonly { readonly plugin: string; readonly state: string; readonly enabled: boolean }[];
+  readonly users: readonly string[];
+}
+
+export interface KernelView {
+  readonly hooks: readonly HookChain[];
+  readonly registries: readonly RegistryView[];
+  readonly events: readonly EventView[];
+  readonly capabilities: readonly CapabilityView[];
+}
+
+const byName = <T extends { readonly name: string }>(a: T, b: T) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+
+export const kernelOf = (plugins: readonly PluginStatus[]): KernelView => {
+  const hooks = new Map<string, { plugin: string; order: number }[]>();
+  const registries = new Map<string, { plugin: string; items: number; keys: readonly string[] }[]>();
+  const events = new Map<string, string[]>();
+  for (const plugin of plugins) {
+    for (const hook of plugin.hooks ?? []) hooks.set(hook.name, [...(hooks.get(hook.name) ?? []), { plugin: plugin.id, order: hook.order }]);
+    for (const registry of plugin.contributes ?? [])
+      registries.set(registry.name, [...(registries.get(registry.name) ?? []), { plugin: plugin.id, items: registry.items, keys: registry.keys ?? [] }]);
+    for (const event of plugin.observes ?? []) events.set(event, [...(events.get(event) ?? []), plugin.id]);
+  }
+  const keys = [...new Set(plugins.flatMap((plugin) => [...plugin.provides, ...plugin.requires]))].sort();
+  return {
+    hooks: [...hooks]
+      .map(([name, handlers]) => ({ name, handlers: handlers.sort((a, b) => a.order - b.order || (a.plugin < b.plugin ? -1 : 1)) }))
+      .sort(byName),
+    registries: [...registries]
+      .map(([name, contributors]) => ({ name, contributors, items: contributors.reduce((sum, contributor) => sum + contributor.items, 0) }))
+      .sort(byName),
+    events: [...events].map(([name, observers]) => ({ name, observers })).sort(byName),
+    capabilities: keys.map((key) => ({
+      key,
+      providers: plugins
+        .filter((plugin) => plugin.provides.includes(key))
+        .map((plugin) => ({ plugin: plugin.id, state: plugin.state, enabled: plugin.enabled })),
+      users: plugins.filter((plugin) => plugin.requires.includes(key)).map((plugin) => plugin.id),
+    })),
+  };
+};
