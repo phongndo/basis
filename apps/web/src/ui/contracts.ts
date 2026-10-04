@@ -343,7 +343,7 @@ export class Layout extends Context.Tag("lemma-ui/Layout")<Layout, LayoutService
  * item for it.
  */
 
-/** The app's own routes (`@lemma/contracts`). */
+/** The app's own routes (`@lemma/contracts`, shared with `lemma open`). */
 export { NewThreadRoute, SettingsRoute, ThreadRoute };
 /** The app's own routes: known while nothing shows them. */
 export const KnownRoutes: readonly AnyRoute[] = [NewThreadRoute, ThreadRoute, SettingsRoute];

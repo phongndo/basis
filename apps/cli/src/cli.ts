@@ -1,10 +1,14 @@
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { Effect } from "effect";
 import {
+  appUrl,
   branchOf,
   HostError,
   kernelOf,
+  NewThreadRoute,
+  ThreadRoute,
   parseConfigValue,
   LEDGER_SORTS,
   ledger,
@@ -109,6 +113,8 @@ Sessions and turns
     --follow                     Stream the turn: text, tool calls, results (NDJSON with --json)
     --cwd <dir>                  Directory for a new session
   cancel <id>                    Cancel the session's running turn
+  open [<id> [<view>]]           Open the web app at a session (a new thread without one) in the browser,
+                                 in a view such as trajectory; prints the address. --json: print it only
 
 Commands (what the web app's command palette runs; plugins add them)
   do                             List commands: id, title, category, and the plugin that added it
@@ -182,6 +188,27 @@ export const parseOffset = (text: string): number | undefined => {
   });
   return rest === "" && text !== "" ? total : undefined;
 };
+
+/** Opens `url` with the system's handler, without waiting for it. */
+const openBrowser = (url: string) =>
+  Effect.sync(() => {
+    const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    spawn(command, [url], { detached: true, stdio: "ignore" })
+      .on("error", () => {})
+      .unref();
+  });
+
+/** The web app's address for a session (checked to exist) or a new thread, with the token; opened unless `--json`. */
+const openCommand =
+  (sessionId: string | undefined, view: string | undefined, options: Options): Command =>
+  ({ discovery, rpc }) =>
+    Effect.gen(function* () {
+      if (sessionId !== undefined) yield* rpc.Session.Get({ sessionId });
+      const path = sessionId === undefined ? NewThreadRoute.href({}) : ThreadRoute.href({ id: sessionId, ...(view === undefined ? {} : { view }) });
+      const url = appUrl(discovery.url, path, discovery.token);
+      if (!options.json) yield* openBrowser(url);
+      return { json: { url }, text: url };
+    });
 
 const route = (positionals: readonly string[], options: Options, io: Io): Command | CliError => {
   const [command, sub, arg, ...rest] = positionals;
@@ -292,6 +319,8 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
       if (options.thinking !== undefined && !THINKING.has(options.thinking)) return usage(`--thinking must be one of ${[...THINKING].join(", ")}`);
       return runCommand(sub, positionals.slice(2));
     }
+    case "open":
+      return extra(3) ?? openCommand(sub, arg, options);
     case "cancel":
       if (sub === undefined) return usage("cancel needs a session id");
       return extra(2) ?? cancelCommand(sub);

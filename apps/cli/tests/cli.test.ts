@@ -222,6 +222,16 @@ describe("against a running host", () => {
     expect(JSON.parse((await invoke(["session", "list", "--all", "--json"], home)).out)).toBeInstanceOf(Array);
   });
 
+  test("open prints the web app's address for a session, with the token", async () => {
+    const session = JSON.parse((await invoke(["session", "new", "--json"], home)).out).id as string;
+    const { url } = JSON.parse((await invoke(["open", session, "trajectory", "--json"], home)).out) as { url: string };
+    const address = new URL(url);
+    expect(address.pathname).toBe(`/threads/${encodeURIComponent(session)}/trajectory`);
+    expect(address.searchParams.get("token")).toBeTruthy();
+    expect(new URL(JSON.parse((await invoke(["open", "--json"], home)).out).url).pathname).toBe("/");
+    expect(JSON.parse((await invoke(["open", "missing", "--json"], home)).err).error).toMatchObject({ code: "NotFound" });
+  });
+
   test("a domain error keeps the host's code", async () => {
     const result = await invoke(["session", "show", "missing", "--json"], home);
     expect(result.code).toBe(ExitCode.failed);

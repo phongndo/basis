@@ -66,8 +66,8 @@ customization that broke the page, including one that turned the settings off.
 
 The page's address names what it shows, so links, reloads, and back and
 forward return to it. The routes are declared in
-[`@lemma/contracts`](../../packages/contracts/src/addresses.ts), apart from
-any plugin:
+[`@lemma/contracts`](../../packages/contracts/src/addresses.ts), shared with
+`lemma open`:
 
 | Address                                 | Shows                                                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
