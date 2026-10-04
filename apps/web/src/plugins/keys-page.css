@@ -7,26 +7,6 @@
   padding-bottom: 64px;
 }
 
-.keys-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.keys-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  outline: none;
-}
-
-.keys-search .icon {
-  color: var(--text-3);
-}
-
 .shortcut-row .setting-control {
   flex-wrap: wrap;
   justify-content: flex-end;

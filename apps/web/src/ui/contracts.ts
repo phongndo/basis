@@ -618,6 +618,21 @@ export interface PopoverProps {
 /** A button that opens a menu of `menuitem`/`option` elements. */
 export const PopoverPart = definePart<PopoverProps>("popover");
 
+export interface SearchFieldProps {
+  readonly value: string;
+  readonly onInput: (value: string) => void;
+  readonly placeholder: string;
+  /** Its accessible name. */
+  readonly label: string;
+  /** Keys it does not handle itself: Escape with text in it clears it. */
+  readonly onKeyDown?: (event: KeyboardEvent) => void;
+  readonly ref?: (input: HTMLInputElement) => void;
+  /** The page's controls after the field: a filter menu, a count. */
+  readonly children?: JSX.Element;
+}
+/** A page's search (the settings sections'): an underlined field with an icon, and room for the page's controls. */
+export const SearchFieldPart = definePart<SearchFieldProps>("search-field");
+
 export interface ToggleProps {
   readonly label: string;
   readonly checked: boolean;

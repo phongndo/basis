@@ -34,7 +34,7 @@ import {
 import type { ClientService, PluginTab, PluginsService, ThreadsService, UiPluginsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
-import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchIcon, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
+import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchField, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
 import styles from "./plugins-page.css?inline";
 
 const SECTION = "plugins";
@@ -630,28 +630,9 @@ function PluginsInspector(props: { inspector: Inspector; filter: () => string; s
           </ul>
         </div>
       </Show>
-      <div class="inspector-bar">
-        <label class="inspector-filter">
-          <SearchIcon />
-          <input
-            type="search"
-            placeholder={`Filter: ${PLUGIN_FILTERS.slice(0, 4).join(" ")} …`}
-            aria-label="Filter plugins"
-            autocomplete="off"
-            spellcheck={false}
-            value={props.filter()}
-            onInput={(event) => props.setFilter(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && props.filter() !== "") {
-                event.preventDefault();
-                event.stopPropagation();
-                props.setFilter("");
-              }
-            }}
-          />
-        </label>
+      <SearchField value={props.filter()} onInput={props.setFilter} placeholder={`Filter: ${PLUGIN_FILTERS.slice(0, 4).join(" ")} …`} label="Filter plugins">
         <span class="muted small">{shown().length === entries().length ? `${entries().length} plugins` : `${shown().length} of ${entries().length}`}</span>
-      </div>
+      </SearchField>
       <div class="inspector-split">
         <div class="inspector-table" role="grid" aria-label="Plugins" tabindex="0" ref={table} onKeyDown={onKey}>
           <div class="inspector-row inspector-head" role="row">

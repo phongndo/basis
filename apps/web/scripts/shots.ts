@@ -51,7 +51,7 @@ try {
     await page.keyboard.press("ControlOrMeta+,");
     await page.waitForSelector(".settings");
     await shot(page, `${theme}-05-settings-general`);
-    for (const [index, section] of ["Appearance", "Providers", "Plugins", "Projects"].entries()) {
+    for (const [index, section] of ["Appearance", "Keyboard", "Providers", "Plugins", "Projects"].entries()) {
       await page.click(`.settings nav >> text=${section}`);
       await shot(page, `${theme}-${String(6 + index).padStart(2, "0")}-settings-${section.toLowerCase()}`);
     }

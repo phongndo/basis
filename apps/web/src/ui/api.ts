@@ -11,6 +11,7 @@ import { Markdown as DefaultMarkdown } from "../components/markdown.tsx";
 import { Popover as DefaultPopover } from "../components/popover.tsx";
 import { ProviderLogo as DefaultProviderLogo } from "../components/provider-logo.tsx";
 import { Segmented as DefaultSegmented, SettingRow as DefaultSettingRow } from "../components/setting-row.tsx";
+import { SearchField as DefaultSearchField } from "../components/search-field.tsx";
 import { Toggle as DefaultToggle } from "../components/toggle.tsx";
 import { copyText } from "../lib/clipboard.ts";
 import * as contracts from "./contracts.ts";
@@ -49,6 +50,7 @@ export const api = {
     Segmented: parts.Segmented,
     SettingRow: parts.SettingRow,
     Toggle: parts.Toggle,
+    SearchField: parts.SearchField,
   },
   /** Every part's proxy (icons by name included), and `partView` for a plugin's own parts. */
   parts,
@@ -66,6 +68,7 @@ export const api = {
     Segmented: DefaultSegmented,
     SettingRow: DefaultSettingRow,
     Toggle: DefaultToggle,
+    SearchField: DefaultSearchField,
   },
   copyText,
   /** For plugins written against the kernel directly. */

@@ -124,32 +124,6 @@
   margin-bottom: 10px;
 }
 
-.inspector-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.inspector-filter {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  color: var(--text-3);
-}
-
-.inspector-filter input {
-  flex: 1;
-  border: 0;
-  outline: none;
-  background: none;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-}
-
 /*
  * Both panes run to the bottom of the screen and scroll on their own, whatever is selected. The table is only
  * as wide as its columns need (room for the longest ids); the details, which wrap, take the rest.

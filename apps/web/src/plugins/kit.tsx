@@ -5,6 +5,7 @@ import { Markdown } from "../components/markdown.tsx";
 import { Popover } from "../components/popover.tsx";
 import { ProviderLogo } from "../components/provider-logo.tsx";
 import { Segmented, SettingRow } from "../components/setting-row.tsx";
+import { SearchField } from "../components/search-field.tsx";
 import { Toggle } from "../components/toggle.tsx";
 import {
   ConfigFormPart,
@@ -16,6 +17,7 @@ import {
   SegmentedPart,
   SettingRowPart,
   Slots,
+  SearchFieldPart,
   TogglePart,
 } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
@@ -41,6 +43,7 @@ export default defineUiPlugin({
     add(DialogPart, Dialog);
     add(PopoverPart, Popover);
     add(TogglePart, Toggle);
+    add(SearchFieldPart, SearchField);
     add(SettingRowPart, SettingRow);
     add(SegmentedPart, Segmented);
     add(ConfigFormPart, ConfigForm);

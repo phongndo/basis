@@ -6,7 +6,7 @@ import { Actions, Notify, Settings, SettingsGroups, SettingsSections, Slots, UiP
 import type { Action, NotifyService, UiPluginsService } from "../ui/contracts.ts";
 import type { SlotItem, SlotsService } from "../ui/slots.ts";
 import { defineUiPlugin } from "../ui/define.ts";
-import { CommandIcon, PlusIcon, RefreshIcon, SearchIcon, Segmented, SettingRow, XIcon } from "../ui/parts.tsx";
+import { CommandIcon, PlusIcon, RefreshIcon, SearchField, Segmented, SettingRow, XIcon } from "../ui/parts.tsx";
 import styles from "./keys-page.css?inline";
 
 const SECTION = "keyboard";
@@ -187,16 +187,7 @@ function KeysBody(props: { deps: Deps }) {
   });
   return (
     <div class="keys-page">
-      <label class="field keys-search">
-        <SearchIcon />
-        <input
-          type="search"
-          placeholder="Search shortcuts by name or keys"
-          aria-label="Search shortcuts"
-          value={query()}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
-      </label>
+      <SearchField value={query()} onInput={setQuery} placeholder="Search shortcuts by name or keys" label="Search shortcuts" />
       <Show when={!keymapOn()}>
         <p class="callout">The keymap plugin is off, so shortcuts do nothing until it is back on (Settings › Plugins).</p>
       </Show>

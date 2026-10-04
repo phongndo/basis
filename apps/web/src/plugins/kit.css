@@ -450,4 +450,46 @@
     transform: translateX(14px);
     background: var(--accent-fg);
   }
+
+  /* A page's search: underlined, the icon and field, then the page's controls. */
+  .search-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  .search-field:focus-within {
+    border-color: var(--text-3);
+  }
+
+  .search-field-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-3);
+  }
+
+  .search-field-input input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .search-field-input input::placeholder {
+    color: var(--text-3);
+  }
+
+  .search-field-input input::-webkit-search-cancel-button {
+    display: none;
+  }
 }

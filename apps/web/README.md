@@ -88,7 +88,7 @@ plugins use nothing else.
   when the plugin that added it stops.
 - **Parts** are the pieces plugins draw with, each a region-like slot: the
   shared ones (`markdown`, `dialog`, `popover`, `toggle`, `setting-row`,
-  `segmented`, `config-form`, `provider-logo`, and `icon` for every icon, all
+  `segmented`, `config-form`, `provider-logo`, `search-field` (a page's search), and `icon` for every icon, all
   from the `kit` plugin) and a view's own (`chat.user`, `chat.thinking`,
   `chat.tool`, `chat.work`, `chat.working`, `chat.turn-footer`,
   `sidebar.row`, `providers.row`). Replace one

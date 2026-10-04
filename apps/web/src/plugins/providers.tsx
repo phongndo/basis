@@ -32,7 +32,7 @@ import {
 import type { InteractionsService, ModelsService, ProviderRowProps } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { DEFAULT_PART_ORDER } from "../ui/slots.ts";
-import { CheckIcon, ExternalIcon, FilterIcon, KeyIcon, PlusIcon, Popover, ProviderLogo, ProviderRowView, SearchIcon, Spinner } from "../ui/parts.tsx";
+import { CheckIcon, ExternalIcon, FilterIcon, KeyIcon, PlusIcon, Popover, ProviderLogo, ProviderRowView, SearchField, Spinner } from "../ui/parts.tsx";
 import styles from "./providers.css?inline";
 
 const SECTION = "providers";
@@ -623,27 +623,18 @@ export default defineUiPlugin({
           <Show when={welcome()}>
             <p class="settings-intro">Connect a provider to start chatting: sign in with a subscription, or paste an API key.</p>
           </Show>
-          <div class="providers-search">
-            <label class="providers-search-field">
-              <SearchIcon />
-              <input
-                ref={input}
-                type="search"
-                placeholder={`Search ${models.providers().length} providers`}
-                aria-label="Search providers"
-                value={query()}
-                onInput={(event) => setQuery(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    connectFirst();
-                  } else if (event.key === "Escape" && query() !== "") {
-                    event.stopPropagation();
-                    setQuery("");
-                  }
-                }}
-              />
-            </label>
+          <SearchField
+            ref={(element) => (input = element)}
+            value={query()}
+            onInput={setQuery}
+            placeholder={`Search ${models.providers().length} providers`}
+            label="Search providers"
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              connectFirst();
+            }}
+          >
             {/* Which ways in to list. */}
             <Popover
               label={filter() === "all" ? "Filter providers" : `Showing: ${FILTERS.find((option) => option.value === filter())!.label}`}
@@ -674,7 +665,7 @@ export default defineUiPlugin({
                 </For>
               )}
             </Popover>
-          </div>
+          </SearchField>
         </div>
       );
     }
