@@ -1,6 +1,7 @@
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import type { Context } from "effect";
-import { HostError, HostRpcs, InteractionOrigin } from "@lemma/contracts";
+import type { Registries } from "@lemma/core";
+import { HostError, HostRpcs, Inspectors, InteractionOrigin } from "@lemma/contracts";
 import type { Agent, Commands, ConfigureReport, HostControl, Llm, Paths, ReloadResult, Sessions, Workspace } from "@lemma/contracts";
 import { toHostError, toPluginStatus } from "./errors.ts";
 import type { Hub } from "./hub.ts";
@@ -18,6 +19,8 @@ export interface HandlerServices {
   readonly control: Context.Tag.Service<HostControl>;
   readonly workspace: Context.Tag.Service<Workspace>;
   readonly commands: Context.Tag.Service<Commands>;
+  /** The core's registries: host plugins' `Inspectors` are read from them. */
+  readonly registries: Context.Tag.Service<Registries>;
   /** Runs `Llm.login` in the plugin's scope; see `makeLogins`. */
   readonly login: ReturnType<typeof makeLogins>;
 }
@@ -25,7 +28,7 @@ export interface HandlerServices {
 const cwdOption = (cwd: string | undefined) => (cwd === undefined ? undefined : { cwd });
 
 /** Every RPC maps to one capability call; only the error boundary is transport-specific. */
-export const makeHandlers = ({ version, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, login }: HandlerServices) =>
+export const makeHandlers = ({ version, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, registries, login }: HandlerServices) =>
   HostRpcs.of({
     "Session.List": ({ cwd }) => sessions.list(cwdOption(cwd)).pipe(Effect.mapError(toHostError)),
     "Session.Get": ({ sessionId }) => sessions.get(sessionId).pipe(Effect.mapError(toHostError)),
@@ -82,6 +85,27 @@ export const makeHandlers = ({ version, hub, interactions, paths, sessions, agen
     "Host.Info": () => Effect.map(control.composition, (composition) => ({ version, cwd: paths.cwd, home: paths.home, composition })),
     "Host.Events": () => hub.events,
     "Host.Plugins": () => Effect.map(control.plugins, (plugins) => plugins.map(toPluginStatus)),
+    "Host.Inspectors": () =>
+      Effect.map(registries.items(Inspectors), (items) =>
+        items.map(({ item, pluginId }) => ({
+          id: item.id,
+          title: item.title,
+          ...(item.description === undefined ? {} : { description: item.description }),
+          source: pluginId,
+        })),
+      ),
+    "Host.Inspect": ({ id }) =>
+      Effect.flatMap(registries.items(Inspectors), (items) => {
+        const found = items.find((contribution) => contribution.item.id === id)?.item;
+        if (found === undefined) return Effect.fail(new HostError({ code: "NotFound", subject: id, message: `No inspector "${id}"` }));
+        // An inspector that fails or dies says so; it never takes the transport with it.
+        return found.snapshot.pipe(
+          Effect.catchAllCause((cause) => {
+            const error = Cause.squash(cause);
+            return Effect.fail(new HostError({ code: "Failed", subject: id, message: error instanceof Error ? error.message : String(error) }));
+          }),
+        );
+      }),
     "Host.RestartPlugin": ({ pluginId, force }) => control.restart(pluginId, force === undefined ? undefined : { force }).pipe(Effect.mapError(toHostError)),
     "Host.Reload": () => control.reload.pipe(Effect.map(toReloadResult), Effect.mapError(toHostError)),
     "Host.Configure": ({ plugins, scope }) =>

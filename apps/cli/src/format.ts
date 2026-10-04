@@ -1,6 +1,7 @@
-import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL } from "@lemma/contracts";
+import { recordDuration, recordName, recordStatus, RECORD_KIND_LABEL, tablesOf } from "@lemma/contracts";
 import type {
   CommandInfo,
+  InspectorInfo,
   KernelView,
   DirectoryListing,
   GitBranch,
@@ -594,3 +595,23 @@ export const formatCapabilities = (kernel: KernelView): string =>
       capability.users.join(", "),
     ]),
   ]);
+
+export const formatInspectors = (inspectors: readonly InspectorInfo[]): string =>
+  inspectors.length === 0
+    ? "No inspectors: no running plugin adds one."
+    : pad([
+        ["inspector", "title", "from", "what it shows"],
+        ...inspectors.map((inspector) => [inspector.id, inspector.title, inspector.source, inspector.description ?? ""]),
+      ]);
+
+/** An inspector's snapshot: as tables when it has their shape, else as JSON. */
+export const formatSnapshot = (value: unknown): string => {
+  const tables = tablesOf(value);
+  if (tables === undefined) return JSON.stringify(value, undefined, 2);
+  return tables
+    .map((table) => {
+      const body = table.rows.length === 0 ? "  (none)" : pad([[...table.columns], ...table.rows.map((row) => [...row])]);
+      return table.title === undefined ? body : `${table.title}\n${body}`;
+    })
+    .join("\n\n");
+};

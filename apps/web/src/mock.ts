@@ -28,6 +28,27 @@ import type {
 
 const HOME = "/home/dev";
 const CWD = `${HOME}/code/lemma`;
+/** What the mock host's plugins let you look into, as a real host's `Inspectors` would. */
+const MOCK_INSPECTORS = [
+  {
+    id: "tools.registered",
+    title: "Tools",
+    description: "Every tool the model can call, the plugin that registered it, and the guards that check calls",
+    source: "tools",
+    snapshot: () => ({
+      tools: ["read", "write", "edit", "bash"].map((name) => ({ name, plugin: name, description: `The ${name} tool` })),
+      guards: [],
+    }),
+  },
+  {
+    id: "agent.turns",
+    title: "Running turns",
+    description: "Each session with a turn running now, and how long it has run",
+    source: "agent",
+    snapshot: () => [],
+  },
+];
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let idSeq = 0;
 const id = (prefix: string) => `${prefix}${(++idSeq).toString(36)}`;
@@ -905,6 +926,12 @@ export const createMockHost = (): Host => {
         composition: { id: "c0ffee1234abcd", plugins: plugins.map((p) => ({ id: p.id, ...(p.version === undefined ? {} : { version: p.version }) })) },
       }),
       plugins: async () => plugins.slice(),
+      inspectors: async () => MOCK_INSPECTORS.map(({ snapshot: _snapshot, ...info }) => info),
+      inspect: async (id) => {
+        const found = MOCK_INSPECTORS.find((inspector) => inspector.id === id);
+        if (found === undefined) throw new HostError({ code: "NotFound", subject: id, message: `No inspector "${id}"` });
+        return found.snapshot();
+      },
       restartPlugin: async (pluginId) => {
         await sleep(600);
         const i = plugins.findIndex((p) => p.id === pluginId);

@@ -67,3 +67,8 @@ with an error result (so the next request stays valid), then `step-end` and
 - **Errors.** LLM failures are recorded in the log (`attempt`, `turn-end` with
   `error`) and `prompt` resolves; `Session` and `Hook` failures also fail `prompt`.
   A cancelled turn resolves normally.
+
+## Inspector
+
+`agent.turns` (in `Inspectors`) lists the sessions with a turn running
+now, since when, and whether it is being cancelled.

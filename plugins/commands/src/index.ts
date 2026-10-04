@@ -1,7 +1,7 @@
 import { Cause, Effect, Layer, Stream } from "effect";
 import type { Context } from "effect";
 import { definePlugin, Events, PluginContext, Registries, Registry } from "@lemma/core";
-import { CommandError, Commands, CommandsChanged, InteractionError } from "@lemma/contracts";
+import { CommandError, Commands, CommandsChanged, Inspectors, InteractionError } from "@lemma/contracts";
 import type { Command, CommandInfo } from "@lemma/contracts";
 
 type Service = Context.Tag.Service<typeof Commands>;
@@ -83,6 +83,18 @@ export const makeRegistry: Effect.Effect<Service, never, Events | PluginContext 
         return result ?? {};
       }),
     );
+
+  // What the devtools and `lemma inspect` show of it. Only a view: failing to add it never stops the commands.
+  yield* owner
+    .add(Inspectors, {
+      id: "commands.registered",
+      title: "Commands",
+      description: "Every command clients can run, by category, and the plugin that added it",
+      snapshot: Effect.map(snapshot, (commands) =>
+        commands.map(({ id, title, category, source }) => ({ id, title, category: category ?? "", plugin: source })),
+      ),
+    })
+    .pipe(Effect.ignore);
 
   return { register, list: snapshot, run } satisfies Service;
 });

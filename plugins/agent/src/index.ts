@@ -1,6 +1,6 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect";
 import { definePlugin, Events, Hooks, PluginContext } from "@lemma/core";
-import { Agent, AgentError, HostControl, InteractionOrigin, Llm, Sessions, Tools } from "@lemma/contracts";
+import { Agent, AgentError, HostControl, Inspectors, InteractionOrigin, Llm, Sessions, Tools } from "@lemma/contracts";
 import type { ModelInfo, PromptContent, TurnOptions } from "@lemma/contracts";
 import { newId, runTurn } from "./turn.ts";
 
@@ -22,6 +22,8 @@ export type AgentConfig = typeof AgentConfig.Type;
 
 interface Running {
   readonly controller: AbortController;
+  /** Epoch ms the turn started, for the inspector. */
+  readonly startedAt: number;
   /** Set right after the fork; `cancel` waits for it so an early cancel cannot miss the turn. */
   readonly fiber: Deferred.Deferred<Fiber.RuntimeFiber<void, AgentError>>;
 }
@@ -101,7 +103,7 @@ export default definePlugin({
             const fiber = yield* Effect.uninterruptible(
               Effect.gen(function* () {
                 const slot = yield* Deferred.make<Fiber.RuntimeFiber<void, AgentError>>();
-                const entry: Running = { controller: new AbortController(), fiber: slot };
+                const entry: Running = { controller: new AbortController(), startedAt: Date.now(), fiber: slot };
                 if (running.has(sessionId)) {
                   return yield* new AgentError({ sessionId, reason: "Busy", message: `Session ${sessionId} already has a turn in progress` });
                 }
@@ -135,6 +137,23 @@ export default definePlugin({
             entry.controller.abort();
             yield* Fiber.interrupt(yield* Deferred.await(entry.fiber));
           });
+
+        // What the devtools and `lemma inspect` show of it. Only a view: failing to add it never stops the agent.
+        yield* owner
+          .add(Inspectors, {
+            id: "agent.turns",
+            title: "Running turns",
+            description: "Each session with a turn running now, and how long it has run",
+            snapshot: Effect.sync(() =>
+              [...running].map(([sessionId, entry]) => ({
+                session: sessionId,
+                started: new Date(entry.startedAt).toISOString(),
+                runningMs: Date.now() - entry.startedAt,
+                cancelling: entry.controller.signal.aborted,
+              })),
+            ),
+          })
+          .pipe(Effect.ignore);
 
         return {
           prompt,

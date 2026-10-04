@@ -42,6 +42,8 @@ import {
   formatRegistries,
   formatEvents,
   formatCapabilities,
+  formatInspectors,
+  formatSnapshot,
 } from "./format.ts";
 import {
   answerCommand,
@@ -142,6 +144,8 @@ Inspect (the web app's Trajectory view)
   kernel hooks                   Each hook's chain, in the order its handlers run
   kernel registries              Each registry and what each plugin contributes to it
   kernel events                  Each event and who observes it
+  inspectors                     What host plugins let you look into (tools, running turns, commands…)
+  inspectors <id>                One inspector's snapshot, as tables
   inspect <id>                   Turns and steps: model, history, usage, timing, tools
   inspect <id> --records         Every record (prompt, system change, model call, tool run) as a table
     --filter <query>             is:error, is:running, kind:model, tool:bash, turn:2, req:5, text,
@@ -328,6 +332,10 @@ const route = (positionals: readonly string[], options: Options, io: Io): Comman
           }))
       );
     }
+    case "inspectors":
+      if (sub === undefined)
+        return extra(1) ?? (({ rpc }) => Effect.map(rpc.Host.Inspectors(), (inspectors) => ({ json: inspectors, text: formatInspectors(inspectors) })));
+      return extra(2) ?? (({ rpc }) => Effect.map(rpc.Host.Inspect({ id: sub }), (snapshot) => ({ json: snapshot, text: formatSnapshot(snapshot) })));
     case "inspect":
       if (sub === undefined) return usage("inspect needs a session id");
       return extra(2) ?? inspectCommand(sub, options);

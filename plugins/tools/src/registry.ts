@@ -1,7 +1,7 @@
 import { Cause, Effect, ParseResult, Runtime, Schema } from "effect";
 import type { Context } from "effect";
 import { Events, Hooks, PluginContext, Registries, Registry } from "@lemma/core";
-import { ToolError, ToolExecuteHook, ToolExecuted, ToolOutput, ToolResult } from "@lemma/contracts";
+import { Inspectors, ToolError, ToolExecuteHook, ToolExecuted, ToolOutput, ToolResult } from "@lemma/contracts";
 import type { Guard, Tool, ToolContext, ToolContribution, ToolInvocation, Tools } from "@lemma/contracts";
 import { capResult } from "./content.ts";
 import { toolParameters } from "./schema.ts";
@@ -231,6 +231,19 @@ export const makeRegistry = (options: RegistryOptions): Effect.Effect<Service, n
           return settled;
         }),
       );
+
+    // What the devtools and `lemma inspect` show of it. Only a view: failing to add it never stops the tools.
+    yield* owner
+      .add(Inspectors, {
+        id: "tools.registered",
+        title: "Tools",
+        description: "Every tool the model can call, the plugin that registered it, and the guards that check calls",
+        snapshot: Effect.map(Effect.all([entries, registries.items(Guards)]), ([tools, guards]) => ({
+          tools: tools.map(({ item, pluginId }) => ({ name: item.tool.name, plugin: pluginId, description: item.spec.description })),
+          guards: guards.map(({ item, pluginId }) => ({ tool: item.name, plugin: pluginId })),
+        })),
+      })
+      .pipe(Effect.ignore);
 
     return { register, guard, list, execute } satisfies Service;
   });

@@ -4,6 +4,7 @@ import { PromptContent, TurnOptions } from "./agent.ts";
 import { CommandInfo, CommandResult } from "./commands.ts";
 import { ConfigField, ConfigValues } from "./config.ts";
 import { CompositionInfo, ConfigScope, FaultRecord, HookUse, NoticePayload, PluginChange, PluginSource, RegistryUse, UiComposition } from "./host.ts";
+import { InspectorInfo } from "./inspectors.ts";
 import { InteractionAnswer, InteractionRequest } from "./interaction.ts";
 import { AuthType, CustomProviderSpec, ModelInfo, ProviderInfo, StreamEvent, Usage } from "./llm.ts";
 import { SessionEvent, SessionInfo } from "./sessions.ts";
@@ -156,6 +157,10 @@ export class HostRpcs extends RpcGroup.make(
   Rpc.make("Host.Events", { success: HostEvent, stream: true }),
   /** Every known plugin, enabled or not. */
   Rpc.make("Host.Plugins", { success: Schema.Array(PluginStatus) }),
+  /** What host plugins let you look into (see `Inspectors`). */
+  Rpc.make("Host.Inspectors", { success: Schema.Array(InspectorInfo) }),
+  /** One inspector's snapshot: plain JSON. */
+  Rpc.make("Host.Inspect", { payload: { id: Schema.String }, success: Schema.Unknown, error: HostError }),
   /** A failed or halted plugin and its dependents; `force` also replaces a running one. */
   Rpc.make("Host.RestartPlugin", { payload: { pluginId: Schema.String, force: Schema.optional(Schema.Boolean) }, error: HostError }),
   /** Re-read config files and apply the composition; diagnostics come back as the error message. */

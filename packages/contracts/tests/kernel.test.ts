@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { kernelOf } from "../src/kernel.ts";
+import { kernelOf, tablesOf } from "../src/kernel.ts";
 import type { PluginStatus } from "../src/rpc.ts";
 
 const plugin = (id: string, fields: Partial<PluginStatus> = {}): PluginStatus => ({
@@ -48,5 +48,34 @@ describe("kernelOf", () => {
       { key: "lemma/Llm", providers: [{ plugin: "llm-off", state: "disabled", enabled: false }], users: ["agent"] },
       { key: "lemma/Nothing", providers: [], users: ["orphan"] },
     ]);
+  });
+});
+
+describe("tablesOf", () => {
+  test("an array of objects is a table; an object of such arrays is a table per key", () => {
+    expect(
+      tablesOf([
+        { a: 1, b: "x" },
+        { a: 2, c: true },
+      ]),
+    ).toEqual([
+      {
+        columns: ["a", "b", "c"],
+        rows: [
+          ["1", "x", ""],
+          ["2", "", "true"],
+        ],
+      },
+    ]);
+    expect(tablesOf({ tools: [{ name: "read" }], guards: [] })).toEqual([
+      { title: "tools", columns: ["name"], rows: [["read"]] },
+      { title: "guards", columns: [], rows: [] },
+    ]);
+  });
+
+  test("anything else is not tables, and shows as JSON", () => {
+    expect(tablesOf({ count: 3 })).toBeUndefined();
+    expect(tablesOf([1, 2])).toBeUndefined();
+    expect(tablesOf("text")).toBeUndefined();
   });
 });

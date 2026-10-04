@@ -29,6 +29,8 @@ No config.
 
 ## Behavior
 
+- **Inspector.** `commands.registered` (in `Inspectors`) lists every command with its
+  category and the plugin that added it.
 - `register` records the registering plugin's id as `source` and removes the command when that plugin's scope closes. A duplicate id fails `Failed` and names the plugin that registered it first. Mark contributors `exclusive` so a reload unregisters the old command before the new one registers.
 - Every registration and removal publishes `CommandsChanged` with the full list. The transport forwards it to clients as `commands-changed`.
 - `run` passes the caller's context (`cwd`, and `sessionId` when the client has a session open). Failures and defects become `CommandError` with reason `Failed` and the original message. A dismissed question becomes `Cancelled`, which clients treat as a quiet stop rather than an error. An unknown id is `NotFound`. Interruption, such as a dropped client, interrupts the command.

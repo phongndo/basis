@@ -1,8 +1,8 @@
 import { Chunk, Effect, Fiber, Layer, Schema, Scope, Stream } from "effect";
 import { describe, expect, it } from "vitest";
-import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
+import { definePlugin, Events, makeCore, PluginContext, Registries } from "@lemma/core";
 import type { Plugin } from "@lemma/core";
-import { ToolExecuted, ToolExecuteHook, ToolInvocation, ToolOutput, ToolResult, Tools } from "@lemma/contracts";
+import { Inspectors, ToolExecuted, ToolExecuteHook, ToolInvocation, ToolOutput, ToolResult, Tools } from "@lemma/contracts";
 import type { Guard, Tool } from "@lemma/contracts";
 import tools, { toolParameters } from "../src/index.ts";
 import { outputBatcher } from "../src/registry.ts";
@@ -44,6 +44,21 @@ const run = <A, E>(plugins: readonly Plugin[], body: Effect.Effect<A, E, Tools |
   );
 
 describe("registry", () => {
+  it("shows its tools and guards to the devtools and `lemma inspect`, each with the plugin that added it", async () => {
+    const snapshot = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const core = yield* makeCore([tools, contributor("mine", [echo], [["echo", () => Effect.succeed({ _tag: "allow" as const })]])]);
+          const inspectors = yield* core.run(Effect.flatMap(Registries, (registries) => registries.items(Inspectors)));
+          const found = inspectors.find((contribution) => contribution.item.id === "tools.registered");
+          expect(found?.pluginId).toBe("tools");
+          return yield* found!.item.snapshot;
+        }),
+      ),
+    );
+    expect(snapshot).toEqual({ tools: [{ name: "echo", plugin: "mine", description: "Echoes text." }], guards: [{ tool: "echo", plugin: "mine" }] });
+  });
+
   it("lists tools by name with the registering plugin as source and clean schemas", async () => {
     const Point = Schema.Struct({ x: Schema.Number }).annotations({ identifier: "Point" });
     const shapes: Tool<any> = {

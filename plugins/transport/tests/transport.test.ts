@@ -10,10 +10,10 @@ import type { Mailbox } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest, Socket } from "@effect/platform";
 import { RpcClient, RpcSerialization } from "@effect/rpc";
 import type { RpcClientError, RpcGroup } from "@effect/rpc";
-import { CommandsChanged, HostError, HostRpcs, Interaction, InteractionError, Notice } from "@lemma/contracts";
+import { CommandsChanged, HostError, HostRpcs, Inspectors, Interaction, InteractionError, Notice } from "@lemma/contracts";
 import type { HostEvent } from "@lemma/contracts";
-import { Events, makeCore } from "@lemma/core";
-import type { Core } from "@lemma/core";
+import { definePlugin, Events, makeCore, PluginContext } from "@lemma/core";
+import type { Core, Plugin } from "@lemma/core";
 import commands from "@lemma/plugin-commands";
 import transport, { readDiscovery } from "../src/index.ts";
 import { fakeAgent, fakeGreeter, fakeHostControl, fakeInteraction, fakeLlm, fakePaths, fakeSessions, fakeWorkspace } from "./fakes.ts";
@@ -64,6 +64,8 @@ const withHost = <A, E>(
   config: Record<string, unknown> = {},
   /** A caller-owned home outlives the host, so tests can inspect it afterwards. */
   owned?: string,
+  /** More plugins to run beside the fakes. */
+  extra: readonly Plugin[] = [],
 ): Promise<A> =>
   Effect.runPromise(
     Effect.scoped(
@@ -72,7 +74,19 @@ const withHost = <A, E>(
         if (owned === undefined) yield* Effect.addFinalizer(() => Effect.promise(() => rm(home, { recursive: true, force: true })));
         const holder: ControlHolder = { restarted: [], off: {}, ui: { plugins: {}, enabledIn: {}, configIn: {}, files: [] } };
         const core = yield* makeCore(
-          [transport, fakeAgent, fakeSessions, fakeLlm, fakeInteraction, fakeHostControl(holder), fakePaths(home), fakeWorkspace, commands, fakeGreeter],
+          [
+            transport,
+            fakeAgent,
+            fakeSessions,
+            fakeLlm,
+            fakeInteraction,
+            fakeHostControl(holder),
+            fakePaths(home),
+            fakeWorkspace,
+            commands,
+            fakeGreeter,
+            ...extra,
+          ],
           {
             configs: { transport: { port: 0, interactionGraceMs: 100, ...config } },
           },
@@ -293,6 +307,45 @@ describe("transport", () => {
       ),
     30_000,
   );
+
+  test("lists host plugins' inspectors and serves their snapshots; a failing one is an error, not a crash", () => {
+    // Adds inspectors without requiring anything: a registry contribution, as any plugin may make.
+    const inspected = definePlugin({
+      id: "inspected",
+      layer: Layer.scopedDiscard(
+        Effect.flatMap(PluginContext, (owner) =>
+          Effect.all([
+            owner.add(Inspectors, { id: "inspected.state", title: "State", snapshot: Effect.succeed([{ key: "a", value: 1 }]) }),
+            owner.add(Inspectors, { id: "inspected.broken", title: "Broken", snapshot: Effect.die(new Error("no state here")) }),
+          ]),
+        ).pipe(Effect.orDie),
+      ),
+    });
+    return withHost(
+      (host) =>
+        Effect.gen(function* () {
+          const client = yield* host.connect("websocket");
+          const listed = yield* client.Host.Inspectors();
+          expect(listed).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ id: "commands.registered", title: "Commands", source: "commands" }),
+              { id: "inspected.state", title: "State", source: "inspected" },
+            ]),
+          );
+          expect(yield* client.Host.Inspect({ id: "inspected.state" })).toEqual([{ key: "a", value: 1 }]);
+          expect(yield* client.Host.Inspect({ id: "commands.registered" })).toEqual(
+            expect.arrayContaining([expect.objectContaining({ id: "test.greet", plugin: "greeter" })]),
+          );
+          expect(hostError(yield* Effect.exit(client.Host.Inspect({ id: "inspected.broken" })))).toMatchObject({ code: "Failed", message: "no state here" });
+          expect(hostError(yield* Effect.exit(client.Host.Inspect({ id: "nothing" })))).toMatchObject({ code: "NotFound" });
+          // The transport is still serving.
+          expect((yield* client.Host.Info()).version).toBeDefined();
+        }),
+      {},
+      undefined,
+      [inspected],
+    );
+  }, 30_000);
 
   test(
     "serves the same surface over streaming HTTP",

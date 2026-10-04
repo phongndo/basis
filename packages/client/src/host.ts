@@ -14,6 +14,7 @@ import type {
   InteractionRequest,
   ModelInfo,
   PluginChange,
+  InspectorInfo,
   PluginStatus,
   PromptContent,
   ProviderInfo,
@@ -99,6 +100,9 @@ export interface Host {
     readonly info: () => Promise<HostInfo>;
     /** Every known plugin, enabled or not. */
     readonly plugins: () => Promise<readonly PluginStatus[]>;
+    /** What host plugins let you look into, and one's snapshot (plain JSON). */
+    readonly inspectors: () => Promise<readonly InspectorInfo[]>;
+    readonly inspect: (id: string) => Promise<unknown>;
     /** A failed or halted plugin and its dependents; `force` also replaces a running one. */
     readonly restartPlugin: (pluginId: string, options?: { force?: boolean }) => Promise<void>;
     readonly reload: () => Promise<ReloadResult>;
@@ -267,6 +271,8 @@ export const connect = async (options: ConnectOptions): Promise<Host> => {
     host: {
       info: () => call(rpc.Host.Info()),
       plugins: () => call(rpc.Host.Plugins()),
+      inspectors: () => call(rpc.Host.Inspectors()),
+      inspect: (id) => call(rpc.Host.Inspect({ id })),
       restartPlugin: (pluginId, options) => unit(rpc.Host.RestartPlugin(options?.force === undefined ? { pluginId } : { pluginId, force: options.force })),
       reload: () => call(rpc.Host.Reload()),
       configure: (plugins, options) => call(rpc.Host.Configure(options?.scope === undefined ? { plugins } : { plugins, scope: options.scope })),

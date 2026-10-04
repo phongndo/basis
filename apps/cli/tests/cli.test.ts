@@ -317,6 +317,17 @@ describe("against a running host", () => {
     expect((await invoke(["kernel", "toString"], home)).code).toBe(ExitCode.usage);
   });
 
+  test("inspectors lists what host plugins let you look into, and prints one as tables", async () => {
+    const listed = await invoke(["inspectors"], home);
+    expect(listed.out).toMatch(/tools\.registered\s+Tools\s+tools/);
+    expect(listed.out).toMatch(/agent\.turns\s+Running turns\s+agent/);
+    const tools = await invoke(["inspectors", "tools.registered"], home);
+    expect(tools.out).toMatch(/^tools\nname\s+plugin\s+description\n/);
+    expect(tools.out).toMatch(/\nbash\s+bash\s+/);
+    expect(JSON.parse((await invoke(["inspectors", "agent.turns", "--json"], home)).out)).toEqual([]);
+    expect(JSON.parse((await invoke(["inspectors", "nope", "--json"], home)).err).error.code).toBe("NotFound");
+  });
+
   test("plugins config shows a plugin's fields and sets or unsets one in the file that sets its config", async () => {
     const userConfig = join(home, "config.jsonc");
     const original = await readFile(userConfig, "utf8");

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Effect, Layer, Schema } from "effect";
 import { Agent, Commands, HostControl, HostRpcs, InteractionHook, Llm, Notice, Paths, secret, Sessions, Workspace } from "@lemma/contracts";
-import { definePlugin, Events, PluginContext } from "@lemma/core";
+import { definePlugin, Events, PluginContext, Registries } from "@lemma/core";
 import { makeHandlers } from "./handlers.ts";
 import { makeHub } from "./hub.ts";
 import type { Hub } from "./hub.ts";
@@ -63,6 +63,7 @@ export default definePlugin({
         const owner = yield* PluginContext;
         const events = yield* Events;
         const [paths, sessions, agent, llm, control, workspace, commands] = yield* Effect.all([Paths, Sessions, Agent, Llm, HostControl, Workspace, Commands]);
+        const registries = yield* Registries;
 
         let hub: Hub | undefined;
         const interactions = makeInteractions(() => hub!, config.interactionGraceMs);
@@ -72,7 +73,7 @@ export default definePlugin({
         const token = config.token ?? generatedToken;
         const login = makeLogins(llm, yield* Effect.scope);
         const handlers = HostRpcs.toLayer(
-          makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, login }),
+          makeHandlers({ version: VERSION, hub, interactions, paths, sessions, agent, llm, control, workspace, commands, registries, login }),
         );
         const address = yield* startServer(
           { host: config.host, port: config.port, token, version: VERSION, staticDir: config.staticDir, ui: control.ui },

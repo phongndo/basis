@@ -10,13 +10,15 @@ nix develop -c pnpm lemma status
 nix develop -c pnpm lemma run new "fix the failing test" --follow
 nix develop -c pnpm lemma inspect <session> --filter "is:error" --json
 nix develop -c pnpm lemma kernel hooks                  # each hook's chain, in run order
+nix develop -c pnpm lemma inspectors tools.registered   # what a host plugin lets you look into
 ```
 
 The CLI and the web app share their logic through `@lemma/contracts`: the
 trajectory projection, the ledger of records, the filter language, sorting,
 time ranges, and prompt diffs are one implementation, so the two show the same
 records and accept the same queries. `lemma kernel` and the devtools' kernel
-panels are one view too (`kernelOf`).
+panels are one view too (`kernelOf`), as are an inspector's tables
+(`tablesOf`).
 
 ## Behavior
 

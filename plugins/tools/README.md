@@ -29,6 +29,9 @@ const greet = definePlugin({
 
 ## Behavior
 
+- **Inspector.** `tools.registered` (in `Inspectors`) lists every tool with the plugin
+  that registered it, and the guards: the devtools' Inspectors panel and
+  `lemma inspectors` show it.
 - `register` records the caller's `PluginContext` id as the tool's `source` and
   unregisters when the caller's scope closes. A duplicate name fails with
   `InvalidInput`, so contributors should be `exclusive` to reload cleanly.

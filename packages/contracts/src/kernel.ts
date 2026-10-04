@@ -70,3 +70,40 @@ export const kernelOf = (plugins: readonly PluginStatus[]): KernelView => {
     })),
   };
 };
+
+/** A table: column names and rows of text cells. */
+export interface Table {
+  readonly title?: string;
+  readonly columns: readonly string[];
+  readonly rows: readonly (readonly string[])[];
+}
+
+const cell = (value: unknown): string => (value === undefined || value === null ? "" : typeof value === "string" ? value : JSON.stringify(value));
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const tableOf = (rows: readonly unknown[], title?: string): Table | undefined => {
+  if (!rows.every(isRecord)) return undefined;
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return { ...(title === undefined ? {} : { title }), columns, rows: rows.map((row) => columns.map((column) => cell(row[column]))) };
+};
+
+/**
+ * An inspector's snapshot as tables, when it has their shape: an array of
+ * objects is one table (columns from their keys); an object whose values are
+ * such arrays is a table per key. Undefined for any other shape, which shows
+ * as JSON.
+ */
+export const tablesOf = (value: unknown): readonly Table[] | undefined => {
+  if (Array.isArray(value)) {
+    const table = tableOf(value);
+    return table === undefined ? undefined : [table];
+  }
+  if (!isRecord(value)) return undefined;
+  const tables: Table[] = [];
+  for (const [key, rows] of Object.entries(value)) {
+    const table = Array.isArray(rows) ? tableOf(rows, key) : undefined;
+    if (table === undefined) return undefined;
+    tables.push(table);
+  }
+  return tables;
+};
