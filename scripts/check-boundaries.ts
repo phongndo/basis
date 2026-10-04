@@ -48,6 +48,39 @@ if (problems.length) {
 }
 console.log("kernel boundary: ok");
 
+// The router and its Solid bindings are libraries others could use: each depends only on what it lists here,
+// imports nothing else from this workspace (not even the core: entries come and go through `setEntries`), and names
+// no harness concept.
+const checkLibrary = (name: string, dir: string, allowed: readonly string[]) => {
+  const problems: string[] = [];
+  const manifest = JSON.parse(readFileSync(join(root, dir, "package.json"), "utf8"));
+  for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies })) {
+    if (!allowed.includes(dependency)) problems.push(`${dir}/package.json: runtime dependency "${dependency}" (only ${allowed.join(", ")})`);
+  }
+  for (const file of walk(join(root, dir, "src")).filter((path) => /\.(ts|tsx|mts)$/.test(path))) {
+    const text = readFileSync(file, "utf8");
+    for (const match of text.matchAll(importPattern)) {
+      const specifier = match[1]!;
+      const escapes = specifier.startsWith(".") && !resolve(dirname(file), specifier).startsWith(join(root, dir, "src"));
+      const known = allowed.some((dependency) => specifier === dependency || specifier.startsWith(`${dependency}/`));
+      if (escapes || !(specifier.startsWith(".") || known)) problems.push(`${relative(root, file)}: imports "${specifier}"`);
+    }
+    text.split("\n").forEach((line, index) => {
+      // A dependency's package name (`@lemma/router`) is where it is published, not a concept.
+      const prose = line.replace(/(["'])@lemma\/[^"']+\1/g, "");
+      const word = (/\b(threads?|lemma)\b/i.exec(prose) ?? harnessWords.exec(prose))?.[1];
+      if (word !== undefined) problems.push(`${relative(root, file)}:${index + 1}: names "${word}", a harness concept`);
+    });
+  }
+  if (problems.length) {
+    console.error(`${name} boundary violations:\n${problems.map((problem) => `  ${problem}`).join("\n")}`);
+    process.exit(1);
+  }
+  console.log(`${name} boundary: ok`);
+};
+checkLibrary("router", "packages/router", ["effect"]);
+checkLibrary("router-solid", "packages/router-solid", ["@lemma/router", "solid-js"]);
+
 // The web app is replaceable piece by piece: everything it shows comes from a
 // plugin (turn it off or replace it by id), and plugins reach each other only
 // through `ui/contracts.ts` (capabilities, slots, parts). So a plugin imports

@@ -4,15 +4,17 @@ A coding-agent harness in which every part, including the agent loop, is a
 plugin that can be replaced by id. Plugins are composed by the core in
 [`packages/core`](#core).
 
-| Path                                                    | Responsibility                                                                                |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [`packages/contracts`](packages/contracts/src/index.ts) | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC      |
-| [`plugins/*`](plugins)                                  | The default plugins, one README each                                                          |
-| [`packages/host`](packages/host/src/main.ts)            | Reads config, loads plugins, hot-reloads on config change                                     |
-| [`apps/web`](apps/web/README.md)                        | The web client: plugins on the same kernel, each replaceable; served by `transport`           |
-| [`apps/cli`](apps/cli/README.md)                        | The `lemma` command: everything the web app does, from a shell, for people and agents         |
-| [`apps/desktop`](apps/desktop/README.md)                | The web app in a desktop window (Electron), attaching to a running host or starting one       |
-| [`examples/*`](examples)                                | Plugin files written as a user writes them, such as [approvals](examples/approvals/README.md) |
+| Path                                                       | Responsibility                                                                                |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [`packages/contracts`](packages/contracts/src/index.ts)    | Capability contracts: session log, agent, LLM, tools, credentials, interaction, host RPC      |
+| [`plugins/*`](plugins)                                     | The default plugins, one README each                                                          |
+| [`packages/router`](packages/router/README.md)             | A router whose routes come and go at runtime, typed by each route; the web app's addresses    |
+| [`packages/router-solid`](packages/router-solid/README.md) | The router's SolidJS bindings: a signal per route, and an outlet whose pages fail alone       |
+| [`packages/host`](packages/host/src/main.ts)               | Reads config, loads plugins, hot-reloads on config change                                     |
+| [`apps/web`](apps/web/README.md)                           | The web client: plugins on the same kernel, each replaceable; served by `transport`           |
+| [`apps/cli`](apps/cli/README.md)                           | The `lemma` command: everything the web app does, from a shell, for people and agents         |
+| [`apps/desktop`](apps/desktop/README.md)                   | The web app in a desktop window (Electron), attaching to a running host or starting one       |
+| [`examples/*`](examples)                                   | Plugin files written as a user writes them, such as [approvals](examples/approvals/README.md) |
 
 ```sh
 nix develop -c pnpm start          # build the web app, start the host, print its URL

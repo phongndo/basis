@@ -1,0 +1,22 @@
+{
+  "name": "@lemma/router",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A client-side router whose routes can come and go at runtime, typed by each route's own definition",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "effect": "3.22.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}
