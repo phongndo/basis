@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { appUrl, NewThreadRoute, SettingsRoute, ThreadRoute } from "../src/addresses.ts";
+import { appUrl, deepLinkPath, NewThreadRoute, SettingsRoute, ThreadRoute } from "../src/addresses.ts";
 
 describe("addresses", () => {
   test("threads and settings have readable paths", () => {
@@ -19,5 +19,21 @@ describe("addresses", () => {
     expect(() => appUrl("http://127.0.0.1:7433", "/\\evil.com/x", "secret")).toThrow();
     expect(() => appUrl("http://127.0.0.1:7433", "//evil.com/x", "secret")).toThrow();
     expect(() => appUrl("http://127.0.0.1:7433", "https://evil.com/x", "secret")).toThrow();
+  });
+
+  test("deep links name the app's own paths", () => {
+    expect(deepLinkPath("lemma://threads/s1")).toBe("/threads/s1");
+    expect(deepLinkPath("lemma:///threads/s1/trajectory")).toBe("/threads/s1/trajectory");
+    expect(deepLinkPath("lemma://settings/plugins?plugin=agent#x")).toBe("/settings/plugins?plugin=agent");
+    expect(deepLinkPath("lemma://threads/s1?token=stolen")).toBe("/threads/s1");
+    expect(deepLinkPath("lemma://")).toBe("/");
+    expect(deepLinkPath("https://example.com/threads/s1")).toBeUndefined();
+    expect(deepLinkPath("not a url")).toBeUndefined();
+  });
+
+  test("a deep link cannot name another host", () => {
+    // `\` reads as `/` in an http address: `/\evil.com` is `//evil.com`.
+    for (const link of ["lemma:/\\evil.com/x", "lemma:\\\\evil.com/x", "lemma:/\t\\evil.com"]) expect(deepLinkPath(link)).toBeUndefined();
+    expect(deepLinkPath("lemma:////evil.com/x")).toBe("/evil.com/x");
   });
 });

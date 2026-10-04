@@ -24,5 +24,11 @@ nix develop -c pnpm --filter @lemma/desktop dev          # another; restart it a
   you quit it.
 - **Links open in the system browser.** Navigation stays within the host's
   origin.
+- **`lemma://` links open in the app.** `lemma://threads/<id>` shows that
+  thread (any of the web app's [addresses](../web/README.md#addresses) works):
+  in the open window, without a reload, or in a new one. The app registers
+  itself as the scheme's handler when it starts. Run from source on macOS,
+  that registers Electron itself: a link reaches the app while it runs, and
+  with it closed opens Electron's default app instead.
 - The start script clears `ELECTRON_RUN_AS_NODE`, which terminals inside other
   Electron apps can inherit and which would run Electron as plain Node.

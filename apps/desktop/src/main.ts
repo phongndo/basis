@@ -1,8 +1,10 @@
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, shell, utilityProcess } from "electron";
 import type { UtilityProcess } from "electron";
 import { Effect } from "effect";
+import { appUrl, DEEP_LINK_SCHEME, deepLinkPath } from "@lemma/contracts";
 import { resolvePaths } from "@lemma/plugin-host";
 import { readDiscovery } from "@lemma/plugin-transport";
 import type { Discovery } from "@lemma/plugin-transport";
@@ -20,7 +22,11 @@ const STARTUP_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 let host: UtilityProcess | undefined;
-let page: string | undefined;
+/** The host serving the page, once known. */
+let served: { readonly url: string; readonly token: string } | undefined;
+/** A deep link that arrived before there was a window to show it in. */
+let pending: string | undefined;
+const pageAt = (path = "/") => (served === undefined ? undefined : appUrl(webUrl ?? served.url, path, served.token));
 
 const startHost = async (): Promise<Discovery> => {
   const child = utilityProcess.fork(hostMain, ["--no-open"], {
@@ -94,6 +100,26 @@ const openWindow = (url: string) => {
   void window.loadURL(url);
 };
 
+/**
+ * Shows a deep link's address (`lemma://threads/<id>` is `/threads/<id>`):
+ * in the open window, where the page's router takes it like an address typed
+ * into it, else in a new window, or once the page is known.
+ */
+const openLink = (path: string) => {
+  const [window] = BrowserWindow.getAllWindows();
+  if (window === undefined) {
+    const url = pageAt(path);
+    if (url === undefined) pending = path;
+    else openWindow(url);
+    return;
+  }
+  // A new history entry and a popstate, as an edited address would make: no reload, and back returns.
+  void window.webContents.executeJavaScript(`history.pushState(null, "", ${JSON.stringify(path)}); dispatchEvent(new PopStateEvent("popstate"));`);
+  if (window.isMinimized()) window.restore();
+  window.focus();
+};
+const linkIn = (argv: readonly string[]) => argv.map(deepLinkPath).find((path) => path !== undefined);
+
 const fail = (error: unknown) => {
   dialog.showErrorBox("Lemma could not start", error instanceof Error ? error.message : String(error));
   app.exit(1);
@@ -103,10 +129,24 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.setName("Lemma");
-  app.on("second-instance", () => {
+  // `lemma://` links open here. Run from source, the app is Electron with this script as its argument, but only Windows
+  // registers those: macOS registers Electron itself, so there a link reaches the app while it runs and not otherwise.
+  if (process.defaultApp) app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [resolve(process.argv[1] ?? ".")]);
+  else app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+  pending = linkIn(process.argv);
+  // macOS hands links over as an event (also the one that launched the app); elsewhere they arrive as arguments.
+  app.on("open-url", (event, link) => {
+    event.preventDefault();
+    const path = deepLinkPath(link);
+    if (path !== undefined) openLink(path);
+  });
+  app.on("second-instance", (_event, argv) => {
+    const link = linkIn(argv);
+    if (link !== undefined) return openLink(link);
     const [window] = BrowserWindow.getAllWindows();
     if (window === undefined) {
-      if (page !== undefined) openWindow(page);
+      const url = pageAt();
+      if (url !== undefined) openWindow(url);
       return;
     }
     if (window.isMinimized()) window.restore();
@@ -117,14 +157,16 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       const entry = (await Effect.runPromise(readDiscovery(paths.home))) ?? (await startHost());
-      page = `${webUrl ?? entry.url}/?token=${encodeURIComponent(entry.token)}`;
-      openWindow(page);
+      served = { url: entry.url, token: entry.token };
+      openWindow(pageAt(pending)!);
+      pending = undefined;
     })
     .catch(fail);
 
   // macOS keeps an app running with no windows; the Dock icon opens a new one.
   app.on("activate", () => {
-    if (page !== undefined && BrowserWindow.getAllWindows().length === 0) openWindow(page);
+    const url = pageAt();
+    if (url !== undefined && BrowserWindow.getAllWindows().length === 0) openWindow(url);
   });
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();

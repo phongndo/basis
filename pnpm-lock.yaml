@@ -158,6 +158,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@lemma/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@lemma/host':
         specifier: workspace:*
         version: link:../../packages/host
