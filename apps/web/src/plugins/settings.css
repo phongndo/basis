@@ -18,7 +18,8 @@
 }
 
 .settings {
-  position: fixed;
+  /* The app's box, not the window's: what is docked under the app (the devtools) stays in view on every page. */
+  position: absolute;
   inset: 0;
   z-index: var(--z-screen);
   display: flex;
@@ -120,6 +121,8 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  /* Its height is fixed: a section whose body fills the rest (Providers, Plugins) must not squeeze it. */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;

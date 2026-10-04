@@ -404,16 +404,51 @@ export interface RouterService {
 }
 export class Router extends Context.Tag("lemma-ui/Router")<Router, RouterService>() {}
 
+// ------------------------------------------------------------------ devtools
+
+/**
+ * A panel in the devtools (`mod+shift+d`): the router, slots, and
+ * capabilities are the bundled ones, and any plugin adds its own.
+ */
+export interface DevtoolsPanel {
+  readonly title: string;
+  readonly component: Component;
+  /** What the panel shows, as plain JSON: for reading the app without a screen (a log, a test, an agent). */
+  readonly snapshot?: () => unknown;
+}
+export const DevtoolsPanels = defineSlot<DevtoolsPanel>("devtools.panels");
+
+/** The devtools panel showing one plugin: everything it does, and what depends on it. */
+export const PLUGIN_PANEL = "devtools.plugins";
+
+export interface DevtoolsService {
+  readonly open: Accessor<boolean>;
+  /** Opens or closes them; without `open`, toggles. */
+  readonly toggle: (open?: boolean) => void;
+  /**
+   * Opens them at a panel, by its `DevtoolsPanels` item id, and at `subject` in it when given: what the panel selects
+   * (`devtools.plugins` takes `web:<id>` or `host:<id>`). Any panel naming a plugin links to it this way.
+   */
+  readonly show: (panel: string, subject?: string) => void;
+  /** The subject last asked of `panel` (see `show`), for it to select. Reactive. */
+  readonly subject: (panel: string) => string | undefined;
+  /** Every panel's `snapshot`, by panel id. */
+  readonly snapshot: () => Readonly<Record<string, unknown>>;
+}
+export class Devtools extends Context.Tag("lemma-ui/Devtools")<Devtools, DevtoolsService>() {}
+
 // ------------------------------------------------------------------ regions
 
 export type { Region } from "./slots.ts";
 
 /** What the page renders. Empty: a blank page. */
-export const Root = defineSlot<Region>("root");
+export const Root = defineSlot<Region>("root", { shows: "first" });
 /** Mounted over the whole app in order: dialogs, the palette, settings, toasts, tooltips. Each shows itself when it should. */
 export const Layers = defineSlot<Region>("layers");
-export const SidebarRegion = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar");
-export const MainRegion = defineSlot<Region>("main");
+/** Panels docked under the app (the devtools), in order: the app shrinks to the space above them. Each sizes itself and shows itself when it should. */
+export const Docks = defineSlot<Region>("docks");
+export const SidebarRegion = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar", { shows: "first" });
+export const MainRegion = defineSlot<Region>("main", { shows: "first" });
 /** Buttons in the sidebar's head beside its search: add project and new chat are its defaults. `onPick` closes the drawer on narrow screens. */
 export const SidebarActions = defineSlot<Region<{ readonly onPick: () => void }>>("sidebar.actions");
 /** Items at the foot of the sidebar: the settings button, the connection badge. `onPick` closes the drawer on narrow screens. */
@@ -455,7 +490,7 @@ export interface ThreadView {
 /** The main area's views of a session over the same log: chat, trajectory. The first is where a new chat opens. */
 export const Views = defineSlot<ThreadView>("views");
 
-export const ComposerRegion = defineSlot<Region>("composer");
+export const ComposerRegion = defineSlot<Region>("composer", { shows: "first" });
 
 /** What a composer button can do to the prompt being written. */
 export interface ComposerActionProps {

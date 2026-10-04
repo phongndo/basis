@@ -195,8 +195,8 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 
   function Toolbar() {
     return (
-      <div class="trj-toolbar" role="toolbar" aria-label="Trajectory toolbar">
-        <label class="trj-filter">
+      <div class="dt-toolbar" role="toolbar" aria-label="Trajectory toolbar">
+        <label class="dt-filter">
           <svg class="icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path d="M2 3h12l-4.5 5.5V13l-3 1.5V8.5z" />
           </svg>
@@ -212,31 +212,31 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
             spellcheck={false}
           />
         </label>
-        <span class="trj-sep" />
+        <span class="dt-sep" />
         <For each={TYPES}>
           {(type) => (
-            <button class="trj-chip" aria-pressed={typeFilter() === type.id} onClick={() => setTypeFilter(type.id)}>
+            <button class="dt-chip" aria-pressed={typeFilter() === type.id} onClick={() => setTypeFilter(type.id)}>
               {type.label}
             </button>
           )}
         </For>
-        <span class="trj-sep" />
-        <label class="trj-check" data-tip="Group rows under their turn">
+        <span class="dt-sep" />
+        <label class="dt-check" data-tip="Group rows under their turn">
           <input type="checkbox" checked={groupTurns()} onChange={(event) => setGroupTurns(event.currentTarget.checked)} />
           Group by turn
         </label>
-        <label class="trj-check" data-tip="Every record gets the same width in the overview and waterfall">
+        <label class="dt-check" data-tip="Every record gets the same width in the overview and waterfall">
           <input type="checkbox" checked={equalDurations()} onChange={(event) => setEqualDurations(event.currentTarget.checked)} />
           Equal widths
         </label>
         <Show when={zoom().start > 0 || zoom().end < 1}>
-          <button class="trj-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole thread (or double-click the overview)">
+          <button class="dt-chip trj-accent" onClick={() => setZoom({ start: 0, end: 1 })} data-tip="Show the whole thread (or double-click the overview)">
             Reset zoom
           </button>
         </Show>
         <Show when={range()}>
           {(r) => (
-            <button class="trj-chip trj-accent" onClick={() => setRange(undefined)} data-tip="Clear the selected time range">
+            <button class="dt-chip trj-accent" onClick={() => setRange(undefined)} data-tip="Clear the selected time range">
               {formatDuration(r().to - r().from)} range <XIcon />
             </button>
           )}
@@ -565,7 +565,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     let wfHeader: HTMLTableCellElement | undefined;
 
     return (
-      <table class="trj-table" classList={{ compact: props.compact }}>
+      <table class="trj-table dt-table" classList={{ compact: props.compact }}>
         <colgroup>
           <For each={columns()}>{(column) => <col class={column.class} />}</For>
         </colgroup>
@@ -649,6 +649,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
                           rowElements.set(r.id, element);
                           onCleanup(() => rowElements.get(r.id) === element && rowElements.delete(r.id));
                         }}
+                        data-row
                         data-record={r.id}
                         tabindex="-1"
                         data-kind={r.kind}
@@ -824,7 +825,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
       return { requests, tools, errors, input, output, cost, active };
     });
     return (
-      <div class="trj-status" role="status">
+      <div class="dt-status" role="status">
         <span>
           {props.visible.length} / {props.records.length} records
         </span>
@@ -849,11 +850,11 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 
   function Section(props: { title: string; children: JSX.Element; aside?: JSX.Element }) {
     return (
-      <section class="trj-section">
+      <section class="dt-section">
         <h4>
           <span>{props.title}</span>
           <Show when={props.aside}>
-            <span class="trj-section-aside">{props.aside}</span>
+            <span class="dt-section-aside">{props.aside}</span>
           </Show>
         </h4>
         {props.children}
@@ -863,7 +864,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
 
   function Facts(props: { rows: readonly (readonly [string, JSX.Element | string | undefined])[] }) {
     return (
-      <dl class="trj-facts">
+      <dl class="dt-facts">
         <For each={props.rows.filter(([, value]) => value !== undefined && value !== "")}>
           {([key, value]) => (
             <>
@@ -1313,18 +1314,18 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     const active = () => props.tabs.find((candidate) => candidate.id === tab()) ?? props.tabs[0];
     return (
       <>
-        <div class="trj-tabs" role="tablist" aria-label="Event details">
+        <div class="dt-tabs" role="tablist" aria-label="Event details">
           {props.lead}
           <For each={props.tabs}>
             {(candidate) => (
-              <button role="tab" class="trj-tab" aria-selected={active()?.id === candidate.id} onClick={() => setTab(candidate.id)}>
+              <button role="tab" class="dt-tab" aria-selected={active()?.id === candidate.id} onClick={() => setTab(candidate.id)}>
                 {candidate.label}
               </button>
             )}
           </For>
         </div>
         <Show when={props.title}>
-          <div class="trj-details-title">{props.title}</div>
+          <div class="dt-details-title">{props.title}</div>
         </Show>
         <div class="trj-detail-body" role="tabpanel">
           {active()?.render()}
@@ -1385,11 +1386,11 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     return (
       <Show when={view()}>
         {(v) => (
-          <aside class="trj-details" aria-label="Event details">
+          <aside class="trj-details dt-details" aria-label="Event details">
             <Tabs
               tabs={v().tabs}
               lead={
-                <button class="trj-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}>
+                <button class="dt-close" aria-label="Close details" data-tip="Close (Esc)" onClick={() => select(undefined)}>
                   <XIcon />
                 </button>
               }
@@ -1467,7 +1468,7 @@ function createTrajectory(deps: TrajectoryDeps): () => JSX.Element {
     };
 
     return (
-      <div class="trj" ref={root} tabindex="-1" onKeyDown={onKeyDown}>
+      <div class="trj dt-scope" ref={root} tabindex="-1" onKeyDown={onKeyDown}>
         <Toolbar />
         <Overview ledgerSpans={allSpans()} scale={scale()} now={now()} matches={matches} />
         <div class="trj-body">

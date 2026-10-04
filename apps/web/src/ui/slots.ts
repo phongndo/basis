@@ -14,17 +14,28 @@ import type { Stream } from "effect";
  */
 export type Slot<T> = Registry<SlotItem<T>>;
 
-const named = new Map<string, Slot<any>>();
+export interface SlotOptions {
+  /** `first`: one item shows, the first by order (a region, a part); `all`: every item does, in order (the default). */
+  readonly shows?: "first" | "all";
+}
 
-/** The slot with this name: the same token each time, so a UI file loaded again after an edit, or two files naming one slot, share it. */
-export const defineSlot = <T>(name: string): Slot<T> => {
-  let slot = named.get(name);
-  if (slot === undefined) {
-    slot = Registry.make<SlotItem<any>>(name, { key: (item) => item.id });
-    named.set(name, slot);
-  }
-  return slot as Slot<T>;
+const named = new Map<string, { readonly slot: Slot<any>; shows: "first" | "all" }>();
+
+/**
+ * The slot with this name: the same token each time, so a UI file loaded
+ * again after an edit, or two files naming one slot, share it.
+ */
+export const defineSlot = <T>(name: string, options: SlotOptions = {}): Slot<T> => {
+  let found = named.get(name);
+  if (found === undefined) {
+    found = { slot: Registry.make<SlotItem<any>>(name, { key: (item) => item.id }), shows: options.shows ?? "all" };
+    named.set(name, found);
+  } else if (options.shows !== undefined) found.shows = options.shows;
+  return found.slot as Slot<T>;
 };
+
+/** Every slot defined so far, and whether one item or all of them show: what the devtools list. */
+export const definedSlots = (): readonly { readonly slot: Slot<unknown>; readonly shows: "first" | "all" }[] => [...named.values()];
 
 /** A region filled by one component: the first item wins. */
 export interface Region<P extends Record<string, any> = {}> {
@@ -38,7 +49,7 @@ export interface Region<P extends Record<string, any> = {}> {
  * lower order than the default's; `P` is the props every provider takes.
  */
 export type Part<P extends Record<string, any>> = Slot<Region<P>>;
-export const definePart = <P extends Record<string, any>>(name: string): Part<P> => defineSlot<Region<P>>(`part.${name}`);
+export const definePart = <P extends Record<string, any>>(name: string): Part<P> => defineSlot<Region<P>>(`part.${name}`, { shows: "first" });
 
 /** Where the defaults of parts are added: a replacement uses a lower order. */
 export const DEFAULT_PART_ORDER = 100;
@@ -65,6 +76,8 @@ export interface SlotsService {
   readonly get: <T>(slot: Slot<T>, id: string) => SlotItem<T> | undefined;
   /** The id of the plugin that added the item with this id (to name it when the item fails). Reactive. */
   readonly owner: <T>(slot: Slot<T>, id: string) => string | undefined;
+  /** The slot's items in order, each with the plugin that added it and its order. Reactive. */
+  readonly contributions: <T>(slot: Slot<T>) => readonly { readonly item: SlotItem<T>; readonly pluginId: string; readonly order: number }[];
   /** The same registry, adding as `contributor`'s. `defineUiPlugin` hands each plugin its own. */
   readonly as: (contributor: Contributor) => SlotsService;
 }
@@ -119,6 +132,8 @@ export function createSlots(
     first: (slot) => items(slot)[0],
     get: (slot, id) => items(slot).find((item) => item.id === id),
     owner: (slot, id) => signal(slot)[0]().find((contribution) => (contribution.item as SlotItem<unknown>).id === id)?.pluginId,
+    contributions: <T>(slot: Slot<T>) =>
+      signal(slot)[0]().map((contribution) => ({ item: contribution.item as SlotItem<T>, pluginId: contribution.pluginId, order: contribution.order })),
     as: service,
   });
   return service(contributor);

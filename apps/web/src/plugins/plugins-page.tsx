@@ -17,24 +17,11 @@ import {
   waitingOn,
 } from "../model/plugins.ts";
 import type { KindedPlugin, PluginKind } from "../model/plugins.ts";
-import {
-  ActionIds,
-  Actions,
-  Client,
-  HostPlugins,
-  Notify,
-  PluginTabs,
-  Threads,
-  Settings,
-  SettingsGroups,
-  SettingsSections,
-  Slots,
-  UiPlugins,
-} from "../ui/contracts.ts";
+import { Actions, Client, HostPlugins, Notify, PluginTabs, Threads, Settings, SettingsGroups, SettingsSections, Slots, UiPlugins } from "../ui/contracts.ts";
 import type { ClientService, PluginTab, PluginsService, ThreadsService, UiPluginsService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import type { SlotsService } from "../ui/slots.ts";
-import { ConfigForm, LogIcon, PuzzleIcon, RefreshIcon, SearchField, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
+import { ConfigForm, PuzzleIcon, RefreshIcon, SearchField, Spinner, Toggle, XIcon } from "../ui/parts.tsx";
 import styles from "./plugins-page.css?inline";
 
 const SECTION = "plugins";
@@ -806,18 +793,6 @@ export default defineUiPlugin({
         body: () => <PluginsInspector inspector={inspector} filter={filter} setFilter={setFilter} />,
         actions: () => (
           <>
-            <Show when={slots.get(Actions, ActionIds.eventLog)}>
-              {(action) => (
-                <button
-                  class="icon-button"
-                  aria-label="Event log"
-                  onClick={() => action().run()}
-                  data-tip="Event log: everything the host publishes, as `lemma events` shows it"
-                >
-                  <LogIcon />
-                </button>
-              )}
-            </Show>
             <button
               class="icon-button"
               aria-label="Reload config"

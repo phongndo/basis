@@ -1,15 +1,14 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 import type { Accessor } from "solid-js";
-import { Portal } from "solid-js/web";
 import type { ConnectionStatus } from "@lemma/client";
 import type { HostEvent } from "@lemma/contracts";
-import { ActionIds, Actions, Client, Dialogs, Layers, Slots } from "../ui/contracts.ts";
-import type { ClientService } from "../ui/contracts.ts";
+import { ActionIds, Actions, Client, Devtools, DevtoolsPanels, Router, Slots, ThreadRoute } from "../ui/contracts.ts";
+import type { ClientService, RouterService } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { LogIcon, XIcon } from "../ui/parts.tsx";
 import styles from "./event-log.css?inline";
 
-const DIALOG = "events";
+const PANEL = "devtools.events";
 /** Lines kept, newest last; older ones drop off the top. */
 const LIMIT = 1000;
 
@@ -87,18 +86,18 @@ const size = (bytes: number) => (bytes < 1024 ? `${bytes}B` : `${(bytes / 1024).
 
 /**
  * This page's subscription to `Host.Events` over the WebSocket, as a log: one
- * line per event with its time, the gap since the one before, its type,
+ * row per event with its time, the gap since the one before, its type,
  * session, and size, and changes in the connection itself. Follows the tail
- * while scrolled to the bottom; a line opens to its raw JSON.
+ * while scrolled to the bottom; a row selected opens its raw JSON, and a
+ * session its thread's trajectory.
  */
-function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[]>; clear: () => void; close: () => void }) {
+function EventLog(props: { client: ClientService; router: RouterService; lines: Accessor<readonly Line[]>; clear: () => void }) {
   const [query, setQuery] = createSignal("");
   const [deltas, setDeltas] = createSignal(false);
   const [paused, setPaused] = createSignal<readonly Line[]>();
-  const [open, setOpen] = createSignal<ReadonlySet<number>>(new Set());
+  const [selected, setSelected] = createSignal<number>();
   const [stuck, setStuck] = createSignal(true);
   let scroller!: HTMLDivElement;
-  let input!: HTMLInputElement;
 
   const source = () => paused() ?? props.lines();
   const shown = createMemo(() => {
@@ -115,14 +114,9 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
     const since = Date.now() - 10_000;
     return props.lines().filter((line) => line.at >= since).length / 10;
   });
+  const chosen = () => source().find((line) => line.seq === selected());
   const url = () => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`;
-  const toggle = (seq: number) =>
-    setOpen((current) => {
-      const next = new Set(current);
-      if (next.has(seq)) next.delete(seq);
-      else next.add(seq);
-      return next;
-    });
+  const state = () => props.client.status().state;
 
   createEffect(
     on(shown, () => {
@@ -130,123 +124,152 @@ function EventLog(props: { client: ClientService; lines: Accessor<readonly Line[
     }),
   );
   const onScroll = () => setStuck(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24);
-  // Escape inside the log: clear the filter, then close. Handled on the log itself, which holds focus: a click on a line,
-  // which is not focusable itself, focuses the log.
+  // Escape in the filter clears it.
   const onKey = (event: KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (event.key !== "Escape" || event.defaultPrevented || query() === "") return;
     event.preventDefault();
     event.stopPropagation();
-    if (query() !== "" && document.activeElement === input) setQuery("");
-    else props.close();
+    setQuery("");
   };
-  const previous = document.activeElement as HTMLElement | null;
-  onMount(() => queueMicrotask(() => input.focus()));
-  onCleanup(() => previous?.focus?.());
 
   return (
-    <Portal>
-      <div class="log-view" role="dialog" aria-modal="true" aria-label="Event log" tabindex="-1" onKeyDown={onKey}>
-        <header class="log-bar">
-          <span class={`log-dot log-dot-${props.client.status().state}`} />
-          <span class="log-stream">Host.Events</span>
-          <span class="log-meta">{url()}</span>
-          <span class="log-meta">
-            {props.client.status().state} · gen {props.client.status().generation}
-          </span>
-          <span class="spacer" />
-          <span class="log-meta">
-            {shown().length}/{props.lines().length} · {rate().toFixed(1)}/s
-          </span>
-          <button class="icon-button" aria-label="Close event log" data-tip="Close · Esc" onClick={props.close}>
-            <XIcon />
-          </button>
-        </header>
-        <div class="log-tools">
-          <span class="log-prompt">filter›</span>
+    <div class="dt-scope log-view" aria-label="Host events">
+      <div class="dt-toolbar" role="toolbar" aria-label="Host events toolbar">
+        <label class="dt-filter">
           <input
-            ref={input}
-            class="log-filter"
-            placeholder="type, session, or text; -word excludes"
+            placeholder="Filter: type, session, or text; -word excludes"
             aria-label="Filter events"
             autocomplete="off"
             spellcheck={false}
             value={query()}
             onInput={(event) => setQuery(event.currentTarget.value)}
+            onKeyDown={onKey}
           />
-          <button class="log-toggle" classList={{ on: deltas() }} aria-pressed={deltas()} onClick={() => setDeltas(!deltas())}>
-            deltas
-          </button>
-          <button
-            class="log-toggle"
-            classList={{ on: paused() !== undefined }}
-            aria-pressed={paused() !== undefined}
-            onClick={() => setPaused(paused() === undefined ? props.lines() : undefined)}
-          >
-            {paused() === undefined ? "pause" : `paused · ${props.lines().length - paused()!.length} new`}
-          </button>
-          <button
-            class="log-toggle"
-            onClick={() => {
-              props.clear();
-              setOpen(new Set<number>());
-              if (paused() !== undefined) setPaused([]);
-            }}
-          >
-            clear
-          </button>
-        </div>
-        <div class="log-lines" ref={scroller} onScroll={onScroll} role="log" aria-live="off">
-          <div class="log-line log-head">
-            <span>time</span>
-            <span>gap</span>
-            <span>type</span>
-            <span>session</span>
-            <span>size</span>
-            <span>message</span>
-          </div>
-          <For each={shown()} fallback={<div class="log-empty">{props.lines().length === 0 ? "waiting for events…" : "no events match"}</div>}>
-            {(line, index) => {
-              const before = () => shown()[index() - 1];
-              return (
-                <>
-                  <div class={`log-line is-${category(line)}`} classList={{ open: open().has(line.seq) }} onClick={() => toggle(line.seq)}>
-                    <span class="log-time">{clock(line.at)}</span>
-                    <span class="log-gap">{before() === undefined ? "" : gap(line.at - before()!.at)}</span>
-                    <span class="log-type">{typeOf(line)}</span>
-                    <span class="log-session">{sessionOf(line) ?? "·"}</span>
-                    <span class="log-size">{line.kind === "event" ? size(line.bytes) : ""}</span>
-                    <span class="log-message">{describe(line)}</span>
-                  </div>
-                  <Show when={open().has(line.seq)}>
-                    <pre class="log-json">{JSON.stringify(line.kind === "event" ? line.event : line.status, null, 2)}</pre>
-                  </Show>
-                </>
-              );
-            }}
-          </For>
-        </div>
+        </label>
+        <span class="dt-sep" />
+        <button class="dt-chip" aria-pressed={deltas()} onClick={() => setDeltas(!deltas())}>
+          Deltas
+        </button>
+        <button class="dt-chip" aria-pressed={paused() !== undefined} onClick={() => setPaused(paused() === undefined ? props.lines() : undefined)}>
+          {paused() === undefined ? "Pause" : `Paused · ${props.lines().length - paused()!.length} new`}
+        </button>
+        <button
+          class="dt-chip"
+          onClick={() => {
+            props.clear();
+            setSelected(undefined);
+            if (paused() !== undefined) setPaused([]);
+          }}
+        >
+          Clear
+        </button>
         <Show when={!stuck()}>
+          <span class="dt-sep" />
           <button
-            class="log-follow"
+            class="dt-chip"
             onClick={() => {
               setStuck(true);
               scroller.scrollTo({ top: scroller.scrollHeight });
             }}
           >
-            ↓ follow
+            ↓ Follow
           </button>
         </Show>
       </div>
-    </Portal>
+      <div class="dt-split">
+        <div class="dt-main" ref={scroller} onScroll={onScroll} tabindex="-1" role="log" aria-live="off">
+          <table class="dt-table log-table" aria-label="Events">
+            <thead>
+              <tr>
+                <th style={{ width: "108px" }}>Time</th>
+                <th style={{ width: "62px" }}>Gap</th>
+                <th style={{ width: "150px" }}>Type</th>
+                <th style={{ width: "120px" }}>Session</th>
+                <th style={{ width: "56px" }}>Size</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For
+                each={shown()}
+                fallback={
+                  <tr>
+                    <td colSpan={6} class="dt-muted">
+                      {props.lines().length === 0 ? "Waiting for events…" : "No events match"}
+                    </td>
+                  </tr>
+                }
+              >
+                {(line, index) => {
+                  const before = () => shown()[index() - 1];
+                  return (
+                    <tr data-row data-selected={selected() === line.seq} onClick={() => setSelected(selected() === line.seq ? undefined : line.seq)}>
+                      <td class="dt-code dt-muted">{clock(line.at)}</td>
+                      <td class="dt-code dt-muted dt-num">{before() === undefined ? "" : gap(line.at - before()!.at)}</td>
+                      <td class={`dt-code log-type is-${category(line)}`}>{typeOf(line)}</td>
+                      <td class="dt-code">
+                        <Show when={sessionOf(line)} fallback={<span class="dt-muted">·</span>}>
+                          {(id) => (
+                            <a
+                              href={props.router.href(ThreadRoute, { id: id(), view: "trajectory" })}
+                              data-tip="Open its trajectory"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {id()}
+                            </a>
+                          )}
+                        </Show>
+                      </td>
+                      <td class="dt-code dt-muted dt-num">{line.kind === "event" ? size(line.bytes) : ""}</td>
+                      <td class="dt-code">{describe(line)}</td>
+                    </tr>
+                  );
+                }}
+              </For>
+            </tbody>
+          </table>
+        </div>
+        <Show when={chosen()} keyed>
+          {(line) => (
+            <aside class="dt-details dt-side" aria-label="Event details">
+              <div class="dt-details-title">
+                <strong class={`dt-code log-type is-${category(line)}`}>{typeOf(line)}</strong>
+                <span class="dt-muted">{clock(line.at)}</span>
+                <button class="dt-close" style={{ "margin-left": "auto" }} aria-label="Close details" onClick={() => setSelected(undefined)}>
+                  <XIcon />
+                </button>
+              </div>
+              <div class="dt-side-body">
+                <pre class="dt-pre">{JSON.stringify(line.kind === "event" ? line.event : line.status, null, 2)}</pre>
+              </div>
+            </aside>
+          )}
+        </Show>
+      </div>
+      <div class="dt-status" role="status">
+        <span>
+          <span class={`dt-dot ${state() === "connected" ? "dt-ok" : state() === "closed" ? "dt-err" : "dt-warn"}`} />
+          Host.Events · {state()} · gen {props.client.status().generation}
+        </span>
+        <span class="dt-code">{url()}</span>
+        <span>
+          {shown().length} / {props.lines().length}
+        </span>
+        <span>{rate().toFixed(1)}/s</span>
+      </div>
+    </div>
   );
 }
 
-/** Records the host's event stream, and the connection carrying it, from when it starts. */
+/**
+ * Records the host's event stream, and the connection carrying it, from when
+ * it starts, and shows it as the devtools' Host events panel.
+ */
 export default defineUiPlugin({
   id: "event-log",
   styles,
-  requires: { client: Client, dialogs: Dialogs, slots: Slots },
-  setup: ({ client, dialogs, slots }, plugin) => {
+  requires: { client: Client, devtools: Devtools, router: Router, slots: Slots },
+  setup: ({ client, devtools, router, slots }, plugin) => {
     const [lines, setLines] = createSignal<readonly Line[]>([]);
     let seq = 0;
     const push = (line: Line) => setLines((current) => [...(current.length >= LIMIT ? current.slice(current.length - LIMIT + 1) : current), line]);
@@ -262,24 +285,23 @@ export default defineUiPlugin({
       }),
     );
     plugin.onCleanup(
-      slots.add(Layers, {
-        id: DIALOG,
-        component: () => (
-          <Show when={dialogs.current() === DIALOG}>
-            <EventLog client={client} lines={lines} clear={() => setLines([])} close={() => dialogs.open(undefined)} />
-          </Show>
-        ),
+      slots.add(DevtoolsPanels, {
+        id: PANEL,
+        order: 15,
+        title: "Host events",
+        component: () => <EventLog client={client} router={router} lines={lines} clear={() => setLines([])} />,
+        snapshot: () => lines().map((line) => ({ at: line.at, type: typeOf(line), session: sessionOf(line), message: describe(line) })),
       }),
     );
     plugin.onCleanup(
       slots.add(Actions, {
         id: ActionIds.eventLog,
         order: 10,
-        title: "Show event log",
-        category: "Host",
-        keywords: ["debug", "events", "stream"],
+        title: "Show host events",
+        category: "Developer",
+        keywords: ["debug", "events", "stream", "log", "devtools"],
         icon: LogIcon,
-        run: () => dialogs.open(DIALOG),
+        run: () => devtools.show(PANEL),
       }),
     );
   },

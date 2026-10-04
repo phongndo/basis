@@ -780,4 +780,475 @@
       flex-wrap: wrap;
     }
   }
+
+  /* Inspectors, laid out like Chrome DevTools: the Trajectory and the devtools' panels share this vocabulary. A view's
+     root is a `.dt-scope` (its type, colours, and focus); inside it: a `.dt-toolbar` (a `.dt-filter`, `.dt-chip`s,
+     `.dt-check`s, `.dt-sep`s), a `.dt-table` (rows marked `data-row`, `data-selected`), `.dt-tabs` of `.dt-tab`s,
+     a `.dt-details` pane (a `.dt-details-title`, `.dt-facts`, `.dt-section`s), and a `.dt-status` bar. A table and
+   its details sit in a `.dt-split`: a `.dt-main` beside a `.dt-details dt-side` holding a `.dt-side-body`. */
+  :root {
+    --dt-line: var(--border);
+    --dt-grid: color-mix(in srgb, var(--border) 70%, transparent);
+    --dt-row: 21px;
+    --dt-select: #cfe3fb;
+    --dt-select-focus: #1a73e8;
+    --dt-link: #2a78d6;
+  }
+
+  :root[data-theme="dark"] {
+    --dt-select: #25354a;
+    --dt-select-focus: #2c5ea8;
+    --dt-link: #3987e5;
+  }
+
+  .dt-scope {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    outline: none;
+    background: var(--bg-raised);
+    color: var(--text);
+    font: 12px/1.4 var(--font-ui);
+  }
+
+  .dt-scope button,
+  .dt-scope input {
+    font: inherit;
+  }
+
+  .dt-scope a {
+    color: var(--dt-link);
+    text-decoration: none;
+  }
+
+  .dt-scope a:hover,
+  .dt-link:hover {
+    text-decoration: underline;
+  }
+
+  /* A button that reads as a link: a name that opens what it names (a plugin in the devtools' Plugins panel). */
+  .dt-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--dt-link);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dt-muted {
+    color: var(--text-3);
+  }
+
+  .dt-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dt-code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+
+  /* A cell whose content is a list (who uses a capability): it wraps rather than being cut off. */
+  .dt-table td.dt-wrap {
+    white-space: normal;
+    height: auto;
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  .dt-ok {
+    color: var(--ok);
+  }
+
+  .dt-warn {
+    color: var(--warn);
+  }
+
+  .dt-err {
+    color: var(--err);
+  }
+
+  .dt-empty {
+    color: var(--text-3);
+    text-align: center;
+    padding: 8vh 0;
+    margin: 0;
+  }
+
+  .dt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 27px;
+    padding: 0 4px;
+    flex: none;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--dt-line);
+    background: var(--bg);
+  }
+
+  .dt-filter {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 20px;
+    width: 300px;
+    max-width: 40%;
+    padding: 0 6px;
+    border-radius: 2px;
+    background: var(--bg-raised);
+    box-shadow: inset 0 0 0 1px var(--dt-line);
+    color: var(--text-3);
+  }
+
+  .dt-filter:focus-within {
+    box-shadow: inset 0 0 0 1px var(--dt-select-focus);
+  }
+
+  .dt-filter input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  .dt-filter input::placeholder {
+    color: var(--text-3);
+  }
+
+  .dt-sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--dt-line);
+  }
+
+  .dt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+
+  .dt-chip:hover {
+    background: var(--bg-hover);
+  }
+
+  .dt-chip[aria-pressed="true"] {
+    background: var(--bg-active);
+    color: var(--text);
+  }
+
+  .dt-chip .icon {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dt-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    color: var(--text-2);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .dt-check input {
+    margin: 0;
+    accent-color: var(--dt-select-focus);
+  }
+
+  .dt-table {
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .dt-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 22px;
+    padding: 0 6px;
+    text-align: left;
+    font-weight: 400;
+    white-space: nowrap;
+    color: var(--text-2);
+    background: var(--bg);
+    border-bottom: 1px solid var(--dt-line);
+    border-right: 1px solid var(--dt-grid);
+    user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dt-table td {
+    height: var(--dt-row);
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border-right: 1px solid var(--dt-grid);
+    color: var(--text);
+  }
+
+  .dt-table tbody tr[data-row]:nth-child(even) {
+    background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  }
+
+  .dt-table tbody tr[data-row] {
+    cursor: default;
+  }
+
+  .dt-table tbody tr[data-row]:hover {
+    background: color-mix(in srgb, var(--dt-select) 55%, transparent);
+  }
+
+  .dt-table tbody tr[data-selected="true"],
+  .dt-table tbody tr[data-selected="true"]:hover {
+    background: var(--dt-select);
+  }
+
+  .dt-scope:focus-within .dt-table tbody tr[data-selected="true"] {
+    background: var(--dt-select-focus);
+  }
+
+  .dt-scope:focus-within .dt-table tbody tr[data-selected="true"] :is(td, td *) {
+    color: #fff !important;
+  }
+
+  .dt-status {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 22px;
+    padding: 0 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    border-top: 1px solid var(--dt-line);
+    background: var(--bg);
+    color: var(--text-2);
+    font-size: 11.5px;
+  }
+
+  .dt-status > span {
+    padding: 0 8px;
+    border-right: 1px solid var(--dt-line);
+  }
+
+  .dt-status > span:last-child {
+    border-right: 0;
+  }
+
+  .dt-tabs {
+    display: flex;
+    align-items: stretch;
+    height: 27px;
+    padding: 0 2px;
+    border-bottom: 1px solid var(--dt-line);
+    background: var(--bg);
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: none;
+  }
+
+  .dt-tab {
+    position: relative;
+    flex: none;
+    padding: 0 9px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+
+  .dt-tab:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+
+  .dt-tab[aria-selected="true"] {
+    color: var(--text);
+  }
+
+  .dt-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: var(--dt-select-focus);
+  }
+
+  .dt-close {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+  }
+
+  .dt-close:hover {
+    color: var(--text);
+  }
+
+  .dt-close .icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .dt-details {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-left: 1px solid var(--dt-line);
+    background: var(--bg-raised);
+  }
+
+  .dt-details-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--dt-grid);
+    flex: none;
+    min-width: 0;
+  }
+
+  .dt-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 3px 16px;
+    margin: 0;
+  }
+
+  .dt-facts dt {
+    color: var(--text-2);
+    font-weight: 600;
+  }
+
+  .dt-facts dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+
+  .dt-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dt-section h4 {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--dt-grid);
+  }
+
+  .dt-section h4 > span:first-child {
+    font-family: var(--font-mono);
+  }
+
+  .dt-section-aside {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-3);
+  }
+
+  .dt-split {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .dt-main {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    outline: none;
+  }
+
+  .dt-side {
+    width: clamp(300px, 42%, 640px);
+  }
+
+  .dt-side-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dt-banner {
+    flex: none;
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--dt-line);
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+
+  .dt-pre {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 2px;
+    background: var(--bg-sunk);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .dt-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 5px;
+    border-radius: 50%;
+    background: var(--text-3);
+    vertical-align: 1px;
+  }
+
+  .dt-dot.dt-ok {
+    background: var(--ok);
+  }
+
+  .dt-dot.dt-warn {
+    background: var(--warn);
+  }
+
+  .dt-dot.dt-err {
+    background: var(--err);
+  }
 }

@@ -39,7 +39,7 @@ export default defineUiPlugin({
       history,
       known: KnownRoutes,
       retain: RETAIN,
-      // A page is named by its `Pages` item id; what the router reports names it by that.
+      // A page is named by its `Pages` item id; the devtools find its plugin from that.
       label: (page: SlotItem<Page>) => page.id,
       onError: (error, during) => notify.report(error, during === "navigate" ? "Could not go there" : `A route ${during} failed`),
       // Plugins' routes in conflict: the app still shows one, but which is probably not what either plugin meant.

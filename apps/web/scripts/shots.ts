@@ -58,6 +58,22 @@ try {
       await page.click(`.settings nav >> text=${section}`);
       await shot(page, `${theme}-${String(6 + index).padStart(2, "0")}-settings-${section.toLowerCase()}`);
     }
+    // The devtools, docked under the thread, at each panel.
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("textarea");
+    await page.keyboard.press("ControlOrMeta+Shift+d");
+    await page.waitForSelector(".devtools");
+    for (const [index, panel] of ["Routes", "Navigation", "Host events", "Plugins", "Hooks", "Registries", "Inspectors"].entries()) {
+      await page.click(`[aria-label='Devtools panels'] [role=tab] >> text=${panel}`);
+      await shot(page, `${theme}-${String(11 + index).padStart(2, "0")}-devtools-${panel.toLowerCase().replace(" ", "-")}`);
+    }
+    await page.keyboard.press("ControlOrMeta+Shift+d");
+    // The thread's Trajectory, and a request selected in it.
+    await page.click(".view-tab[aria-label=Trajectory]");
+    await page.waitForSelector(".trj-table tbody tr[data-record]");
+    await shot(page, `${theme}-20-trajectory`);
+    await page.click(".trj-table tbody tr[data-record]");
+    await shot(page, `${theme}-21-trajectory-details`);
     await page.close();
   }
   console.log(`Shots in ${out}`);

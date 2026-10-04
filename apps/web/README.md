@@ -99,6 +99,43 @@ names its plugin, and it is tried again on retry or the next navigation. Two
 plugins' routes in conflict (one id, or the same addresses with nothing to tell
 them apart) show a warning; the app still shows one of them.
 
+## Devtools
+
+`mod+shift+d` docks the devtools under the app. They show it as it runs and
+change nothing; the Plugins page is where things change.
+
+- **Routes**: every route and its verdict on an address (shown, outranked by a
+  more specific route, params rejected, no match, and why), who shows each and
+  what it overrides, conflicts, blockers.
+- **Navigation**: the router's journal and the state kept with each history
+  entry.
+- **Host events**: everything the host publishes, as `lemma events` shows it;
+  a session opens its thread's trajectory.
+- **Plugins**, for the web app and the host alike (both run the core): one
+  plugin and everything it does: its state and why, what it provides (and who
+  uses it) and requires (and who provides it), its place in each hook's chain,
+  the events it observes, what it contributes (each slot item; on the host,
+  its inspectors), its settings and recent faults. A plugin's name anywhere in
+  the devtools opens it here.
+- **Hooks**: each hook's chain in run order, and each event's observers.
+- **Registries**: every slot, live, with who fills it and how to add to it;
+  the host's registries and their contributors.
+- **Inspectors**: what host plugins let you look into (registered tools,
+  running turns, commands), refreshed while open.
+
+Two ways to extend them, both plugins:
+
+- A web plugin adds a panel with a `DevtoolsPanels` item, drawn with the
+  foundation's `.dt-*` classes (toolbar, filter, chips, table, details pane,
+  status bar; see `src/styles.css`) so it looks like the other panels and the
+  Trajectory. Its `snapshot` is the panel's data as JSON:
+  `Devtools.snapshot()` collects every panel's. `devtools.show(panel, subject)`
+  opens a panel at something, as plugin names open `PLUGIN_PANEL`.
+- A host plugin adds an inspector to the `Inspectors` registry
+  (`@lemma/contracts`) with `PluginContext.add`, requiring nothing: an id, a
+  title, and a `snapshot` Effect returning JSON. An array of objects shows as a
+  table. It appears in the Inspectors panel and in `lemma inspectors`.
+
 ## Writing a plugin
 
 A plugin requires capabilities, provides capabilities, and contributes to
@@ -108,18 +145,19 @@ plugins use nothing else.
 - **Capabilities** are services with one provider: the host's state
   (`Threads`, `Models`, `Workspace`, `HostPlugins`, `Commands`,
   `Interactions`, the `Client` connection) and screen state (`Router`,
-  `Dialogs`, `Settings`, `Layout`). Replacing a provider restarts its
+  `Dialogs`, `Settings`, `Layout`, `Devtools`). Replacing a provider restarts its
   dependents with the new one.
 - **Slots** are places any number of plugins add to: regions of the screen
-  (`Root`, `SidebarRegion`, `MainRegion`, `ComposerRegion`, `Layers`, …), where
-  the first item by `order` shows, and lists: `Pages` (what shows at a route),
+  (`Root`, `SidebarRegion`, `MainRegion`, `ComposerRegion`, …), where
+  the first item by `order` shows, and lists: `Layers` (over the app),
+  `Docks` (under it), `Pages` (what shows at a route),
   `Actions` (the palette and shortcuts), `Views`, `SettingsSections`, `SettingsGroups`, `ToolViews` (a
   tool's summary and body, in the chat and the trajectory), `CodeBlocks` (how
   fenced code renders: `highlight` and `diagrams` fill it), `PaletteSources`
   (what the palette searches), `ThreadHeader`, `SidebarActions`,
   `ThreadActions` and `ProjectActions` (the sidebar's ⋯ menus),
   `ComposerActions`, `WorkspaceBarItems`, `PluginTabs` (the Plugins page
-  inspector), `TrajectoryTabs` and `TrajectoryActions`. The bundled plugins add
+  inspector), `DevtoolsPanels`, `TrajectoryTabs` and `TrajectoryActions`. The bundled plugins add
   their own buttons, tabs, and sources through these same slots. Take over a
   region by adding with a lower `order`, or turn its plugin off. An item leaves
   when the plugin that added it stops.

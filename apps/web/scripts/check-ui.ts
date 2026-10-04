@@ -26,6 +26,7 @@ import { createServer } from "vite";
  *    that throws fails alone; routes in conflict are reported; a hovered
  *    thread link preloads; a deleted thread's address leaves for a new
  *    thread; an unsent prompt outlives settings and makes leaving the page ask.
+ * 8. The devtools dock under the app, and each panel shows it as it runs.
  *
  * Run it in the browser shell: `nix develop .#browser -c pnpm --filter @lemma/web ui:check`.
  * `LEMMA_BROWSER=firefox` or `webkit` runs it in Playwright's builds of those
@@ -495,8 +496,119 @@ try {
   });
   errors.splice(0);
 
+  // 8. The devtools: docked under the app, each panel shows the app as it runs, and every panel's data reads as JSON.
+  await page.goto(`${url}/?mock`);
+  await settled(page);
+  await page.evaluate(async () => {
+    const { Settings } = await import("/src/ui/contracts.ts" as string);
+    (await (window as any).lemma.service(Settings)).open(undefined);
+  });
+  await page.keyboard.press("ControlOrMeta+Shift+d");
+  await page.waitForSelector(".devtools");
+  const appHeight = () => page.evaluate(() => document.querySelector(".app")!.getBoundingClientRect().height);
+  // On every page, and across a reload: what covers the app (settings) leaves what is docked under it in view.
+  const dockOnTop = () =>
+    page.evaluate(() => {
+      const tab = document.querySelector(".devtools [role=tab]")?.getBoundingClientRect();
+      return tab !== undefined && document.elementFromPoint(tab.x + tab.width / 2, tab.y + tab.height / 2)?.closest(".devtools") !== null;
+    });
+  const firstThread: string = await page.evaluate(async () => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    return (await (window as any).lemma.service(Threads)).list()[0].id;
+  });
+  const sections = ["general", "appearance", "keyboard", "providers", "plugins", "projects", "archived"].map((section) => `/settings/${section}`);
+  for (const path of ["/", `/threads/${firstThread}`, `/threads/${firstThread}/trajectory`, ...sections, "/nowhere"]) {
+    await page.evaluate(async (path) => {
+      const { Router } = await import("/src/ui/contracts.ts" as string);
+      (await (window as any).lemma.service(Router)).navigate(path);
+    }, path);
+    await page.waitForFunction((path) => location.pathname === path, path);
+    await page.waitForTimeout(100);
+    assert(await dockOnTop(), `the devtools are hidden at ${path}`);
+  }
+  await page.reload();
+  await page.waitForSelector(".devtools", { timeout: 10_000 }).catch(() => assert.fail("a reload closed the devtools"));
+  assert(await dockOnTop(), "the devtools are hidden after a reload");
+  // The walk ended at an address nothing shows; back to a new thread.
+  await page.evaluate(async () => {
+    const { Router } = await import("/src/ui/contracts.ts" as string);
+    (await (window as any).lemma.service(Router)).navigate("/");
+  });
+  await page.waitForFunction(() => location.pathname === "/");
+  assert((await appHeight()) < 900 - 100, "the app did not make room for the devtools");
+  // Routes: why an address shows what it does, and who shows each route.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Routes");
+  await page.fill("[aria-label='Address to explain']", "/threads/anything/trajectory");
+  await page.waitForSelector("[aria-label=Routes] tr:has(td:text-is('thread')):has-text('shown')");
+  await page.waitForSelector("[aria-label=Routes] tr:has(td:text-is('settings')):has-text('no-match')");
+  await page.waitForSelector("[aria-label='Route details'] >> text=the most specific fit");
+  await page.waitForSelector("[aria-label=Routes] tr:has-text('/threads/:id/:view?') >> text=thread-view");
+  // Navigation: the journal has what the router did.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Navigation");
+  await page.waitForSelector("[aria-label='Router journal'] >> text=matched");
+  // Host events: the host's stream, and a session's id goes to its thread's trajectory.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Host events");
+  await page.waitForSelector("[aria-label=Events] tbody tr[data-row]");
+  // Pinning a thread has the host publish its change, naming the session.
+  const pinned: string = await page.evaluate(async () => {
+    const { Threads } = await import("/src/ui/contracts.ts" as string);
+    const threads = await (window as any).lemma.service(Threads);
+    const id = threads.list()[0].id;
+    await threads.mark(id, { pinned: true });
+    await threads.mark(id, { pinned: false });
+    return id;
+  });
+  await page.click(`[aria-label=Events] a >> text=${pinned}`);
+  await page.waitForFunction((id) => location.pathname === `/threads/${id}/trajectory`, pinned);
+  await page.waitForSelector(".devtools");
+  // A plugin's name anywhere opens it in the Plugins panel: everything it does, and what depends on it.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Routes");
+  await page.click("[aria-label=Routes] tr:has(td:text-is('/threads/:id/:view?')) button:text-is('thread-view')");
+  await page.waitForSelector("[aria-label='Plugin details'] .dt-details-title >> text=thread-view");
+  await page.waitForSelector("[aria-label='Plugin details'] tr:has(td:text-is('pages')):has(td:text-is('thread-view.new'))");
+  await page.fill("[aria-label='Filter plugins']", "router");
+  await page.click("[aria-label=Plugins] tr:has(td:first-child:text-is('router'))");
+  await page.waitForSelector("[aria-label='Plugin details'] tr:has(td:text-is('lemma-ui/Router')) >> button:text-is('threads')");
+  // The host's plugins too, and each hook's chain in run order.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Hooks");
+  await page.click("[aria-label=Hooks] tr:has(td:text-is('lemma/agent.request'))");
+  // Equal orders run by plugin id: agent, then compaction, then project-context at order 10.
+  for (const [position, id] of ["agent", "compaction", "project-context"].entries()) {
+    await page.waitForSelector(`[aria-label='Hook details'] tr:has(td:text-is('${position + 1}')) >> button:text-is('${id}')`);
+  }
+  // Registries: the web app's slots, live, with who fills each and how to add to it.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Registries");
+  await page.fill("[aria-label='Filter registries']", "pages");
+  await page.click("[aria-label=Registries] tr:has(td:first-child:text-is('pages'))");
+  await page.waitForSelector("[aria-label='Registry items'] tr:has(td:text-is('thread-view.new')):has(button:text-is('thread-view'))");
+  // Inspectors: what host plugins let you look into, as tables.
+  await page.click("[aria-label='Devtools panels'] [role=tab] >> text=Inspectors");
+  await page.click("[aria-label=Inspectors] tr:has-text('Tools')");
+  await page.waitForSelector("[aria-label='Inspector snapshot'] td:text-is('bash')");
+  const snapshot = await page.evaluate(async () => {
+    const { Devtools } = await import("/src/ui/contracts.ts" as string);
+    return JSON.parse(JSON.stringify((await (window as any).lemma.service(Devtools)).snapshot()));
+  });
+  assert.deepEqual(Object.keys(snapshot).sort(), [
+    "devtools.events",
+    "devtools.hooks",
+    "devtools.inspectors",
+    "devtools.navigation",
+    "devtools.plugins",
+    "devtools.registries",
+    "devtools.routes",
+  ]);
+  assert(
+    snapshot["devtools.routes"].routes.some((route: any) => route.id === "thread" && route.entries[0] === "thread-view"),
+    "the routes snapshot does not say who shows a thread",
+  );
+  await page.keyboard.press("ControlOrMeta+Shift+d");
+  await page.waitForSelector(".devtools", { state: "detached" });
+  assert.equal(await appHeight(), 900, "the app did not take its room back when the devtools closed");
+  expectNoErrors("using the devtools");
+
   console.log(
-    `UI check: booted; every part provided; ${toggled.length - locked.length} plugins turned off and on, ${locked.length} locked ones kept on (${locked.join(", ")}); a part replaced and restored; six extension slots render what a plugin adds; addresses survive reloads, back, and their page's plugin going off; a plugin adds a page.`,
+    `UI check: booted; every part provided; ${toggled.length - locked.length} plugins turned off and on, ${locked.length} locked ones kept on (${locked.join(", ")}); a part replaced and restored; six extension slots render what a plugin adds; addresses survive reloads, back, and their page's plugin going off; a plugin adds a page; the devtools show routes, navigation, host events, plugins, hooks, registries, and inspectors.`,
   );
 } finally {
   await browser.close();

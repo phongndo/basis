@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { load, save } from "../lib/storage.ts";
-import { Actions, Layers, Layout, MainRegion, Root, SidebarRegion, Slots } from "../ui/contracts.ts";
+import { Actions, Docks, Layers, Layout, MainRegion, Root, SidebarRegion, Slots } from "../ui/contracts.ts";
 import { defineUiPlugin } from "../ui/define.ts";
 import { SidebarIcon } from "../ui/parts.tsx";
 import styles from "./shell.css?inline";
@@ -116,40 +116,44 @@ export default defineUiPlugin({
       const sidebar = () => slots.first(SidebarRegion);
       const main = () => slots.first(MainRegion);
       return (
-        <div
-          class="app"
-          classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed() || sidebar() === undefined, resizing: resizing() }}
-          style={{ "--sidebar": `${width()}px` }}
-          data-titlebar={titlebar() ? "" : undefined}
-        >
-          <Show when={sidebar()} keyed>
-            {(region) => (
-              <>
-                {/* The shell owns the sidebar's box (width, collapse, drawer); whatever fills the region only fills it. */}
-                <div class="sidebar-slot">
-                  <Dynamic component={region.component} onPick={closeDrawer} />
-                </div>
-                <div
-                  class="sidebar-rail"
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label="Resize sidebar"
-                  data-tip="Drag to resize · double-click to reset"
-                  onPointerDown={startResize}
-                  onDblClick={resetWidth}
-                />
-              </>
-            )}
-          </Show>
-          <Show when={drawer()}>
-            <div class="scrim" onClick={closeDrawer} />
-          </Show>
-          <div class="main-col">
-            <Show when={main()} keyed>
-              {(region) => <Dynamic component={region.component} />}
+        <div class="frame">
+          <div
+            class="app"
+            classList={{ "drawer-open": drawer(), "sidebar-collapsed": collapsed() || sidebar() === undefined, resizing: resizing() }}
+            style={{ "--sidebar": `${width()}px` }}
+            data-titlebar={titlebar() ? "" : undefined}
+          >
+            <Show when={sidebar()} keyed>
+              {(region) => (
+                <>
+                  {/* The shell owns the sidebar's box (width, collapse, drawer); whatever fills the region only fills it. */}
+                  <div class="sidebar-slot">
+                    <Dynamic component={region.component} onPick={closeDrawer} />
+                  </div>
+                  <div
+                    class="sidebar-rail"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize sidebar"
+                    data-tip="Drag to resize · double-click to reset"
+                    onPointerDown={startResize}
+                    onDblClick={resetWidth}
+                  />
+                </>
+              )}
             </Show>
+            <Show when={drawer()}>
+              <div class="scrim" onClick={closeDrawer} />
+            </Show>
+            <div class="main-col">
+              <Show when={main()} keyed>
+                {(region) => <Dynamic component={region.component} />}
+              </Show>
+            </div>
+            <For each={slots.list(Layers)}>{(layer) => <Dynamic component={layer.component} />}</For>
           </div>
-          <For each={slots.list(Layers)}>{(layer) => <Dynamic component={layer.component} />}</For>
+          {/* Docked under the app, which shrinks to the space left: each dock sizes itself. */}
+          <For each={slots.list(Docks)}>{(dock) => <Dynamic component={dock.component} />}</For>
         </div>
       );
     }
